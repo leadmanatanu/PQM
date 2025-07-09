@@ -1,0 +1,36 @@
+@PQM.Server_HostAddress = http://localhost:5135
+
+GET {{PQM.Server_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
+
+GET {{PQM.Server_HostAddress}}/device/
+Accept: application/json
+
+###
+
+GET {{PQM.Server_HostAddress}}/devicelog/
+Accept: application/json
+
+###
+
+POST {{PQM.Server_HostAddress}}/devicelog/
+Accept: */*
+Content-Type: application/json
+Body:[{
+        "Value": "Test1",
+        "DeviceId": 1,
+        "ParameterId": 1
+    },
+    {
+        "Value": "Test2",
+        "DeviceId": 2,
+        "ParameterId": 1
+    }
+]
+###
+
+
+
+
