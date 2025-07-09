@@ -16,9 +16,4 @@ namespace PQM.Core.Entities
         public DateTime? ModifiedDate { get; set; }
         public int? ModifiedId { get; set; }
     }
-
-    public class MyTest
-    {
-        public string Name { get; set; }
-    }
 }
