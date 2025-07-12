@@ -24,16 +24,16 @@ function noop(): void {
 }
 
 export interface Device {
-    id: int;
+    id: number;
     name: string;
     ip: string;
-    port: int;
+    port: number;
     isActive: string;
     isDeleted: string;
     createdDate: Date;
-    createdId: int;
+    createdId: number;
     modifiedDate: Date;
-    modifiedId: int;
+    modifiedId: number;
 }
 
 interface DevicesTableProps {
