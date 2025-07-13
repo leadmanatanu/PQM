@@ -84,6 +84,9 @@ export function DevicesTable({
                         <TableRow>
                             <TableCell>Id</TableCell>
                             <TableCell>Name</TableCell>
+                            <TableCell>Serial No</TableCell>
+                            <TableCell>Consumer No</TableCell>
+                            <TableCell>FTP Folder</TableCell>
                             <TableCell>Status</TableCell>
                             <TableCell>IP</TableCell>
                             <TableCell>PORT</TableCell>
@@ -99,6 +102,9 @@ export function DevicesTable({
                                 <TableRow hover key={row.id} selected={isSelected}>
                                     <TableCell>{row.id}</TableCell>
                                     <TableCell>{row.name}</TableCell>
+                                    <TableCell>SER1025767</TableCell>
+                                    <TableCell>CON123465</TableCell>
+                                    <TableCell>{row.ftpFolder}</TableCell>
                                     <TableCell>{row.isActive ? <p>Active</p> : <p>Inactive</p>}</TableCell>
                                     <TableCell>{row.ip}</TableCell>
                                     <TableCell>{row.port}</TableCell>

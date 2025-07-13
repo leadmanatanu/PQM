@@ -35,6 +35,21 @@ export function AddDeviceForm({ isVisible }): React.JSX.Element {
         setTxtPort(event.target.value);
     };
 
+    const [txtConsumerNo, setTxtConsumerNo] = React.useState('');
+    const handleConChange = (event) => {
+        setTxtConsumerNo(event.target.value);
+    };
+
+    const [txtSerialNo, setTxtSerialNo] = React.useState('');
+    const handleSerChange = (event) => {
+        setTxtSerialNo(event.target.value);
+    };
+
+    const [txtFtpFolder, setTxtFtpFolder] = React.useState('');
+    const handleFtpChange = (event) => {
+        setTxtFtpFolder(event.target.value);
+    };
+
     const addDeviceClick = (e) => {
         e.preventDefault(); // Prevent default Link navigation
         //router.push('/another-page'); // Programmatic navigation
@@ -42,13 +57,19 @@ export function AddDeviceForm({ isVisible }): React.JSX.Element {
             name: txtName,
             isActive: selectedValue,
             ip: txtIP,
-            port: txtPort
-        };
+            port: txtPort,
+            consumerNo : txtConsumerNo,
+            serialNo : txtSerialNo,
+            ftpFolder : txtFtpFolder
+            };
         //console.log(device);
         addDevice(device);
         setTxtName('');
         setTxtIP('');
         setTxtPort('');
+        setTxtConsumerNo('');
+        setTxtSerialNo('');
+        setTxtFtpFolder('');
     };
 
     return (
@@ -65,6 +86,18 @@ export function AddDeviceForm({ isVisible }): React.JSX.Element {
                         <FormControl fullWidth>
                             <InputLabel>Device</InputLabel>
                             <OutlinedInput label="Device" name="device" type="device" value={txtName} onChange={handleNameChange} />
+                        </FormControl>
+                        <FormControl fullWidth>
+                            <InputLabel>Serial No</InputLabel>
+                            <OutlinedInput label="Serial No" name="serialNo" type="serialNo" value={txtSerialNo} onChange={handleSerChange} />
+                        </FormControl>
+                        <FormControl fullWidth>
+                            <InputLabel>Consumer No</InputLabel>
+                            <OutlinedInput label="Consumer No" name="ConsumerNo" type="ConsumerNo" value={txtConsumerNo} onChange={handleConChange} />
+                        </FormControl>
+                        <FormControl fullWidth>
+                            <InputLabel>FTP Folder</InputLabel>
+                            <OutlinedInput label="Port" name="port" type="port" value={txtFtpFolder} onChange={handlePortChange} />
                         </FormControl>
                         <FormControl fullWidth>
                             <InputLabel id="isactive-label">Select Option</InputLabel>
@@ -88,6 +121,7 @@ export function AddDeviceForm({ isVisible }): React.JSX.Element {
                             <InputLabel>PORT</InputLabel>
                             <OutlinedInput label="Port" name="port" type="port" value={txtPort} onChange={handlePortChange} />
                         </FormControl>
+                        
                     </Stack>
                 </CardContent>
                 <Divider />
