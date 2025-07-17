@@ -29,8 +29,8 @@ export default async function Page(): React.JSX.Element {
       <DeviceFilters
         rows={devices}
       />
-      <Notifications />
-      <UpdatePasswordForm />
+      {/*<Notifications />*/}
+      {/*<UpdatePasswordForm /> */}
     </Stack>
   );
 }

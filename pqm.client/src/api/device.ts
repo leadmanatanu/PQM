@@ -16,12 +16,15 @@ export const fetchDevices = async () => {
 
 
 export const addDevice = async (device: Device) => {
-    //console.log(device);
+    console.log(device);
     const response = await axios.post<Response>(`${API_URL}/device`, {
-        'name': device.name,
-        'isactive': device.isActive == '1' ? true : false,
-        'ip': device.ip,
-        'port': device.port
+        'Name': device.name,
+        'IsActive': device.isActive == '1' ? true : false,
+        'IP': device.ip,
+        'Port': device.port,
+        'SerialNumber':device.serialNumber,
+        'ConsumerNumber':device.consumerNumber,
+        'ftpFolder': device.ftpFolder
     }).then(response => {
         return response.data;
     }).catch(error => {

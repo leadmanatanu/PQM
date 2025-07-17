@@ -4,8 +4,9 @@ import InputAdornment from '@mui/material/InputAdornment';
 import OutlinedInput from '@mui/material/OutlinedInput';
 import { MagnifyingGlassIcon } from '@phosphor-icons/react/dist/ssr/MagnifyingGlass';
 
-export function DevicesFilters({ isVisible }): React.JSX.Element {
+export function DevicesFilters({ show }): React.JSX.Element | null{
     //console.log("isVisible " + isVisible);
+    if (!show) return null;
     return (
     <Card sx={{ p: 2 }}>
       <OutlinedInput

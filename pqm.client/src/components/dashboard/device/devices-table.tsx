@@ -14,6 +14,7 @@ import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
+import Button from '@mui/material/Button';
 import dayjs from 'dayjs';
 
 import { useSelection } from '@/hooks/use-selection';
@@ -34,6 +35,9 @@ export interface Device {
     createdId: number;
     modifiedDate: Date;
     modifiedId: number;
+    serialNumber: string;
+    consumerNumber: string;
+    ftpFolder: string;
 }
 
 interface DevicesTableProps {
@@ -41,6 +45,8 @@ interface DevicesTableProps {
     page?: number;
     rows?: Device[];
     rowsPerPage?: number;
+    show?: boolean;
+    onEdit?: (deviceId: number) => void;
 }
 
 export function DevicesTable({
@@ -48,11 +54,15 @@ export function DevicesTable({
     rows = [],
     page = 0,
     rowsPerPage = 0,
-}: DevicesTableProps): React.JSX.Element {
+    show = true,
+    onEdit = () => {},
+}: DevicesTableProps): React.JSX.Element | null{
+    if (!show) return null;
     const rowIds = React.useMemo(() => {
         return rows.map((device) => device.id);
     }, [rows]);
 
+    
     const { selectAll, deselectAll, selectOne, deselectOne, selected } = useSelection(rowIds);
     const selectedSome = (selected?.size ?? 0) > 0 && (selected?.size ?? 0) < rows.length;
     const selectedAll = rows.length > 0 && selected?.size === rows.length;
@@ -70,6 +80,17 @@ export function DevicesTable({
         //setPage(0);
         rowsPerPage = parseInt(event.target.value, 10);
         page = 0;
+    };
+
+     const handleEditClick = (deviceId: number) => {
+        console.log(`Edit device with ID: ${deviceId}`);
+        // Placeholder for edit logic (e.g., open edit form)
+        onEdit(deviceId);
+    };
+
+    const handleSyncClick = (deviceId: number) => {
+        console.log(`Sync device with ID: ${deviceId}`);
+        // Placeholder for sync logic (e.g., trigger sync API call)
     };
 
     React.useEffect(() => {
@@ -91,6 +112,7 @@ export function DevicesTable({
                             <TableCell>IP</TableCell>
                             <TableCell>PORT</TableCell>
                             <TableCell>Created Date</TableCell>
+                            <TableCell>Last Sync</TableCell>
                             <TableCell>Action</TableCell>
                         </TableRow>
                     </TableHead>
@@ -102,14 +124,31 @@ export function DevicesTable({
                                 <TableRow hover key={row.id} selected={isSelected}>
                                     <TableCell>{row.id}</TableCell>
                                     <TableCell>{row.name}</TableCell>
-                                    <TableCell>SER1025767</TableCell>
-                                    <TableCell>CON123465</TableCell>
+                                    <TableCell>{row.serialNumber}</TableCell>
+                                    <TableCell>{row.consumerNumber}</TableCell>
                                     <TableCell>{row.ftpFolder}</TableCell>
                                     <TableCell>{row.isActive ? <p>Active</p> : <p>Inactive</p>}</TableCell>
                                     <TableCell>{row.ip}</TableCell>
                                     <TableCell>{row.port}</TableCell>
                                     <TableCell>{dayjs(row.createdDate).format('MMM D, YYYY')}</TableCell>
-                                    <TableCell></TableCell>
+                                    <TableCell>{dayjs(row.createdDate).format('MMM D, YYYY')}</TableCell>
+                                    <TableCell>
+                                        <Button
+                                            variant="outlined"
+                                            size="small"
+                                            onClick={() => handleEditClick(row.id)}
+                                            sx={{ mr: 1 }}
+                                        >
+                                            Edit
+                                        </Button>
+                                        {/*<Button
+                                            variant="outlined"
+                                            size="small"
+                                            onClick={() => handleSyncClick(row.id)}
+                                        >
+                                            Sync
+                                        </Button> */}
+                                    </TableCell>
                                 </TableRow>
                             );
                         })}
