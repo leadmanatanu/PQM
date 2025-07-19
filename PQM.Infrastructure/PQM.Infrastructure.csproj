@@ -15,4 +15,8 @@
     <ProjectReference Include="..\PQM.Core\PQM.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="DbChanges\" />
+  </ItemGroup>
+
 </Project>

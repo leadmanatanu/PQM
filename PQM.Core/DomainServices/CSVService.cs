@@ -15,16 +15,6 @@ namespace PQM.Core.DomainServices
     {
         public List<DeviceLog> ReadCSVData(int deviceId, string csvFilePath, List<string> mappedParatmeter)
         {
-            //using var reader = new StreamReader("data.csv");
-            //using var csv = new CsvReader(reader, CultureInfo.InvariantCulture);
-            //var records = csv.GetRecords<DeviceLog>();
-
-            //foreach (var log in records)
-            //{
-            //    Console.WriteLine($"{log.DeviceId} - {log.ParameterId}");
-            //}
-
-
             List<DeviceLog> logList = new List<DeviceLog>();
             using (TextFieldParser parser = new TextFieldParser(csvFilePath))
             {
@@ -56,6 +46,7 @@ namespace PQM.Core.DomainServices
                             if (innerCounter == 0) // pick DateStamp
                             {
                                 dateStamp = Convert.ToDateTime(field);
+                                //dateStamp = DateTime.ParseExact(field, "dd-MM-yyyy", CultureInfo.InvariantCulture);
                             }
                             else
                             {

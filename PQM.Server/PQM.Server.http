@@ -1,4 +1,5 @@
 @PQM.Server_HostAddress = http://localhost:5135
+# @PQM.Server_HostAddress = http://103.83.106.174:83
 
 GET {{PQM.Server_HostAddress}}/weatherforecast/
 Accept: application/json
@@ -9,6 +10,76 @@ GET {{PQM.Server_HostAddress}}/device/
 Accept: application/json
 
 ###
+
+
+POST {{PQM.Server_HostAddress}}/device/
+Accept: application/json
+Accept: */*
+Content-Type: application/json
+Body:{
+  "Name": "Test-1",
+  "SerialNumber": "56456AS4",
+  "ConsumerNumber": "86456AS4",
+  "IP": "245.11.23.221",
+  "Port":5485,
+  "IsActive": true
+}
+###
+
+PUT {{PQM.Server_HostAddress}}/device/
+Accept: application/json
+Accept: */*
+Content-Type: application/json
+Body:{
+  "Id":1,
+  "Name": "Device 1",
+  "SerialNumber": "56456AS4",
+  "ConsumerNumber": "86456AS4",
+  "IP": "245.11.23.221",
+  "Port":5485,
+  "IsActive": true
+}
+###
+
+Delete {{PQM.Server_HostAddress}}/device/12
+Accept: application/json
+Accept: */*
+Content-Type: application/json
+Body:{
+  "Id":1
+}
+###
+
+
+GET {{PQM.Server_HostAddress}}/parameter/
+Accept: application/json
+
+###
+
+GET {{PQM.Server_HostAddress}}/parameter/1
+Accept: application/json
+
+###
+
+POST {{PQM.Server_HostAddress}}/deviceparammapping/
+Accept: */*
+Content-Type: application/json
+Body:[
+    {
+    "DeviceId":1,
+    "ParameterId":1
+    },
+    {
+    "DeviceId":1,
+    "ParameterId":2
+    },
+    {
+    "DeviceId":1,
+    "ParameterId":3
+    }
+]
+###
+
 
 GET {{PQM.Server_HostAddress}}/devicelog/
 Accept: application/json

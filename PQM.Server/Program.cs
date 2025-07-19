@@ -16,6 +16,9 @@ var config = new ConfigurationBuilder()
 builder.Services.AddOpenApi();
 builder.Services.AddTransient<IDeviceService>(s => new DeviceService(config.GetSection("ConnectionString").Value));
 builder.Services.AddTransient<IDeviceLogService>(s => new DeviceLogService(config.GetSection("ConnectionString").Value));
+builder.Services.AddTransient<IParameterService>(s => new ParameterService(config.GetSection("ConnectionString").Value));
+builder.Services.AddTransient<IDeviceParameterService>(s => new DeviceParameterService(config.GetSection("ConnectionString").Value));
+builder.Services.AddTransient<ISFTPService>(s => new SFTPService());
 builder.Services.AddTransient<ICSVService>(s => new CSVService());
 
 builder.Services.AddCors(options =>

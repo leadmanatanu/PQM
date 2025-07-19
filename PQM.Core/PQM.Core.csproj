@@ -7,11 +7,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="DomainServices\SFTPService.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Include="DomainServices\SFTPService.cs" />
     <None Include="DomainServices\CSVService.cs" />
   </ItemGroup>
 

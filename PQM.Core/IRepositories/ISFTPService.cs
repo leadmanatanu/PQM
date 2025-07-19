@@ -8,5 +8,6 @@ namespace PQM.Core.IRepositories
 {
     public interface ISFTPService
     {
+        List<string> GetFiles(string url, string userName, string password, string ftpFolder, string localFolder);
     }
 }

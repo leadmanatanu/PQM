@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace PQM.Core.Entities
 {
@@ -8,6 +9,10 @@ namespace PQM.Core.Entities
         public int Id { get; set; }
         public int DeviceId { get; set; }
         public int ParameterId { get; set; }
-        public DateTime DateStamp { get; set; }
+        public DateTime? DateStamp { get; set; }
+        [NotMapped]
+        public string? DeviceName { get; set; }
+        [NotMapped]
+        public string? ParameterName { get; set; }
     }
 }

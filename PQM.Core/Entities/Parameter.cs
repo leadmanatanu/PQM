@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace PQM.Core.Entities
 {
@@ -6,12 +7,14 @@ namespace PQM.Core.Entities
     {
         [Key]
         public int Id { get; set; }
-        public required string Name { get; set; }
+        public string Name { get; set; }
         public bool IsActive { get; set; }
         public bool IsDeleted { get; set; }
         public DateTime CreatedDate { get; set; }
         public int? CreatedId { get; set; }
         public DateTime? ModifiedDate { get; set; }
         public int? ModifiedId { get; set; }
+        [NotMapped]
+        public bool IsSelected { get; set; }
     }
 }
