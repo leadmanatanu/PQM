@@ -6,10 +6,23 @@ import {
   Select,      // This will be removed
   MenuItem,    // This will be removed
   TextField,   // Needed for Autocomplete's input
-  Card,        // Retaining your Card wrapper
 } from '@mui/material';
 import { Autocomplete } from '@mui/material'; // Import Autocomplete
 import { MagnifyingGlassIcon } from '@phosphor-icons/react/dist/ssr/MagnifyingGlass';
+import Card from '@mui/material/Card';
+import CardActions from '@mui/material/CardActions';
+import CardContent from '@mui/material/CardContent';
+import CardHeader from '@mui/material/CardHeader';
+import Divider from '@mui/material/Divider';
+import Button from '@mui/material/Button';
+import Stack from '@mui/material/Stack';
+
+import dayjs, { Dayjs } from 'dayjs';
+import { DemoContainer } from '@mui/x-date-pickers/internals/demo';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
+
 
 export interface Device {
     id: number;
@@ -34,6 +47,8 @@ interface DeviceFiltersProps {
   onDeviceSelect = () => {},
 }: DeviceFiltersProps): React.JSX.Element {
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
+  const [startValue, setStartValue] = React.useState<Dayjs | null>(dayjs('2022-04-17T15:30'));
+  const [endValue, setEndValue] = React.useState<Dayjs | null>(dayjs('2022-04-17T15:30'));
 
   const handleChange = (
     event: React.SyntheticEvent, // Event object (can be null for some actions)
@@ -42,9 +57,12 @@ interface DeviceFiltersProps {
     setSelectedDevice(newValue); // Update internal state with the selected object
     onDeviceSelect(newValue ? newValue.id : null); // Pass string ID or null
   };
-
+// <Card sx={{ p: 2, maxWidth: '700px' }}>
   return (
-    <Card sx={{ p: 2, maxWidth: '500px' }}>
+   <Card>
+    <Divider />
+    <CardContent>
+    <Stack spacing={3} sx={{ maxWidth: 'sm' }}>
       <FormControl fullWidth>
         <Autocomplete
           id="device-filter-autocomplete" // Unique ID for accessibility
@@ -63,6 +81,28 @@ interface DeviceFiltersProps {
           openOnFocus
         />
       </FormControl>
+      <FormControl fullWidth>
+        <LocalizationProvider dateAdapter={AdapterDayjs}>
+      <DemoContainer components={['DateTimePicker', 'DateTimePicker']}>
+        <DateTimePicker
+          label="Start Time"
+          value={startValue}
+          onChange={(newValue) => setStartValue(newValue)}
+        />
+        <DateTimePicker
+          label="End Time"
+          value={endValue}
+          onChange={(newValue) => setEndValue(newValue)}
+        />
+      </DemoContainer>
+    </LocalizationProvider>
+      </FormControl>
+      </Stack>
+      </CardContent>
+      <Divider />
+        <CardActions sx={{ justifyContent: 'flex-end' }}>
+          <Button variant="contained">Search</Button>
+        </CardActions>
     </Card>
   );
 }

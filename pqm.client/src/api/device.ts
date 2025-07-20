@@ -14,6 +14,15 @@ export const fetchDevices = async () => {
     return response.data;
 };
 
+export const fetchDeviceParameter = async (id: string | number): Promise<any | null> => {
+    try {
+        const response = await axios.get(`${API_URL}/Parameter/${id}`);
+        return response.data;
+    } catch (error) {
+        console.error("Error fetching device parameter:", error);
+        return null; // or throw error if you want it handled upstream
+    }
+};
 
 export const addDevice = async (device: Device) => {
     console.log(device);

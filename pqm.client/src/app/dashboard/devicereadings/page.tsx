@@ -7,9 +7,9 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 
 import { config } from '@/config';
-import { DeviceParameter } from '@/components/dashboard/mapping/device-paramter';
-import { UpdatePasswordForm } from '@/components/dashboard/mapping/update-password-form';
-import { DeviceFilters } from '@/components/dashboard/mapping/device-selection';
+import { DeviceParameter } from '@/components/dashboard/devicereadings/device-paramter';
+import { UpdatePasswordForm } from '@/components/dashboard/devicereadings/update-password-form';
+import { DeviceFilters } from '@/components/dashboard/devicereadings/device-selection';
 
 import { fetchDevices, fetchDeviceParameter } from '../../../api/device';
 
@@ -61,13 +61,13 @@ export default function Page(): React.JSX.Element {
   return (
     <Stack spacing={3}>
       <div>
-        <Typography variant="h4">Device Mapping</Typography>
+        <Typography variant="h4">Device Readings</Typography>
       </div>
       <DeviceFilters
         rows={devices}
         onDeviceSelect={handleDeviceSelection}
       />
-      {<DeviceParameter device={devParamArr} onDeviceUpdate={handleDeviceUpdate} /> }
+      {/*<DeviceParameter device={devParamArr} onDeviceUpdate={handleDeviceUpdate} /> */}
       {/*<UpdatePasswordForm />*/ }
     </Stack>
   );
