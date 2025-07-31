@@ -35,8 +35,9 @@ export function DeviceParameter({ device, onDeviceUpdate }: { device: unknown[],
   }, [device]);
 
    const handleCheckboxChange = (index: number) => {
+    console.log('handleCheckboxChange:', index);
     const newDevice = [...updatedDevice];
-    newDevice[index] = { ...newDevice[index], isActive: !(newDevice[index] as any).isActive };
+    newDevice[index] = { ...newDevice[index], isSelected: !(newDevice[index] as any).isSelected };
     setUpdatedDevice(newDevice);
   };
 
@@ -67,7 +68,7 @@ export function DeviceParameter({ device, onDeviceUpdate }: { device: unknown[],
                         key={row.id || index}
                         control={
                           <Checkbox
-                            checked={row.isActive}
+                            checked={true /*row.isSelected*/}
                             onChange={() => handleCheckboxChange(index)}
                           />
                         }

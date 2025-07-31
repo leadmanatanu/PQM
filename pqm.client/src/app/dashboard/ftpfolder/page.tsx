@@ -1,74 +1,131 @@
 'use client';
 
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import type { Metadata } from 'next';
 import Stack from '@mui/material/Stack';
+import Snackbar, { SnackbarCloseReason } from '@mui/material/Snackbar';
+import Alert from '@mui/material/Alert';
 import Typography from '@mui/material/Typography';
 
 import { config } from '@/config';
 //import { DeviceParameter } from '@/components/dashboard/mapping/device-paramter';
 import { FTPDetailsForm } from '@/components/dashboard/ftpfolder/ftp-details';
+import type { FTPConfig } from '@/components/dashboard/ftpfolder/ftp-details';
 //import { DeviceFilters } from '@/components/dashboard/mapping/device-selection';
 
-import { fetchDevices, fetchDeviceParameter } from '../../../api/device';
+import { fetchFtpDetails, updateFtpDetails, testFtpDetails } from '../../../api/device';
 
 //export const metadata = { title: `Device Mapping | Dashboard | ${config.site.name}` } satisfies Metadata;
 
 export default function Page(): React.JSX.Element {
-  // const [devices, setDevices] = useState<Device[]>([]);
-  // const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
-  // const [devParamArr,setDevParamArr] = useState([]);
+    const [ftpConfig, setFtpConfig] = useState<FTPConfig>({
+    id: 0,
+    ftpHost: '',
+    userName: '',
+    password: '',
+    rootFolderName: '',
+  });
+  const [openSnackbar, setOpenSnackbar] = useState(false);
+const [testResult, setTestResult] = useState<string | null>(null);
+  useEffect(() => {
+    const loadFTP = async () => {
+      try {
+        const fetchedFTPConfig = await fetchFtpDetails();
+        setFtpConfig(fetchedFTPConfig);
+        console.log('Fetched FTP:', fetchedFTPConfig);
+      } catch (error) {
+        console.error('Failed to fetch devices:', error);
+      }
+    };
+    loadFTP();
+  }, []);
 
-  // useEffect(() => {
-  //   const loadDevices = async () => {
-  //     try {
-  //       const fetchedDevices = await fetchDevices();
-  //       setDevices(fetchedDevices);
-  //       console.log('Fetched devices:', fetchedDevices[0]);
-  //     } catch (error) {
-  //       console.error('Failed to fetch devices:', error);
-  //     }
-  //   };
-  //   loadDevices();
+  
+
+
+   // Memoize config and deviceLogArr to ensure stable references
+  const memoizedConfig = useMemo(() => ftpConfig, [ftpConfig]);
+
+  // Memoize onUpdate to avoid re-renders
+  // const handleUpdate = useCallback((updatedConfig: FTPConfig) => {
+  //   setFtpConfig(updatedConfig);
+  //   console.log('Updated config:', updatedConfig);
   // }, []);
+  const handleUpdate = useCallback(async (updatedConfig: any) => {
+    try {
+      const result = await updateFtpDetails(updatedConfig);
+      if (result) {
+        setFtpConfig(result);
+        console.log('Updated config:', result);
+      } else {
+        console.error('Update failed: No result returned');
+      }
+    } catch (error) {
+      console.error('Error updating config:', error);
+    }
+  }, []);
 
-  // // Log devParamArr when it updates
-  // useEffect(() => {
-  //   if (devParamArr.length > 0) {
-  //     console.log('devParamArr updated:', devParamArr);
-  //   }
-  // }, [devParamArr]);
+  const handleTestConnection = useCallback(async (updatedConfig: any) => {
+    try {
+      const result = await testFtpDetails(updatedConfig);
+      if (result) {
+        //setFtpConfig(result);
+        if(result.status == true) {
+          setTestResult('Connection successful');
+        }else{
+          setTestResult('Connection failed');
+        }
+        setOpenSnackbar(true);
+        console.log('Test :', result);
+      } else {
+        console.error('Test failed: No result returned');
+      }
+    } catch (error) {
+      console.error('Error test config:', error);
+    }
+  }, []);
 
-  //   const handleDeviceSelection = (id: string | number) => {
-  //   setSelectedDeviceId(id);
-  //   console.log('Device selected:', id);
-  //   fetchDeviceParameter(id)
-  //     .then((fetchedDeviceParameter) => {
-  //       setDevParamArr(fetchedDeviceParameter.data);
-  //       console.log('Fetched devices param:', fetchedDeviceParameter);
-  //     })
-  //     .catch((error) => {
-  //       console.error('Failed to fetch devices:', error);
-  //     });
-  // };
+   const handleSnackBarClose = (
+    event?: React.SyntheticEvent | Event,
+    reason?: SnackbarCloseReason,
+  ) => {
+    if (reason === 'clickaway') {
+      return;
+    }
 
-  //   const handleDeviceUpdate = (updatedDevice: unknown[]) => {
-  //   setDevParamArr(updatedDevice);
-  //   console.log('Updated device parameters:', updatedDevice);
-  // };
-
+    setOpenSnackbar(false);
+  };
+  
   return (
     <Stack spacing={3}>
       <div>
         <Typography variant="h4">FTP Folder</Typography>
       </div>
-      { /*<DeviceFilters
-        rows={devices}
-        onDeviceSelect={handleDeviceSelection}
-      /> */}
-      {/*<DeviceParameter device={devParamArr} onDeviceUpdate={handleDeviceUpdate} /> */}
-      {<FTPDetailsForm /> }
+      {<FTPDetailsForm 
+            config={memoizedConfig} 
+            onUpdate={handleUpdate} 
+            onTestConnection={handleTestConnection}
+      /> }
+      <Snackbar open={openSnackbar} autoHideDuration={6000} onClose={handleSnackBarClose} anchorOrigin={{ vertical: 'top', horizontal: 'center' }}>
+        {/*<Alert
+          onClose={handleSnackBarClose}
+          severity="success"
+          variant="filled"
+          sx={{ width: '100%' }}
+        >
+          This is a success Alert inside a Snackbar!
+        </Alert> */}
+
+        <Alert
+          severity={testResult?.includes('successful') ? 'success' : 'error'}
+          sx={{ width: '100%' }}
+          onClose={handleSnackBarClose}
+          variant="filled"
+        >
+          {testResult}
+        </Alert>
+      </Snackbar>
     </Stack>
   );
 }

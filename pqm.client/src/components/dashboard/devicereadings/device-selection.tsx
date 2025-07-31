@@ -22,33 +22,47 @@ import { DemoContainer } from '@mui/x-date-pickers/internals/demo';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 
 
-export interface Device {
-    id: number;
-    name: string;
-    ip: string;
-    port: number;
-    isActive: string;
-    isDeleted: string;
-    createdDate: Date;
-    createdId: number;
-    modifiedDate: Date;
-    modifiedId: number;
-}
+import type { Device } from '@/components/dashboard/device/devices-table';
+
+// export interface Device {
+//     id: number;
+//     name: string;
+//     ip: string;
+//     port: number;
+//     isActive: string;
+//     isDeleted: string;
+//     createdDate: Date;
+//     createdId: number;
+//     modifiedDate: Date;
+//     modifiedId: number;
+// }
 
 interface DeviceFiltersProps {
   rows: Device[];
   onDeviceSelect?: (id: string | number) => void;
+  paramArray: any[];
+  onSearch?: (searchParams: {
+    deviceId: string | number | null;
+    startTime: Dayjs | null;
+    endTime: Dayjs | null;
+    paramId: string | number | null;
+  }) => void;
 }
 
-  export function DeviceFilters({
+export function DeviceFilters({
   rows = [],
-  onDeviceSelect = () => {},
+  onDeviceSelect = () => { },
+  paramArray = [],
+  onSearch = () => { },
 }: DeviceFiltersProps): React.JSX.Element {
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
-  const [startValue, setStartValue] = React.useState<Dayjs | null>(dayjs('2022-04-17T15:30'));
-  const [endValue, setEndValue] = React.useState<Dayjs | null>(dayjs('2022-04-17T15:30'));
+  const [startValue, setStartValue] = React.useState<Dayjs | null>(dayjs('2025-07-01'));
+  const [endValue, setEndValue] = React.useState<Dayjs | null>(dayjs('2025-07-25'));
+  const [selectedParam, setSelectedParam] = useState<any | null>(null);
+
 
   const handleChange = (
     event: React.SyntheticEvent, // Event object (can be null for some actions)
@@ -57,52 +71,91 @@ interface DeviceFiltersProps {
     setSelectedDevice(newValue); // Update internal state with the selected object
     onDeviceSelect(newValue ? newValue.id : null); // Pass string ID or null
   };
-// <Card sx={{ p: 2, maxWidth: '700px' }}>
+
+  const handleParameterChange = (
+    event: React.SyntheticEvent, // Event object (can be null for some actions)
+    newValue: any | null // The selected Device object, or null if cleared
+  ) => {
+    setSelectedParam(newValue); // Update internal state with the selected object
+    //onDeviceSelect(newValue ? newValue.id : null); // Pass string ID or null
+  };
+
+  const handleSearch = () => {
+    console.log("handleSearch");
+    onSearch({
+      deviceId: selectedDevice ? selectedDevice.id : null,
+      startTime: startValue,
+      endTime: endValue,
+      paramId: selectedParam ? selectedParam.id : null,
+    });
+  };
+
+  // <Card sx={{ p: 2, maxWidth: '700px' }}>
   return (
-   <Card>
-    <Divider />
-    <CardContent>
-    <Stack spacing={3} sx={{ maxWidth: 'sm' }}>
-      <FormControl fullWidth>
-        <Autocomplete
-          id="device-filter-autocomplete" // Unique ID for accessibility
-          options={rows} // Provide the full array of Device objects
-          getOptionLabel={(device) => device.name} // Tell Autocomplete how to get the display string from a Device object
-          value={selectedDevice} // The currently selected Device object (from state)
-          onChange={handleChange} // Our handler for selection/clearing
-          isOptionEqualToValue={(option, value) => option.id === value.id}
-          renderInput={(params) => (
-            <TextField
-              {...params}
-              label="Select or type to search device" // This serves as the label for the input
-              variant="outlined" // Standard Material-UI TextField variants
+    <Card>
+      <Divider />
+      <CardContent>
+        <Stack spacing={3} sx={{ maxWidth: 'sm' }}>
+          <FormControl fullWidth>
+            <Autocomplete
+              id="device-filter-autocomplete" // Unique ID for accessibility
+              options={rows} // Provide the full array of Device objects
+              getOptionLabel={(device) => device.name} // Tell Autocomplete how to get the display string from a Device object
+              value={selectedDevice} // The currently selected Device object (from state)
+              onChange={handleChange} // Our handler for selection/clearing
+              isOptionEqualToValue={(option, value) => option.id === value.id}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Select or type to search device" // This serves as the label for the input
+                  variant="outlined" // Standard Material-UI TextField variants
+                />
+              )}
+              openOnFocus
             />
-          )}
-          openOnFocus
-        />
-      </FormControl>
-      <FormControl fullWidth>
-        <LocalizationProvider dateAdapter={AdapterDayjs}>
-      <DemoContainer components={['DateTimePicker', 'DateTimePicker']}>
-        <DateTimePicker
-          label="Start Time"
-          value={startValue}
-          onChange={(newValue) => setStartValue(newValue)}
-        />
-        <DateTimePicker
-          label="End Time"
-          value={endValue}
-          onChange={(newValue) => setEndValue(newValue)}
-        />
-      </DemoContainer>
-    </LocalizationProvider>
-      </FormControl>
-      </Stack>
+          </FormControl>
+          <FormControl fullWidth>
+            <LocalizationProvider dateAdapter={AdapterDayjs}>
+              <DemoContainer components={['DatePicker ', 'DatePicker ']}>
+                <DatePicker
+                  label="Start Date"
+                  value={startValue}
+                  onChange={(newValue) => setStartValue(newValue)}
+                />
+                <DatePicker
+                  label="End Date"
+                  value={endValue}
+                  onChange={(newValue) => setEndValue(newValue)}
+                />
+              </DemoContainer>
+            </LocalizationProvider>
+          </FormControl>
+          {<FormControl fullWidth>
+            <Autocomplete
+              id="parameter-filter-autocomplete" // Unique ID for accessibility
+              options={paramArray} // Provide the full array of Device objects
+              getOptionLabel={(param) => param.name} // Tell Autocomplete how to get the display string from a Device object
+              value={selectedParam} // The currently selected Device object (from state)
+              onChange={handleParameterChange} // Our handler for selection/clearing
+              isOptionEqualToValue={(option, value) => option.id === value.id}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Select or type to search parameter" // This serves as the label for the input
+                  variant="outlined" // Standard Material-UI TextField variants
+                />
+              )}
+              openOnFocus
+            />
+          </FormControl>}
+        </Stack>
       </CardContent>
       <Divider />
-        <CardActions sx={{ justifyContent: 'flex-end' }}>
-          <Button variant="contained">Search</Button>
-        </CardActions>
+      <CardActions sx={{ justifyContent: 'flex-end' }}>
+        <Button variant="contained" onClick={handleSearch}>
+          Search
+        </Button>
+      </CardActions>
     </Card>
   );
 }

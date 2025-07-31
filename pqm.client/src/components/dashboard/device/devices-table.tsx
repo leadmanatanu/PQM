@@ -38,6 +38,7 @@ export interface Device {
     serialNumber: string;
     consumerNumber: string;
     ftpFolder: string;
+    lastSync: Date;
 }
 
 interface DevicesTableProps {
@@ -131,7 +132,7 @@ export function DevicesTable({
                                     <TableCell>{row.ip}</TableCell>
                                     <TableCell>{row.port}</TableCell>
                                     <TableCell>{dayjs(row.createdDate).format('MMM D, YYYY')}</TableCell>
-                                    <TableCell>{dayjs(row.createdDate).format('MMM D, YYYY')}</TableCell>
+                                    <TableCell>{row.lastSync ? dayjs(row.lastSync).format('MMM D, YYYY') : ''}</TableCell>
                                     <TableCell>
                                         <Button
                                             variant="outlined"
