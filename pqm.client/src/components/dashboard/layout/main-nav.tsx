@@ -82,7 +82,7 @@ export function MainNav(): React.JSX.Element {
           setOpenNav(false);
         }}
         open={openNav}
-      />
+      /> 
     </React.Fragment>
   );
 }

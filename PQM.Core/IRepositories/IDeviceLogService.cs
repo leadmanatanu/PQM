@@ -7,5 +7,6 @@ namespace PQM.Core.IRepositories
         bool AddDeviceLogs(List<DeviceLog> deviceLogs);
         IQueryable<DeviceLog> GetDeviceLogs();
         bool AddBulkDeviceLogs(List<DeviceLog> deviceLogs);
+        (List<DeviceLogSearch>, int) GetDeviceLogs(int deviceId, int parameterId, int pageNumber, int pageSize, DateTime startDate, DateTime endDate);
     }
 }

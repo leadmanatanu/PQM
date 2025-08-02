@@ -104,4 +104,26 @@ Body:[{
 
 
 
+GET {{PQM.Server_HostAddress}}/devicelog/search?deviceId=1&parameterId=1&pageNumber=1&pageSize=10&startDate=07/01/2025&endDate=07/22/2025
+Accept: */*
+###
+
+GET {{PQM.Server_HostAddress}}/ftp/
+Accept: application/json
+###
+
+PUT {{PQM.Server_HostAddress}}/ftp/
+Accept: */*
+Content-Type: application/json
+Body:{
+        "FtpHost": "ftp://103.83.106.174:21/",
+        "UserName": "enp",
+        "Password": "enp123",
+        "RootFolderName":"PQM"
+    }
+###
+
+GET {{PQM.Server_HostAddress}}/ftp/ftpconnectiontest?ftphost=ftp://103.83.106.174:21/&username=enp&password=enp123
+Accept: */*
+###
 

@@ -59,5 +59,32 @@ namespace PQM.Server.Controllers
             }
 
         }
+
+
+        [HttpGet("Search")]
+        public ActionResult Search([FromQuery] SearchParams searchParams)
+        {
+            var data = _deviceLogService.GetDeviceLogs(searchParams.DeviceId, searchParams.ParameterId, searchParams.PageNumber, searchParams.PageSize, searchParams.StartDate, searchParams.EndDate);
+            DeviceLogSearchResult result = new DeviceLogSearchResult
+            {
+                DeviceLogSearch = data.Item1,
+                TotalCount = data.Item2,
+            };
+            _apiResponse.Status = true;
+            _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
+            _apiResponse.Data = result;
+            return Ok(_apiResponse);
+        }
+
+    }
+
+    public class SearchParams
+    {
+        public int DeviceId { get; set; }
+        public int ParameterId { get; set; }
+        public int PageNumber { get; set; }
+        public int PageSize { get; set; }
+        public DateTime StartDate { get; set; }
+        public DateTime EndDate { get; set; }
     }
 }

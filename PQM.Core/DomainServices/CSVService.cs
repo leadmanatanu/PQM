@@ -27,7 +27,6 @@ namespace PQM.Core.DomainServices
                 while (!parser.EndOfData)
                 {
                     string[] fields = parser.ReadFields();
-                    Console.WriteLine("Row:");
                     int innerCounter = 0;
                     int matchedHeaderCounter = 0;
                     DateTime dateStamp = new DateTime();

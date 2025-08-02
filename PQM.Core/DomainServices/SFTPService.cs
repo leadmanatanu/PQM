@@ -10,21 +10,13 @@ namespace PQM.Core.DomainServices
     {
         public List<string> GetFiles(string url, string userName, string password, string ftpFolder, string localFolder)
         {
-            try
+            string sftpUrl = url + ftpFolder + "/";
+            var csvFiles = ListCsvFilesFromFtp(sftpUrl, userName, password);
+            foreach (var file in csvFiles)
             {
-                string sftpUrl = url + ftpFolder + "/";
-                var csvFiles = ListCsvFilesFromFtp(sftpUrl, userName, password);
-                foreach (var file in csvFiles)
-                {
-                    DownloadFileFromFtp(sftpUrl, userName, password, file, localFolder);
-                }
-                return csvFiles;
+                DownloadFileFromFtp(sftpUrl, userName, password, file, localFolder);
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine("Error reading FTP file: " + ex.Message);
-                return new List<string>();
-            }
+            return csvFiles;
         }
 
         static List<string> ListCsvFilesFromFtp(string ftpUrl, string ftpUser, string ftpPassword)
@@ -67,7 +59,7 @@ namespace PQM.Core.DomainServices
             {
                 responseStream.CopyTo(outputStream);
             }
-            Console.WriteLine($"Downloaded: {fileName}");
+            //Console.WriteLine($"Downloaded: {fileName}");
 
 
             // Remove file from ftp
@@ -77,24 +69,17 @@ namespace PQM.Core.DomainServices
 
         static void DeleteFileFromFtp(string ftpUrl, string ftpUser, string ftpPassword, string fileName)
         {
-            try
-            {
-                FtpWebRequest request = (FtpWebRequest)WebRequest.Create(ftpUrl + "/" + fileName);
-                request.Method = WebRequestMethods.Ftp.DeleteFile;
+            FtpWebRequest request = (FtpWebRequest)WebRequest.Create(ftpUrl + "/" + fileName);
+            request.Method = WebRequestMethods.Ftp.DeleteFile;
 
-                request.Credentials = new NetworkCredential(ftpUser, ftpPassword);
-                request.UsePassive = true;
-                request.UseBinary = true;
-                request.KeepAlive = false;
+            request.Credentials = new NetworkCredential(ftpUser, ftpPassword);
+            request.UsePassive = true;
+            request.UseBinary = true;
+            request.KeepAlive = false;
 
-                using (FtpWebResponse response = (FtpWebResponse)request.GetResponse())
-                {
-                    Console.WriteLine($"Delete status: {response.StatusDescription}");
-                }
-            }
-            catch (Exception ex)
+            using (FtpWebResponse response = (FtpWebResponse)request.GetResponse())
             {
-                Console.WriteLine($"Error deleting file: {ex.Message}");
+                //Console.WriteLine($"Delete status: {response.StatusDescription}");
             }
         }
     }

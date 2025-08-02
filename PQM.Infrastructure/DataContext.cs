@@ -18,6 +18,7 @@ namespace PQM.Infrastructure
         public DbSet<Parameter> Parameter { get; set; } = null!;
         public DbSet<DeviceParameterMapping> DeviceParameterMapping { get; set; } = null!;
         public DbSet<DeviceLog> DeviceLog { get; set; } = null!;
+        public DbSet<FTPSetting> FTPSetting { get; set; } = null!;
 
         public DataContext(string connectionString)
         {
@@ -28,15 +29,12 @@ namespace PQM.Infrastructure
         {
             base.OnConfiguring(optionsBuilder);
 
-            //var configuration = new ConfigurationBuilder()
-            //    .AddJsonFile("AppSettings.json")
-            //    .Build();
-
-            //string ConnectionString = configuration.GetSection("ConnectionString").Value!;
-
-            //optionsBuilder.UseSqlServer(ConnectionString);
-
             optionsBuilder.UseSqlServer(_connectionString);
+        }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<DeviceLogSearch>().HasNoKey();
         }
     }
 }

@@ -8,6 +8,9 @@ export const paths = {
         customers: '/dashboard/customers',
         integrations: '/dashboard/integrations',
         settings: '/dashboard/settings',
+        mapping: '/dashboard/mapping',
+        ftpfolder: '/dashboard/ftpfolder',
+        devicereadings: '/dashboard/devicereadings'
     },
     errors: { notFound: '/errors/not-found' },
 } as const;

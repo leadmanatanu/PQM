@@ -1,6 +1,9 @@
 ﻿using EFCore.BulkExtensions;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 using PQM.Core.Entities;
 using PQM.Core.IRepositories;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace PQM.Infrastructure.Repositories
 {
@@ -34,5 +37,30 @@ namespace PQM.Infrastructure.Repositories
             dbContext.BulkInsert(deviceLogs);
             return true;
         }
+
+        public (List<DeviceLogSearch>, int) GetDeviceLogs(int deviceId, int parameterId, int pageNumber, int pageSize, DateTime startDate, DateTime endDate)
+        {
+            int skip = (pageNumber - 1) * pageSize;
+            var totalCountParam = new SqlParameter
+            {
+                ParameterName = "@TotalCount",
+                SqlDbType = System.Data.SqlDbType.Int,
+                Direction = System.Data.ParameterDirection.Output
+            };
+
+            DataContext context = new DataContext(this._connectionString);
+            var query = context.Set<DeviceLogSearch>().FromSqlRaw("EXEC GetDeviceLogs @DeviceId, @ParameterId, @Skip, @Take, @StartDate, @EndDate, @TotalCount OUTPUT",
+                        new SqlParameter("@DeviceId", deviceId),
+                        new SqlParameter("@ParameterId", parameterId),
+                        new SqlParameter("@Skip", skip),
+                        new SqlParameter("@Take", pageSize),
+                        new SqlParameter("@StartDate", startDate),
+                        new SqlParameter("@EndDate", endDate),
+                        totalCountParam).AsNoTracking()
+                .ToList();
+            int totalCount = (int)totalCountParam.Value;
+            return (query, totalCount);
+        }
+
     }
 }

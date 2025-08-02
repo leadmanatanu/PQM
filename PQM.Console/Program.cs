@@ -24,7 +24,8 @@ static IHostBuilder CreateHostBuilder(string[] args, string strDbConnection) =>
         .AddScoped<ISFTPService, SFTPService>()
         .AddScoped<IDeviceService>(s => new DeviceService(strDbConnection))
         .AddScoped<IDeviceParameterService>(s => new DeviceParameterService(strDbConnection))
-        .AddScoped<IDeviceLogService>(s => new DeviceLogService(strDbConnection)));
+        .AddScoped<IDeviceLogService>(s => new DeviceLogService(strDbConnection))
+        .AddScoped<IFTPSettingService>(s => new FTPSettingService(strDbConnection)));
 
 
 // Get the service from DI
@@ -33,30 +34,44 @@ var ftpService = host.Services.GetService<ISFTPService>();
 var deviceService = host.Services.GetService<IDeviceService>();
 var deviceParamService = host.Services.GetService<IDeviceParameterService>();
 var deviceLogService = host.Services.GetService<IDeviceLogService>();
+var ftpSettingService = host.Services.GetService<IFTPSettingService>();
 
-string url = config["FtpSetting:URL"];
-string user = config["FtpSetting:User"];
-string password = config["FtpSetting:Password"];
+
+//string url = config["FtpSetting:URL"];
+//string user = config["FtpSetting:User"];
+//string password = config["FtpSetting:Password"];
 string localFolder = config["FtpSetting:LocalFolder"];
+string errorLogPath = config["ErrorLog:Path"];
+bool logEnabled = Convert.ToBoolean(config["ErrorLog:LogEnabled"]);
+
+if (!Directory.Exists(errorLogPath))
+{
+    errorLogPath = string.Empty;// Save logs in program files
+}
+
+var ftpSetting = ftpSettingService.GetFTPSetting();
+string url = Path.Combine(ftpSetting.FtpHost, ftpSetting.RootFolderName);
+string user = ftpSetting.UserName;
+string password = ftpSetting.Password;
 
 if (String.IsNullOrEmpty(url))
 {
-    ErrorLog.LogErrorMessage("FTP URL is missing");
+    ErrorLog.LogErrorMessage("FTP URL is missing", errorLogPath);
     return;
 }
 if (String.IsNullOrEmpty(user))
 {
-    ErrorLog.LogErrorMessage("FTP User is missing");
+    ErrorLog.LogErrorMessage("FTP User is missing", errorLogPath);
     return;
 }
 if (String.IsNullOrEmpty(password))
 {
-    ErrorLog.LogErrorMessage("FTP Password is missing");
+    ErrorLog.LogErrorMessage("FTP Password is missing", errorLogPath);
     return;
 }
 if (String.IsNullOrEmpty(localFolder) || !Directory.Exists(localFolder))
 {
-    ErrorLog.LogErrorMessage("CSV Local Folder Location is missing");
+    ErrorLog.LogErrorMessage("CSV Local Folder Location is missing", errorLogPath);
     return;
 }
 
@@ -68,24 +83,26 @@ foreach (var item in lstDevices)
         var mappedParatmeter = deviceParamService.GetDeviceParameterMapping(item.Id).Select(x => x.ParameterId.ToString()).ToList();
         if (mappedParatmeter.Count <= 0) // TODO discuss => do we need to download files if parameter mapping does not exist for meter
         {
-            ErrorLog.LogErrorMessage("No parameter mapping exist for device " + item.Name);
+            if (logEnabled)
+                ErrorLog.LogErrorMessage("No parameter mapping exist for device " + item.Name, errorLogPath);
             continue;
         }
         if (String.IsNullOrEmpty(item.FtpFolder))
         {
-            ErrorLog.LogErrorMessage("Ftp Folder name is empty for device " + item.Name);
+            ErrorLog.LogErrorMessage("Ftp Folder name is empty for device " + item.Name, errorLogPath);
             continue;
         }
 
         // download files from ftp
         List<string> lstFtpFiles = ftpService.GetFiles(url, user, password, item.FtpFolder, localFolder);
-        ErrorLog.LogErrorMessage("Total files downloaded for " + item.Name + " =>" + lstFtpFiles.Count);
+        if (logEnabled)
+            ErrorLog.LogErrorMessage("Total files downloaded for " + item.Name + " =>" + lstFtpFiles.Count, errorLogPath);
 
         // Read and add files in database
         foreach (string file in lstFtpFiles)
         {
-            //Console.WriteLine($"Reading file : {Path.GetFileName(file)}");
-            ErrorLog.LogErrorMessage("Reading file of " + item.Name + " =>" + file);
+            if (logEnabled)
+                ErrorLog.LogErrorMessage("Reading file of " + item.Name + " =>" + file, errorLogPath);
             string filePath = localFolder + file;
             if (System.IO.File.Exists(filePath))
             {
@@ -100,18 +117,18 @@ foreach (var item in lstDevices)
                     }
                     else
                     {
-                        ErrorLog.LogErrorMessage("Adding logs fails for device " + item.Name + " and file => " + filePath);
+                        ErrorLog.LogErrorMessage("Adding logs fails for device " + item.Name + " and file => " + filePath, errorLogPath);
                     }
                 }
             }
             else
             {
-                ErrorLog.LogErrorMessage("File does not exist => " + filePath);
+                ErrorLog.LogErrorMessage("File does not exist => " + filePath, errorLogPath);
             }
         }
     }
     catch (Exception ex)
     {
-        ErrorLog.LogErrorMessage("Error while reading data of " + item.Name + ". Error " + ex.Message);
+        ErrorLog.LogErrorMessage("Error while reading data of " + item.Name + ". Error " + ex.Message, errorLogPath);
     }
 }

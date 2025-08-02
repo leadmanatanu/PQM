@@ -4,9 +4,9 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <!--<SpaRoot>..\pqm.client</SpaRoot>
+    <SpaRoot>..\pqm.client</SpaRoot>
     <SpaProxyLaunchCommand>npm run dev</SpaProxyLaunchCommand>
-    <SpaProxyServerUrl>https://localhost:49904</SpaProxyServerUrl>-->
+    <SpaProxyServerUrl>https://localhost:49904</SpaProxyServerUrl>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,9 +17,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!--<ProjectReference Include="..\pqm.client\pqm.client.esproj">
+    <ProjectReference Include="..\pqm.client\pqm.client.esproj">
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
-    </ProjectReference>-->
+    </ProjectReference>
     <ProjectReference Include="..\PQM.Core\PQM.Core.csproj" />
     <ProjectReference Include="..\PQM.Infrastructure\PQM.Infrastructure.csproj" />
   </ItemGroup>
