@@ -15,18 +15,6 @@ import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 
-//  {
-//             "id": 1,
-//             "name": "VoltageA",
-//             "isActive": false,
-//             "isDeleted": false,
-//             "createdDate": "0001-01-01T00:00:00",
-//             "createdId": null,
-//             "modifiedDate": null,
-//             "modifiedId": null,
-//             "isSelected": false
-//         },
-
 export function DeviceParameter({ device, onDeviceUpdate }: { device: unknown[], onDeviceUpdate?: (updatedDevice: unknown[]) => void }): React.JSX.Element {
   const [updatedDevice, setUpdatedDevice] = useState(device);
 
@@ -36,7 +24,7 @@ export function DeviceParameter({ device, onDeviceUpdate }: { device: unknown[],
 
    const handleCheckboxChange = (index: number) => {
     const newDevice = [...updatedDevice];
-    newDevice[index] = { ...newDevice[index], isActive: !(newDevice[index] as any).isActive };
+    newDevice[index] = { ...newDevice[index], isSelected: !(newDevice[index] as any).isSelected };
     setUpdatedDevice(newDevice);
   };
 
@@ -67,7 +55,7 @@ export function DeviceParameter({ device, onDeviceUpdate }: { device: unknown[],
                         key={row.id || index}
                         control={
                           <Checkbox
-                            checked={row.isActive}
+                            checked={row.isSelected}
                             onChange={() => handleCheckboxChange(index)}
                           />
                         }
