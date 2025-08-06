@@ -91,6 +91,44 @@ export const addDevice = async (device: Device) => {
 
 };
 
+export const editDevice = async (device: Device) => {
+    console.log(device);
+    const response = await axios.put<Response>(`${API_URL}/device`, {
+        'Id' : device.id,
+        'Name': device.name,
+        'IsActive': device.isActive == '1' ? true : false,
+        'IP': device.ip,
+        'Port': device.port,
+        'SerialNumber':device.serialNumber,
+        'ConsumerNumber':device.consumerNumber,
+        'ftpFolder': device.ftpFolder
+    }).then(response => {
+        return response.data;
+    }).catch(error => {
+            console.error('Error:', error);
+     });
+    console.log('Response:', response);
+    return response;
+};
+
+export const deleteDevice = async (device: Device)=> {
+  try {
+    // Validate device.id
+    if (!device.id) {
+      throw new Error('Device ID is required');
+    }
+
+    const response = await axios.delete<Response>(`${API_URL}/device/${device.id}`);
+    
+    console.log('Response:', response.data); // Log before returning
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting device:', error);
+    throw error; // Rethrow to allow caller to handle
+  }
+};
+
+
 export const fetchDeviceReading = async (
   deviceId: string | number,
   parameterId: string | number,
