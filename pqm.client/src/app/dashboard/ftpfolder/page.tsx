@@ -7,6 +7,8 @@ import Stack from '@mui/material/Stack';
 import Snackbar, { SnackbarCloseReason } from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
 import Typography from '@mui/material/Typography';
+import CircularProgress from '@mui/material/CircularProgress';
+import Box from '@mui/material/Box';
 
 import { config } from '@/config';
 //import { DeviceParameter } from '@/components/dashboard/mapping/device-paramter';
@@ -19,7 +21,8 @@ import { fetchFtpDetails, updateFtpDetails, testFtpDetails } from '../../../api/
 //export const metadata = { title: `Device Mapping | Dashboard | ${config.site.name}` } satisfies Metadata;
 
 export default function Page(): React.JSX.Element {
-    const [ftpConfig, setFtpConfig] = useState<FTPConfig>({
+  const [loading, setLoading] = React.useState(true);
+  const [ftpConfig, setFtpConfig] = useState<FTPConfig>({
     id: 0,
     ftpHost: '',
     userName: '',
@@ -27,13 +30,14 @@ export default function Page(): React.JSX.Element {
     rootFolderName: '',
   });
   const [openSnackbar, setOpenSnackbar] = useState(false);
-const [testResult, setTestResult] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<string | null>(null);
   useEffect(() => {
     const loadFTP = async () => {
       try {
         const fetchedFTPConfig = await fetchFtpDetails();
         setFtpConfig(fetchedFTPConfig);
         console.log('Fetched FTP:', fetchedFTPConfig);
+        setLoading(false);
       } catch (error) {
         console.error('Failed to fetch devices:', error);
       }
@@ -41,10 +45,10 @@ const [testResult, setTestResult] = useState<string | null>(null);
     loadFTP();
   }, []);
 
-  
 
 
-   // Memoize config and deviceLogArr to ensure stable references
+
+  // Memoize config and deviceLogArr to ensure stable references
   const memoizedConfig = useMemo(() => ftpConfig, [ftpConfig]);
 
   // Memoize onUpdate to avoid re-renders
@@ -58,6 +62,8 @@ const [testResult, setTestResult] = useState<string | null>(null);
       if (result) {
         setFtpConfig(result);
         console.log('Updated config:', result);
+        setTestResult('Updated successfully');
+        setOpenSnackbar(true);
       } else {
         console.error('Update failed: No result returned');
       }
@@ -71,9 +77,9 @@ const [testResult, setTestResult] = useState<string | null>(null);
       const result = await testFtpDetails(updatedConfig);
       if (result) {
         //setFtpConfig(result);
-        if(result.status == true) {
+        if (result.status == true) {
           setTestResult('Connection successful');
-        }else{
+        } else {
           setTestResult('Connection failed');
         }
         setOpenSnackbar(true);
@@ -86,7 +92,7 @@ const [testResult, setTestResult] = useState<string | null>(null);
     }
   }, []);
 
-   const handleSnackBarClose = (
+  const handleSnackBarClose = (
     event?: React.SyntheticEvent | Event,
     reason?: SnackbarCloseReason,
   ) => {
@@ -96,19 +102,30 @@ const [testResult, setTestResult] = useState<string | null>(null);
 
     setOpenSnackbar(false);
   };
-  
+
   return (
-    <Stack spacing={3}>
-      <div>
-        <Typography variant="h4">FTP Folder</Typography>
-      </div>
-      {<FTPDetailsForm 
-            config={memoizedConfig} 
-            onUpdate={handleUpdate} 
+    <div>
+      {loading ? (
+        <Box sx={{
+          display: 'flex',
+          justifyContent: 'center', // Center horizontally
+          alignItems: 'center', // Center vertically
+          minHeight: '100px', // Optional: Ensure the Box has height for visibility
+        }}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <Stack spacing={3}>
+          <div>
+            <Typography variant="h4">FTP Folder</Typography>
+          </div>
+          {<FTPDetailsForm
+            config={memoizedConfig}
+            onUpdate={handleUpdate}
             onTestConnection={handleTestConnection}
-      /> }
-      <Snackbar open={openSnackbar} autoHideDuration={6000} onClose={handleSnackBarClose} anchorOrigin={{ vertical: 'top', horizontal: 'center' }}>
-        {/*<Alert
+          />}
+          <Snackbar open={openSnackbar} autoHideDuration={6000} onClose={handleSnackBarClose} anchorOrigin={{ vertical: 'top', horizontal: 'center' }}>
+            {/*<Alert
           onClose={handleSnackBarClose}
           severity="success"
           variant="filled"
@@ -117,15 +134,17 @@ const [testResult, setTestResult] = useState<string | null>(null);
           This is a success Alert inside a Snackbar!
         </Alert> */}
 
-        <Alert
-          severity={testResult?.includes('successful') ? 'success' : 'error'}
-          sx={{ width: '100%' }}
-          onClose={handleSnackBarClose}
-          variant="filled"
-        >
-          {testResult}
-        </Alert>
-      </Snackbar>
-    </Stack>
+            <Alert
+              severity={testResult?.includes('successful') ? 'success' : 'error'}
+              sx={{ width: '100%' }}
+              onClose={handleSnackBarClose}
+              variant="filled"
+            >
+              {testResult}
+            </Alert>
+          </Snackbar>
+        </Stack>
+      )}
+    </div>
   );
 }

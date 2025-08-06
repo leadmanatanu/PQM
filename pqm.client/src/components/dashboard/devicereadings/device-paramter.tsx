@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { useState,  useEffect} from 'react';
+import { useState, useEffect } from 'react';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
 import CardActions from '@mui/material/CardActions';
@@ -14,18 +14,7 @@ import FormGroup from '@mui/material/FormGroup';
 import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-
-//  {
-//             "id": 1,
-//             "name": "VoltageA",
-//             "isActive": false,
-//             "isDeleted": false,
-//             "createdDate": "0001-01-01T00:00:00",
-//             "createdId": null,
-//             "modifiedDate": null,
-//             "modifiedId": null,
-//             "isSelected": false
-//         },
+import Box from '@mui/material/Box';
 
 export function DeviceParameter({ device, onDeviceUpdate }: { device: unknown[], onDeviceUpdate?: (updatedDevice: unknown[]) => void }): React.JSX.Element {
   const [updatedDevice, setUpdatedDevice] = useState(device);
@@ -34,10 +23,10 @@ export function DeviceParameter({ device, onDeviceUpdate }: { device: unknown[],
     setUpdatedDevice(device);
   }, [device]);
 
-   const handleCheckboxChange = (index: number) => {
+  const handleCheckboxChange = (index: number) => {
     console.log('handleCheckboxChange:', index);
     const newDevice = [...updatedDevice];
-    newDevice[index] = { ...newDevice[index], isSelected: !(newDevice[index] as any).isSelected };
+    newDevice[index] = { ...(newDevice[index] as any), isSelected: !(newDevice[index] as any).isSelected };
     setUpdatedDevice(newDevice);
   };
 
@@ -46,12 +35,29 @@ export function DeviceParameter({ device, onDeviceUpdate }: { device: unknown[],
     onDeviceUpdate?.(updatedDevice);
   };
 
- return (
+  return (
     <form onSubmit={handleSubmit}>
       <Card>
         <CardHeader title="Device Information" />
         <Divider />
-        <CardContent>
+        <CardContent sx={{ 
+          maxHeight: '400px', 
+          overflowY: 'auto',
+          '&::-webkit-scrollbar': {
+            width: '8px',
+          },
+          '&::-webkit-scrollbar-track': {
+            background: '#f1f1f1',
+            borderRadius: '4px',
+          },
+          '&::-webkit-scrollbar-thumb': {
+            background: '#888',
+            borderRadius: '4px',
+          },
+          '&::-webkit-scrollbar-thumb:hover': {
+            background: '#555',
+          },
+        }}>
           {updatedDevice.length > 0 ? (
             <Grid container spacing={6} wrap="wrap">
               <Grid

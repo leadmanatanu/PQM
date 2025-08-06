@@ -48,6 +48,7 @@ interface DevicesTableProps {
     rowsPerPage?: number;
     show?: boolean;
     onEdit?: (deviceId: number) => void;
+    onDelete?: (deviceId: number) => void;
 }
 
 export function DevicesTable({
@@ -57,6 +58,7 @@ export function DevicesTable({
     rowsPerPage = 0,
     show = true,
     onEdit = () => {},
+    onDelete = () => {},
 }: DevicesTableProps): React.JSX.Element | null{
     if (!show) return null;
     const rowIds = React.useMemo(() => {
@@ -87,6 +89,12 @@ export function DevicesTable({
         console.log(`Edit device with ID: ${deviceId}`);
         // Placeholder for edit logic (e.g., open edit form)
         onEdit(deviceId);
+    };
+
+    const handleDeleteClick = (deviceId: number) => {
+        console.log(`Delete device with ID: ${deviceId}`);
+        // Placeholder for edit logic (e.g., open edit form)
+        onDelete(deviceId);
     };
 
     const handleSyncClick = (deviceId: number) => {
@@ -141,6 +149,14 @@ export function DevicesTable({
                                             sx={{ mr: 1 }}
                                         >
                                             Edit
+                                        </Button>
+                                        <Button
+                                            variant="outlined"
+                                            size="small"
+                                            onClick={() => handleDeleteClick(row.id)}
+                                            sx={{ mr: 1 }}
+                                        >
+                                            Delete
                                         </Button>
                                         {/*<Button
                                             variant="outlined"

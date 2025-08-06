@@ -13,7 +13,7 @@ import OutlinedInput from '@mui/material/OutlinedInput';
 import FormHelperText from '@mui/material/FormHelperText';
 import Stack from '@mui/material/Stack';
 import { Select, MenuItem } from '@mui/material';
-import { addDevice } from '../../../api/device'
+import { addDevice, editDevice } from '../../../api/device'
 import type { Device } from '@/components/dashboard/device/devices-table';
 
 interface AddDeviceFormProps {
@@ -185,13 +185,11 @@ export function AddDeviceForm({
         };
 
         try {
-            await addDevice(device); // Assuming addDevice handles both add and update
-            // setDevices((prev) => {
-            //     if (editingDevice) {
-            //         return prev.map((d) => (d.id === device.id ? device : d));
-            //     }
-            //     return [...prev, { ...device, id: Date.now().toString() }]; // Temporary ID for new devices
-            // });
+            if (editingDevice) {
+                await editDevice(device); // Use editDevice for updating existing device
+            } else {
+                await addDevice(device); // Use addDevice for adding new device
+            }
             setTxtName('');
             setTxtIP('');
             setTxtPort('');

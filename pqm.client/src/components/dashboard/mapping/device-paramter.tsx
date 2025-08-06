@@ -24,7 +24,7 @@ export function DeviceParameter({ device, onDeviceUpdate }: { device: unknown[],
 
    const handleCheckboxChange = (index: number) => {
     const newDevice = [...updatedDevice];
-    newDevice[index] = { ...newDevice[index], isSelected: !(newDevice[index] as any).isSelected };
+    newDevice[index] = { ...(newDevice[index] as any), isSelected: !(newDevice[index] as any).isSelected };
     setUpdatedDevice(newDevice);
   };
 
@@ -38,7 +38,24 @@ export function DeviceParameter({ device, onDeviceUpdate }: { device: unknown[],
       <Card>
         <CardHeader title="Device Information" />
         <Divider />
-        <CardContent>
+        <CardContent sx={{ 
+          maxHeight: '400px', 
+          overflowY: 'auto',
+          '&::-webkit-scrollbar': {
+            width: '8px',
+          },
+          '&::-webkit-scrollbar-track': {
+            background: '#f1f1f1',
+            borderRadius: '4px',
+          },
+          '&::-webkit-scrollbar-thumb': {
+            background: '#888',
+            borderRadius: '4px',
+          },
+          '&::-webkit-scrollbar-thumb:hover': {
+            background: '#555',
+          },
+        }}>
           {updatedDevice.length > 0 ? (
             <Grid container spacing={6} wrap="wrap">
               <Grid
