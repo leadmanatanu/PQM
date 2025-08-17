@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using PQM.Core.IRepositories;
 using PQM.Core.Entities;
 using System.DirectoryServices.Protocols;
+using Microsoft.EntityFrameworkCore;
 
 namespace PQM.Server.Controllers
 {
@@ -75,10 +76,14 @@ namespace PQM.Server.Controllers
             {
                 _apiResponse.Status = false;
                 _apiResponse.Data = null;
-                if (String.IsNullOrEmpty(device.Name))
+                if (!RequiredFieldValidation(device))
                 {
                     _apiResponse.StatusCode = System.Net.HttpStatusCode.NotAcceptable;
-                    _apiResponse.Errors = new List<string> { "Name is required." };
+                    return Ok(_apiResponse);
+                }
+                if (!IsDeviceAlreadyExist(device))
+                {
+                    _apiResponse.StatusCode = System.Net.HttpStatusCode.NotAcceptable;
                     return Ok(_apiResponse);
                 }
                 var result = _deviceService.UpdateDevice(device);
@@ -190,6 +195,12 @@ namespace PQM.Server.Controllers
         {
             bool isValidData = true;
             var lstDevices = _deviceService.GetDevices();
+            if (device.Id > 0) // Edit scanario
+            {
+                lstDevices = _deviceService.GetDevices().Where(x => x.Id != device.Id && (x.Name == device.Name ||
+                            x.SerialNumber == device.SerialNumber || x.ConsumerNumber == device.ConsumerNumber ||
+                            (x.IP == device.IP && x.PORT == device.PORT) || x.FtpFolder == device.FtpFolder));
+            }
             _apiResponse.Errors = new List<string> { };
             if (lstDevices.Any(x => x.Name == device.Name))
             {

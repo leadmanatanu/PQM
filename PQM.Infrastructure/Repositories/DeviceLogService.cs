@@ -62,5 +62,12 @@ namespace PQM.Infrastructure.Repositories
             return (query, totalCount);
         }
 
+        public bool AddDeviceEventLogs(List<EventLog> eventLogs)
+        {
+            DataContext dbContext = new DataContext(this._connectionString);
+            dbContext.ChangeTracker.AutoDetectChangesEnabled = false; //Disable Change Tracking during bulk insert
+            dbContext.BulkInsert(eventLogs);
+            return true;
+        }
     }
 }

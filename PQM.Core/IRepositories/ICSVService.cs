@@ -10,5 +10,6 @@ namespace PQM.Core.IRepositories
     public interface ICSVService
     {
         List<DeviceLog> ReadCSVData(int deviceId, string csvFilePath, List<string> mappedParatmeter);
+        List<EventLog> ReadEventLog(int deviceId, string eventType, string csvFilePath);
     }
 }

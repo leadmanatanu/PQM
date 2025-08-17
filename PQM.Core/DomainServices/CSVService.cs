@@ -1,6 +1,7 @@
 ﻿using CsvHelper;
 using Microsoft.VisualBasic.FileIO;
 using PQM.Core.Entities;
+using PQM.Core.Helper;
 using PQM.Core.IRepositories;
 using System;
 using System.Collections.Generic;
@@ -83,6 +84,46 @@ namespace PQM.Core.DomainServices
                 }
             }
             return logList;
+        }
+
+        public List<EventLog> ReadEventLog(int deviceId, string eventType, string csvFilePath)
+        {
+            using var reader = new StreamReader(csvFilePath);
+            using var csv = new CsvReader(reader, CultureInfo.InvariantCulture);
+
+            return eventType switch
+            {
+                nameof(EventType.dip) => MapEvents<DipEvent>(csv, deviceId, eventType, (src, dst) => dst.Min_Voltage = src.Min_Voltage),
+                nameof(EventType.interrupt) => MapEvents<InterruptEvent>(csv, deviceId, eventType),
+                nameof(EventType.rvc) => MapEvents<RVCEvent>(csv, deviceId, eventType, (src, dst) => { dst.UMAX = src.UMAX; dst.USS = src.USS; }),
+                nameof(EventType.swell) => MapEvents<SwellEvent>(csv, deviceId, eventType, (src, dst) => dst.Max_Voltage = src.Max_Voltage),
+                _ => new List<EventLog>()
+            };
+        }
+
+        private List<EventLog> MapEvents<T>(CsvReader csv, int deviceId, string eventType, Action<T, EventLog> extraMapping = null)
+            where T : IBaseEvent
+        {
+            var list = new List<EventLog>();
+
+            foreach (var item in csv.GetRecords<T>())
+            {
+                var log = new EventLog
+                {
+                    DeviceId = deviceId,
+                    EventType = eventType,
+                    CreatedDate = DateTime.UtcNow,
+                    Start_Time = item.Start_Time,
+                    End_Time = item.End_Time,
+                    Phase = item.Phase,
+                    Duration = item.Duration
+                };
+
+                extraMapping?.Invoke(item, log);
+                list.Add(log);
+            }
+
+            return list;
         }
     }
 }

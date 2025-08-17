@@ -18,6 +18,7 @@ namespace PQM.Infrastructure
         public DbSet<Parameter> Parameter { get; set; } = null!;
         public DbSet<DeviceParameterMapping> DeviceParameterMapping { get; set; } = null!;
         public DbSet<DeviceLog> DeviceLog { get; set; } = null!;
+        public DbSet<EventLog> EventLog { get; set; } = null!;
         public DbSet<FTPSetting> FTPSetting { get; set; } = null!;
 
         public DataContext(string connectionString)
