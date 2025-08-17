@@ -10,7 +10,8 @@ export const paths = {
         settings: '/dashboard/settings',
         mapping: '/dashboard/mapping',
         ftpfolder: '/dashboard/ftpfolder',
-        devicereadings: '/dashboard/devicereadings'
+        devicereadings: '/dashboard/devicereadings',
+        eventreadings: '/dashboard/eventreadings'
     },
     errors: { notFound: '/errors/not-found' },
 } as const;

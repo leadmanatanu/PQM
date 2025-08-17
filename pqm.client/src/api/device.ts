@@ -5,170 +5,175 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 //const API_URL = 'http://localhost:5135';
 const API_URL = 'http://103.83.106.174:83';
 
-export const fetchDevices = async () => {
-    const response = await axios.get<Response>(`${API_URL}/device`).then(response => {
-        return response.data;
-    }).catch(error => {
-        console.error("Error:", error);
-    });;
-    //console.log(response.data);
-    return response.data;
-};
-
-export const fetchFtpDetails = async () => {
-    const response = await axios.get<Response>(`${API_URL}/ftp`).then(response => {
-        return response.data;
-    }).catch(error => {
-        console.error("Error:", error);
-    });;
-    //console.log(response.data);
-    return response.data;
-};
-
-export const updateFtpDetails = async (aJson: any): Promise<any | undefined> => {
-  try {
-    const response = await axios.put<Response>(`${API_URL}/ftp`, aJson);
-    return response.data.data;
-  } catch (error) {
-    console.error('Error updating FTP details:', error);
-    return undefined;
-  }
-};
-
-export const testFtpDetails = async (aJson: any): Promise<any | undefined> => {
-  try {
-    const response = await axios.get<Response>(`${API_URL}/ftp/ftpconnectiontest`, {
-      params: {
-        ftphost: aJson.ftpHost,
-        username: aJson.userName,
-        password: aJson.password,
-      },
-    });
-    return response.data;
-  } catch (error) {
-    console.error('Error testing FTP connection:', error);
-    return undefined;
-  }
-};
-
-export const fetchDeviceParameter = async (id: string | number): Promise<any | null> => {
-    try {
-        const response = await axios.get(`${API_URL}/Parameter/${id}`);
-        return response.data;
-    } catch (error) {
-        console.error("Error fetching device parameter:", error);
-        return null; // or throw error if you want it handled upstream
-    }
-};
-
-export const updateDeviceParamMapping = async (deviceParams: any[]): Promise<any | undefined> => {
-  try {
-    const response = await axios.post<Response>(`${API_URL}/deviceparammapping`, deviceParams);
-    return response.data;
-  } catch (error) {
-    console.error('Error updating device parameter mapping:', error);
-    return undefined;
-  }
-};
-
-export const addDevice = async (device: Device) => {
-    console.log(device);
-    const response = await axios.post<Response>(`${API_URL}/device`, {
-        'Name': device.name,
-        'IsActive': device.isActive == '1' ? true : false,
-        'IP': device.ip,
-        'Port': device.port,
-        'SerialNumber':device.serialNumber,
-        'ConsumerNumber':device.consumerNumber,
-        'ftpFolder': device.ftpFolder
-    }).then(response => {
-        return response.data;
-    }).catch(error => {
-            console.error('Error:', error);
-     });
-    console.log('Response:', response.data);
-    return response.data;
-
-};
-
-export const editDevice = async (device: Device) => {
-    console.log(device);
-    const response = await axios.put<Response>(`${API_URL}/device`, {
-        'Id' : device.id,
-        'Name': device.name,
-        'IsActive': device.isActive == '1' ? true : false,
-        'IP': device.ip,
-        'Port': device.port,
-        'SerialNumber':device.serialNumber,
-        'ConsumerNumber':device.consumerNumber,
-        'ftpFolder': device.ftpFolder
-    }).then(response => {
-        return response.data;
-    }).catch(error => {
-            console.error('Error:', error);
-     });
-    console.log('Response:', response);
-    return response;
-};
-
-export const deleteDevice = async (device: Device)=> {
-  try {
-    // Validate device.id
-    if (!device.id) {
-      throw new Error('Device ID is required');
-    }
-
-    const response = await axios.delete<Response>(`${API_URL}/device/${device.id}`);
-    
-    console.log('Response:', response.data); // Log before returning
-    return response.data;
-  } catch (error) {
-    console.error('Error deleting device:', error);
-    throw error; // Rethrow to allow caller to handle
-  }
-};
-
-
-export const fetchDeviceReading = async (
-  deviceId: string | number,
-  parameterId: string | number,
-  pageNumber: number,
-  pageSize: number,
-  startDate: string,
-  endDate: string
-): Promise<any | null> => {
-  try {
-    // // Construct and log the full URL
-    // // Construct the query string
-    // const params = new URLSearchParams({
-    //   deviceId: String(deviceId),
-    //   parameterId: String(parameterId),
-    //   pageNumber: String(pageNumber),
-    //   pageSize: String(pageSize),
-    //   startDate ,//:  dayjs(startDate).format('MM/DD/YYYY'),
-    //   endDate // :  dayjs(endDate).format('MM/DD/YYYY'),
-    // }).toString();
-    // const fullUrl = `${API_URL}/devicelog/search?${params}`;
-    // console.log('Fetching from API URL:', fullUrl);
-    const response = await axios.get(`${API_URL}/devicelog/search`, {
-      params: {
-        deviceId,
-        parameterId,
-        pageNumber,
-        pageSize,
-        startDate,
-        endDate,
-      },
-    });
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching device readings:', error);
-    return null;
-  }
-};
-
-export interface Response {
+export interface ApiResponse<T = any> {
     status: string;
     statusCode: number;
-    data: any;
+    data: T;
 }
+
+// Fetch all devices
+export const fetchDevices = async (): Promise<Device[]> => {
+    try {
+        const { data } = await axios.get<ApiResponse<Device[]>>(`${API_URL}/device`);
+        return data.data; // This is the array
+    } catch (error) {
+        console.error("Error fetching devices:", error);
+        return []; // Return empty array on error instead of null
+    }
+};
+
+// Fetch FTP details
+export const fetchFtpDetails = async (): Promise<any | null> => {
+    try {
+        const { data } = await axios.get<ApiResponse>(`${API_URL}/ftp`);
+        return data.data;
+    } catch (error) {
+        console.error("Error fetching FTP details:", error);
+        return null;
+    }
+};
+
+
+// Update FTP details
+export const updateFtpDetails = async (aJson: any): Promise<any | undefined> => {
+    try {
+        const { data } = await axios.put<ApiResponse>(`${API_URL}/ftp`, aJson);
+        return data.data;
+    } catch (error) {
+        console.error('Error updating FTP details:', error);
+        return undefined;
+    }
+};
+
+
+export const testFtpDetails = async (aJson: any): Promise<any | undefined> => {
+    try {
+        const response = await axios.get<ApiResponse>(`${API_URL}/ftp/ftpconnectiontest`, {
+            params: {
+                ftphost: aJson.ftpHost,
+                username: aJson.userName,
+                password: aJson.password,
+            },
+        });
+        return response.data;
+    } catch (error) {
+        console.error('Error testing FTP connection:', error);
+        return undefined;
+    }
+};
+
+
+// Fetch device parameters
+export const fetchDeviceParameter = async (id: string | number): Promise<any | null> => {
+    try {
+        const { data } = await axios.get(`${API_URL}/Parameter/${id}`);
+        return data;
+    } catch (error) {
+        console.error("Error fetching device parameter:", error);
+        return null;
+    }
+};
+
+// Update device parameter mapping
+export const updateDeviceParamMapping = async (deviceParams: any[]): Promise<any | undefined> => {
+    try {
+        const { data } = await axios.post<ApiResponse>(`${API_URL}/deviceparammapping`, deviceParams);
+        return data;
+    } catch (error) {
+        console.error('Error updating device parameter mapping:', error);
+        return undefined;
+    }
+};
+
+// Add device
+export const addDevice = async (device: Device): Promise<any | undefined> => {
+    try {
+        const payload = {
+            Name: device.name,
+            IsActive: device.isActive === '1',
+            IP: device.ip,
+            Port: device.port,
+            SerialNumber: device.serialNumber,
+            ConsumerNumber: device.consumerNumber,
+            ftpFolder: device.ftpFolder,
+        };
+        const { data } = await axios.post<ApiResponse>(`${API_URL}/device`, payload);
+        return data;
+    } catch (error) {
+        console.error('Error adding device:', error);
+        return undefined;
+    }
+};
+
+// Edit device
+export const editDevice = async (device: Device): Promise<any | undefined> => {
+    try {
+        const payload = {
+            Id: device.id,
+            Name: device.name,
+            IsActive: device.isActive === '1',
+            IP: device.ip,
+            Port: device.port,
+            SerialNumber: device.serialNumber,
+            ConsumerNumber: device.consumerNumber,
+            ftpFolder: device.ftpFolder,
+        };
+        const { data } = await axios.put<ApiResponse>(`${API_URL}/device`, payload);
+        return data;
+    } catch (error) {
+        console.error('Error editing device:', error);
+        return undefined;
+    }
+};
+
+// Delete device
+export const deleteDevice = async (device: Device): Promise<any> => {
+    if (!device.id) throw new Error('Device ID is required');
+    try {
+        const { data } = await axios.delete<ApiResponse>(`${API_URL}/device/${device.id}`);
+        return data;
+    } catch (error) {
+        console.error('Error deleting device:', error);
+        throw error;
+    }
+};
+
+// Fetch device readings
+export const fetchDeviceReading = async (
+    deviceId: string | number,
+    parameterId: string | number,
+    pageNumber: number,
+    pageSize: number,
+    startDate: string,
+    endDate: string
+): Promise<any | null> => {
+    try {
+        const { data } = await axios.get<ApiResponse>(`${API_URL}/devicelog/search`, {
+            params: { deviceId, parameterId, pageNumber, pageSize, startDate, endDate },
+        });
+        return data;
+    } catch (error) {
+        console.error('Error fetching device readings:', error);
+        return null;
+    }
+};
+
+// Fetch event readings
+export const fetchEventReading = async (
+    deviceId: string | number,
+    eventType: string | number,
+    pageNumber: number,
+    pageSize: number,
+    startDate: string,
+    endDate: string
+): Promise<any | null> => {
+    try {
+        const { data } = await axios.get<ApiResponse>(`${API_URL}/eventslog/search`, {
+            params: { deviceId, eventType, pageNumber, pageSize, startDate, endDate },
+        });
+        return data;
+    } catch (error) {
+        console.error('Error fetching event readings:', error);
+        return null;
+    }
+};
