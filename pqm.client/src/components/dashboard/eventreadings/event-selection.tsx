@@ -53,6 +53,8 @@ export function EventFilters({
         { key: "interrupt", value: "Interrupt" },
         { key: "rvc", value: "RVC" },
         { key: "swell", value: "Swell" },
+        { key: "shortflicker", value: "Short flicker" },
+        { key: "longflicker", value: "Long flicker" },
     ];
 
     const handleSearch = () => {

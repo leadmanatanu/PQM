@@ -67,7 +67,9 @@ export default function Page(): React.JSX.Element {
         rowsPerPage,
         startDate,
         endDate
-      );
+        );
+
+        //console.log(data);
 
       if (data) {
         setEventLogArr(data.data.eventLogSearch);
@@ -151,6 +153,7 @@ export default function Page(): React.JSX.Element {
             page={page}
             rowsPerPage={rowsPerPage}
             onPageChange={handlePageChange}
+            eventType={filters.eventType?.toString() ?? null} 
           />
         )}
       </Stack>

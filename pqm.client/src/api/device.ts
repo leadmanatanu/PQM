@@ -2,8 +2,8 @@ import axios from 'axios';
 import dayjs from 'dayjs';
 import type { Device } from '@/components/dashboard/device/devices-table';
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-//const API_URL = 'http://localhost:5135';
-const API_URL = 'http://103.83.106.174:83';
+//const API_URL = 'http://localhost:5135/api';
+const API_URL = 'http://103.83.106.174:83/api';
 
 export interface ApiResponse<T = any> {
     status: string;

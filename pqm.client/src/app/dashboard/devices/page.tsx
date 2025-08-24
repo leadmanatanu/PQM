@@ -36,7 +36,7 @@ export default function Page(): React.JSX.Element {
   const [devices, setDevices] = useState<Device[]>([]);
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
   const [loading, setLoading] = useState<'fetch' | 'delete' | null>('fetch');
-  const [deleteDeviceId, setDeleteDeviceId] = useState<string | null>(null);
+    const [deleteDeviceId, setDeleteDeviceId] = useState<number | null>(null);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error'>('success');
@@ -69,13 +69,13 @@ export default function Page(): React.JSX.Element {
     setEditingDevice(device);
   };
 
-  const handleEdit = (deviceId: string) => {
+  const handleEdit = (deviceId: number) => {
     const device = devices.find((d) => d.id === deviceId) || null;
     toggleVisibility(device);
     setEditingDevice(device);
   };
 
-  const handleDelete = (deviceId: string) => {
+    const handleDelete = (deviceId: number) => {
     setDeleteDeviceId(deviceId);
   };
 
@@ -116,8 +116,8 @@ export default function Page(): React.JSX.Element {
     const data = devices.map(device => ({
       ID: device.id,
       Name: device.name,
-      'Serial No': device.serialNo,
-      'Consumer No': device.consumerNo,
+        'Serial No': device.serialNumber,
+        'Consumer No': device.consumerNumber,
       'FTP Folder': device.ftpFolder,
       Status: device.isActive ? 'Active' : 'Inactive',
       IP: device.ip,

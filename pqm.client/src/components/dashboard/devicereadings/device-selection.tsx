@@ -1,11 +1,11 @@
 "use client"; // <--- Add this line at the very top!
 import React, { useState } from 'react';
 import {
-  FormControl,
-  InputLabel, // We'll replace this with label on TextField for Autocomplete
-  Select,      // This will be removed
-  MenuItem,    // This will be removed
-  TextField,   // Needed for Autocomplete's input
+    FormControl,
+    InputLabel, // We'll replace this with label on TextField for Autocomplete
+    Select,      // This will be removed
+    MenuItem,    // This will be removed
+    TextField,   // Needed for Autocomplete's input
 } from '@mui/material';
 import { Autocomplete } from '@mui/material'; // Import Autocomplete
 import { MagnifyingGlassIcon } from '@phosphor-icons/react/dist/ssr/MagnifyingGlass';
@@ -41,123 +41,159 @@ import type { Device } from '@/components/dashboard/device/devices-table';
 // }
 
 interface DeviceFiltersProps {
-  rows: Device[];
-  onDeviceSelect?: (id: string | number) => void;
-  paramArray: any[];
-  onSearch?: (searchParams: {
-    deviceId: string | number | null;
-    startTime: Dayjs | null;
-    endTime: Dayjs | null;
-    paramId: string | number | null;
-  }) => void;
+    rows: Device[];
+    onDeviceSelect?: (id: string | number) => void;
+    paramArray: any[];
+    onSearch?: (searchParams: {
+        deviceId: string | number | null;
+        startTime: Dayjs | null;
+        endTime: Dayjs | null;
+        paramId: string | number | null;
+    }) => void;
 }
 
 export function DeviceFilters({
-  rows = [],
-  onDeviceSelect = () => { },
-  paramArray = [],
-  onSearch = () => { },
+    rows = [],
+    onDeviceSelect = () => { },
+    paramArray = [],
+    onSearch = () => { },
 }: DeviceFiltersProps): React.JSX.Element {
-  const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
-  const [startValue, setStartValue] = React.useState<Dayjs | null>(dayjs('2025-07-01'));
-  const [endValue, setEndValue] = React.useState<Dayjs | null>(dayjs('2025-07-25'));
-  const [selectedParam, setSelectedParam] = useState<any | null>(null);
+    const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
+    const [endValue, setEndValue] = useState<Dayjs | null>(dayjs());
+    const [startValue, setStartValue] = useState<Dayjs | null>(
+        dayjs().subtract(1, "day")
+    );
+    const [selectedParam, setSelectedParam] = useState<any | null>(null);
 
-
-  const handleChange = (
-    event: React.SyntheticEvent, // Event object (can be null for some actions)
-    newValue: Device | null // The selected Device object, or null if cleared
-  ) => {
-    setSelectedDevice(newValue); // Update internal state with the selected object
-    onDeviceSelect(newValue ? newValue.id : null); // Pass string ID or null
-  };
-
-  const handleParameterChange = (
-    event: React.SyntheticEvent, // Event object (can be null for some actions)
-    newValue: any | null // The selected Device object, or null if cleared
-  ) => {
-    setSelectedParam(newValue); // Update internal state with the selected object
-    //onDeviceSelect(newValue ? newValue.id : null); // Pass string ID or null
-  };
-
-  const handleSearch = () => {
-    console.log("handleSearch");
-    onSearch({
-      deviceId: selectedDevice ? selectedDevice.id : null,
-      startTime: startValue,
-      endTime: endValue,
-      paramId: selectedParam ? selectedParam.id : null,
+    // Validation states
+    const [errors, setErrors] = useState({
+        device: false,
+        paramId: false,
+        start: false,
+        end: false,
     });
-  };
 
-  // <Card sx={{ p: 2, maxWidth: '700px' }}>
-  return (
-    <Card>
-      <Divider />
-      <CardContent>
-        <Stack spacing={3} sx={{ maxWidth: 'sm' }}>
-          <FormControl fullWidth>
-            <Autocomplete
-              id="device-filter-autocomplete" // Unique ID for accessibility
-              options={rows} // Provide the full array of Device objects
-              getOptionLabel={(device) => device.name} // Tell Autocomplete how to get the display string from a Device object
-              value={selectedDevice} // The currently selected Device object (from state)
-              onChange={handleChange} // Our handler for selection/clearing
-              isOptionEqualToValue={(option, value) => option.id === value.id}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label="Select or type to search device" // This serves as the label for the input
-                  variant="outlined" // Standard Material-UI TextField variants
-                />
-              )}
-              openOnFocus
-            />
-          </FormControl>
-          <FormControl fullWidth>
-            <LocalizationProvider dateAdapter={AdapterDayjs}>
-              <DemoContainer components={['DatePicker ', 'DatePicker ']}>
-                <DatePicker
-                  label="Start Date"
-                  value={startValue}
-                  onChange={(newValue) => setStartValue(newValue)}
-                />
-                <DatePicker
-                  label="End Date"
-                  value={endValue}
-                  onChange={(newValue) => setEndValue(newValue)}
-                />
-              </DemoContainer>
-            </LocalizationProvider>
-          </FormControl>
-          {<FormControl fullWidth>
-            <Autocomplete
-              id="parameter-filter-autocomplete" // Unique ID for accessibility
-              options={paramArray} // Provide the full array of Device objects
-              getOptionLabel={(param) => param.name} // Tell Autocomplete how to get the display string from a Device object
-              value={selectedParam} // The currently selected Device object (from state)
-              onChange={handleParameterChange} // Our handler for selection/clearing
-              isOptionEqualToValue={(option, value) => option.id === value.id}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label="Select or type to search parameter" // This serves as the label for the input
-                  variant="outlined" // Standard Material-UI TextField variants
-                />
-              )}
-              openOnFocus
-            />
-          </FormControl>}
-        </Stack>
-      </CardContent>
-      <Divider />
-      <CardActions sx={{ justifyContent: 'flex-end' }}>
-        <Button variant="contained" onClick={handleSearch}>
-          Search
-        </Button>
-      </CardActions>
-    </Card>
-  );
+    const handleChange = (
+        event: React.SyntheticEvent, // Event object (can be null for some actions)
+        newValue: Device | null // The selected Device object, or null if cleared
+    ) => {
+        setSelectedDevice(newValue); // Update internal state with the selected object
+        onDeviceSelect(newValue ? newValue.id : 0); // Pass string ID or null
+    };
+
+    const handleParameterChange = (
+        event: React.SyntheticEvent, // Event object (can be null for some actions)
+        newValue: any | null // The selected Device object, or null if cleared
+    ) => {
+        setSelectedParam(newValue); // Update internal state with the selected object
+        //onDeviceSelect(newValue ? newValue.id : null); // Pass string ID or null
+    };
+
+    const handleSearch = () => {
+        console.log("handleSearch");
+        const newErrors = {
+            device: !selectedDevice,
+            paramId: !selectedParam,
+            start: !startValue,
+            end: !endValue,
+        };
+        setErrors(newErrors);
+
+        if (Object.values(newErrors).some(Boolean)) return;
+        onSearch({
+            deviceId: selectedDevice ? selectedDevice.id : null,
+            startTime: startValue,
+            endTime: endValue,
+            paramId: selectedParam ? selectedParam.id : null,
+        });
+    };
+
+    // <Card sx={{ p: 2, maxWidth: '700px' }}>
+    return (
+        <Card>
+            <Divider />
+            <CardContent>
+                <Stack spacing={3} sx={{ maxWidth: 'sm' }}>
+                    <FormControl fullWidth>
+                        <Autocomplete
+                            id="device-filter-autocomplete" // Unique ID for accessibility
+                            options={rows} // Provide the full array of Device objects
+                            getOptionLabel={(device) => device.name} // Tell Autocomplete how to get the display string from a Device object
+                            value={selectedDevice} // The currently selected Device object (from state)
+                            onChange={handleChange} // Our handler for selection/clearing
+                            isOptionEqualToValue={(option, value) => option.id === value.id}
+                            renderInput={(params) => (
+                                <TextField
+                                    {...params}
+                                    label="Select or type to search device"
+                                    variant="outlined"
+                                    error={errors.device} // Pass the error state
+                                    helperText={errors.device ? "Device is required" : ""} // Pass helper text
+                                />
+                            )}
+                            openOnFocus
+                        />
+                    </FormControl>
+                    {<FormControl fullWidth>
+                        <Autocomplete
+                            id="parameter-filter-autocomplete" // Unique ID for accessibility
+                            options={paramArray} // Provide the full array of Device objects
+                            getOptionLabel={(param) => param.name} // Tell Autocomplete how to get the display string from a Device object
+                            value={selectedParam} // The currently selected Device object (from state)
+                            onChange={handleParameterChange} // Our handler for selection/clearing
+                            isOptionEqualToValue={(option, value) => option.id === value.id}
+                            renderInput={(params) => (
+                                <TextField
+                                    {...params}
+                                    label="Select or type to parameter"
+                                    variant="outlined"
+                                    error={errors.paramId} // Pass the error state
+                                    helperText={errors.paramId ? "Parameter is required" : ""} // Pass helper text
+                                />
+                            )}
+                            openOnFocus
+                        />
+                    </FormControl>}
+                    <FormControl fullWidth>
+                        <LocalizationProvider dateAdapter={AdapterDayjs}>
+                            <DemoContainer components={['DatePicker ', 'DatePicker ']}>
+                                <DatePicker
+                                    label="Start Date"
+                                    value={startValue}
+                                    onChange={(newValue) => setStartValue(newValue)}
+                                    slotProps={{
+                                        textField: {
+                                            error: errors.start,
+                                            helperText: errors.start
+                                                ? "Start date is required"
+                                                : "",
+                                        },
+                                    }}
+                                />
+                                <DatePicker
+                                    label="End Date"
+                                    value={endValue}
+                                    onChange={(newValue) => setEndValue(newValue)}
+                                    slotProps={{
+                                        textField: {
+                                            error: errors.end,
+                                            helperText: errors.end ? "End date is required" : "",
+                                        },
+                                    }}
+                                />
+                            </DemoContainer>
+                        </LocalizationProvider>
+                    </FormControl>
+                </Stack>
+            </CardContent>
+            <Divider />
+            <CardActions sx={{ justifyContent: 'flex-end' }}>
+                <Button variant="contained" onClick={handleSearch}>
+                    Search
+                </Button>
+            </CardActions>
+        </Card>
+    );
 }
 
 

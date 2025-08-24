@@ -26,9 +26,9 @@ function noop(): void {
 
 interface DeviceRTableProps {
     // count?: number;
-    // page?: number;
+    page?: number;
     rows?: any[];
-    // rowsPerPage?: number;
+    rowsPerPage?: number;
     //show?: boolean;   
     allParam?: boolean;
     paramterString?: string;
@@ -37,8 +37,8 @@ interface DeviceRTableProps {
 export function DeviceRTable({
     // count = 0,
     rows = [],
-    // page = 0,
-    // rowsPerPage = 0,
+     page = 0,
+     rowsPerPage = 0,
     // show = true,
     allParam = false,
     paramterString = "Paramter",
@@ -65,12 +65,16 @@ export function DeviceRTable({
     //     page = newPage;
     // };
 
-    const handleChangeRowsPerPage = (event) => {
+
+    const handleChangeRowsPerPage = (
+        event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    ) => {
         //setRowsPerPage(parseInt(event.target.value, 10));
         //setPage(0);
         rowsPerPage = parseInt(event.target.value, 10);
         page = 0;
     };
+
 
     //  const handleEditClick = (deviceId: number) => {
     //     console.log(`Edit device with ID: ${deviceId}`);

@@ -30,15 +30,15 @@ export interface Device {
     ip: string;
     port: number;
     isActive: string;
-    isDeleted: string;
-    createdDate: Date;
-    createdId: number;
-    modifiedDate: Date;
-    modifiedId: number;
+    isDeleted?: string;
+    createdDate?: Date;
+    createdId?: number;
+    modifiedDate?: Date;
+    modifiedId?: number;
     serialNumber: string;
     consumerNumber: string;
     ftpFolder: string;
-    lastSync: Date;
+    lastSync?: Date;
 }
 
 interface DevicesTableProps {
@@ -57,15 +57,15 @@ export function DevicesTable({
     page = 0,
     rowsPerPage = 0,
     show = true,
-    onEdit = () => {},
-    onDelete = () => {},
-}: DevicesTableProps): React.JSX.Element | null{
+    onEdit = () => { },
+    onDelete = () => { },
+}: DevicesTableProps): React.JSX.Element | null {
     if (!show) return null;
     const rowIds = React.useMemo(() => {
         return rows.map((device) => device.id);
     }, [rows]);
 
-    
+
     const { selectAll, deselectAll, selectOne, deselectOne, selected } = useSelection(rowIds);
     const selectedSome = (selected?.size ?? 0) > 0 && (selected?.size ?? 0) < rows.length;
     const selectedAll = rows.length > 0 && selected?.size === rows.length;
@@ -73,19 +73,24 @@ export function DevicesTable({
     //const [page, setPage] = React.useState(0);
     //const [rowsPerPage, setRowsPerPage] = React.useState(10);
 
-    const handleChangePage = (event, newPage) => {
-        setPage(newPage);
-        //page = newPage;
+
+    const handleChangePage = (
+        event: React.MouseEvent<HTMLButtonElement> | null,
+        newPage: number
+    ) => {
+        //setPage(newPage);
     };
 
-    const handleChangeRowsPerPage = (event) => {
+    const handleChangeRowsPerPage = (
+        event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    ) => {
         //setRowsPerPage(parseInt(event.target.value, 10));
         //setPage(0);
         rowsPerPage = parseInt(event.target.value, 10);
         page = 0;
     };
 
-     const handleEditClick = (deviceId: number) => {
+    const handleEditClick = (deviceId: number) => {
         console.log(`Edit device with ID: ${deviceId}`);
         // Placeholder for edit logic (e.g., open edit form)
         onEdit(deviceId);

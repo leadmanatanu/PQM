@@ -21,7 +21,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import FormHelperText from '@mui/material/FormHelperText';
 import Box from '@mui/material/Box';
 
-interface FTPConfig {
+export interface FTPConfig {
   id: number;
   ftpHost: string;
   userName: string;
@@ -117,19 +117,19 @@ export function FTPDetailsForm({
   };
 
   // Validate individual field on blur
-  const validateField = (name: keyof FTPConfig, value: string): string | undefined => {
+  const validateField = (name: keyof FTPConfig, value: string | number): string | undefined => {
     switch (name) {
       case 'ftpHost':
-        if (!value.trim()) return 'FTP Host is required';
+        if (typeof value !== 'string' || !value.trim()) return 'FTP Host is required';
         const urlRegex = /^(ftp|sftp):\/\/[^\s/$.?#].[^\s]*$|^([a-zA-Z0-9-]+\.)*[a-zA-Z0-9-]+\.[a-zA-Z]{2,}$/;
         if (!urlRegex.test(value)) return 'Enter a valid FTP host (e.g., ftp.example.com or ftp://example.com)';
         return undefined;
       case 'userName':
-        return value.trim() ? undefined : 'Username is required';
+        return typeof value !== 'string' || value.trim() ? undefined : 'Username is required';
       case 'password':
-        return value.trim() ? undefined : 'Password is required';
+            return typeof value !== 'string' || value.trim() ? undefined : 'Password is required';
       case 'rootFolderName':
-        if (!value.trim()) return 'Root Folder is required';
+        if (typeof value !== 'string' || !value.trim()) return 'Root Folder is required';
         const folderRegex = /^([a-zA-Z0-9-_]+|[a-zA-Z0-9-_][a-zA-Z0-9-_/]*)$/;
         if (!folderRegex.test(value)) return 'Enter a valid folder name (e.g., /folder or folder)';
         return undefined;

@@ -26,13 +26,17 @@ export default [
 	{
 		rules: {
 			"@typescript-eslint/no-unused-vars": [
-				"error",
+				//"error",
+				//{
+				//	ignoreRestSiblings: true,
+				//	argsIgnorePattern: "^_",
+				//	varsIgnorePattern: "^_",
+				//	caughtErrorsIgnorePattern: "^_",
+				//},
+				"warn",
 				{
-					ignoreRestSiblings: true,
-					argsIgnorePattern: "^_",
-					varsIgnorePattern: "^_",
-					caughtErrorsIgnorePattern: "^_",
-				},
+					varsIgnorePattern: "^_"
+				} 
 			],
 			"@typescript-eslint/no-empty-object-type": "off",
 		},
@@ -69,6 +73,7 @@ export default [
 			},
 		},
 		rules: {
+			"react/react-in-jsx-scope": "off",
 			"react/prop-types": "off",
 		},
 	},
