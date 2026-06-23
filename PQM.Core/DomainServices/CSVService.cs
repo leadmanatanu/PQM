@@ -1,4 +1,5 @@
 ﻿using CsvHelper;
+using CsvHelper.Configuration;
 using Microsoft.VisualBasic.FileIO;
 using PQM.Core.Entities;
 using PQM.Core.Helper;
@@ -89,7 +90,11 @@ namespace PQM.Core.DomainServices
         public List<EventLog> ReadEventLog(int deviceId, string eventType, string csvFilePath)
         {
             using var reader = new StreamReader(csvFilePath);
-            using var csv = new CsvReader(reader, CultureInfo.InvariantCulture);
+            using var csv = new CsvReader(reader, new CsvConfiguration(CultureInfo.InvariantCulture)
+            {
+                MissingFieldFound = null,   // ignore missing fields
+                HeaderValidated = null      // don't validate headers against class
+            });
 
             return eventType switch
             {
@@ -97,6 +102,7 @@ namespace PQM.Core.DomainServices
                 nameof(EventType.interrupt) => MapEvents<InterruptEvent>(csv, deviceId, eventType),
                 nameof(EventType.rvc) => MapEvents<RVCEvent>(csv, deviceId, eventType, (src, dst) => { dst.UMAX = src.UMAX; dst.USS = src.USS; }),
                 nameof(EventType.swell) => MapEvents<SwellEvent>(csv, deviceId, eventType, (src, dst) => dst.Max_Voltage = src.Max_Voltage),
+                nameof(EventType.shortflicker) or nameof(EventType.longflicker) => MapEvents<FlickerEvent>(csv, deviceId, eventType, (src, dst) => { dst.Date = src.Date; dst.A = src.A; dst.B = src.B; dst.C = src.C; }),
                 _ => new List<EventLog>()
             };
         }

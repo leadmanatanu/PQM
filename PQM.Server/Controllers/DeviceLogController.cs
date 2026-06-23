@@ -6,7 +6,7 @@ using PQM.Core.Entities;
 namespace PQM.Server.Controllers
 {
     [ApiController]
-    [Route("[controller]")]
+    [Route("api/[controller]")]
     public class DeviceLogController : ControllerBase
     {
         public APIResponse _apiResponse;
@@ -64,6 +64,7 @@ namespace PQM.Server.Controllers
         [HttpGet("Search")]
         public ActionResult Search([FromQuery] SearchParams searchParams)
         {
+            searchParams.EndDate = searchParams.EndDate.Date.AddDays(1).AddTicks(-1);
             var data = _deviceLogService.GetDeviceLogs(searchParams.DeviceId, searchParams.ParameterId, searchParams.PageNumber, searchParams.PageSize, searchParams.StartDate, searchParams.EndDate);
             DeviceLogSearchResult result = new DeviceLogSearchResult
             {

@@ -188,10 +188,19 @@ export function AddDeviceForm({
         };
 
         try {
+            let result: any;
             if (editingDevice) {
-                await editDevice(device);
+                result = await editDevice(device);
             } else {
-                await addDevice(device);
+                result = await addDevice(device);
+            }
+
+            if (!result.status) {
+                setErrors(prev => ({
+                    ...prev,
+                    general: result.errors,
+                }));
+                return;
             }
 
             // Reset form
@@ -337,7 +346,12 @@ export function AddDeviceForm({
                             {errors.port && <FormHelperText>{errors.port}</FormHelperText>}
                         </FormControl>
 
-                        {errors.general && <FormHelperText error>{errors.general}</FormHelperText>}
+                        {errors.general && <FormHelperText error>
+                            {/* {errors.general}*/}
+                            {(Array.isArray(errors.general) ? errors.general : [errors.general]).map((err, index) => (
+                                <span key={index} style={{ display: 'block' }}>{err}</span>
+                            ))}
+                        </FormHelperText>}
                     </Stack>
                 </CardContent>
                 <Divider />

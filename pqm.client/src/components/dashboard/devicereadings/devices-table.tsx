@@ -114,7 +114,7 @@ export function DeviceRTable({
               <TableRow hover key={row.id} selected={isSelected}>
                 <TableCell>{row.id}</TableCell>
                 <TableCell>
-                  {row.dateStamp ? dayjs(row.dateStamp).format('MMM D, YYYY HH:mm') : '-'}
+                  {row.dateStamp ? dayjs(row.dateStamp).format('MMM D, YYYY HH:mm:ss') : '-'}
                 </TableCell>
                 <TableCell>{row.value}</TableCell>
               </TableRow>

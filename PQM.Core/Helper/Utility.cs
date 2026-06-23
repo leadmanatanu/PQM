@@ -12,5 +12,7 @@ namespace PQM.Core.Helper
         interrupt,
         rvc,
         swell,
+        shortflicker,
+        longflicker
     }
 }

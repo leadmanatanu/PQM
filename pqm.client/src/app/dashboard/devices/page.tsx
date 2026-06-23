@@ -64,10 +64,22 @@ export default function Page(): React.JSX.Element {
   const totalRows = devices.length;
   const paginatedDevices = applyPagination(devices, page, rowsPerPage);
 
-  const toggleVisibility = (device: Device | null = null) => {
-    setIsVisible((prev) => !prev);
-    setEditingDevice(device);
-  };
+  //const toggleVisibility = (device: Device | null = null) => {
+  //  setIsVisible((prev) => !prev);
+  //    setEditingDevice(device);
+  //  };
+
+   const toggleVisibility = async (device: Device | null = null) => {
+        setIsVisible((prev) => !prev);
+        setEditingDevice(device);
+
+        try {
+            const fetchedDevices = await fetchDevices(); // now allowed
+            setDevices(fetchedDevices);
+        } catch (error) {
+            console.error("Failed to fetch devices:", error);
+        }
+    };
 
   const handleEdit = (deviceId: number) => {
     const device = devices.find((d) => d.id === deviceId) || null;

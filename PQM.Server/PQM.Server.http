@@ -1,18 +1,18 @@
 @PQM.Server_HostAddress = http://localhost:5135
 # @PQM.Server_HostAddress = http://103.83.106.174:83
 
-GET {{PQM.Server_HostAddress}}/weatherforecast/
+GET {{PQM.Server_HostAddress}}/api/weatherforecast/
 Accept: application/json
 
 ###
 
-GET {{PQM.Server_HostAddress}}/device/
+GET {{PQM.Server_HostAddress}}/api/device/
 Accept: application/json
 
 ###
 
 
-POST {{PQM.Server_HostAddress}}/device/
+POST {{PQM.Server_HostAddress}}/api/device/
 Accept: application/json
 Accept: */*
 Content-Type: application/json
@@ -26,7 +26,7 @@ Body:{
 }
 ###
 
-PUT {{PQM.Server_HostAddress}}/device/
+PUT {{PQM.Server_HostAddress}}/api/device/
 Accept: application/json
 Accept: */*
 Content-Type: application/json
@@ -41,7 +41,7 @@ Body:{
 }
 ###
 
-Delete {{PQM.Server_HostAddress}}/device/12
+Delete {{PQM.Server_HostAddress}}/api/device/12
 Accept: application/json
 Accept: */*
 Content-Type: application/json
@@ -51,17 +51,17 @@ Body:{
 ###
 
 
-GET {{PQM.Server_HostAddress}}/parameter/
+GET {{PQM.Server_HostAddress}}/api/parameter/
 Accept: application/json
 
 ###
 
-GET {{PQM.Server_HostAddress}}/parameter/1
+GET {{PQM.Server_HostAddress}}/api/parameter/1
 Accept: application/json
 
 ###
 
-POST {{PQM.Server_HostAddress}}/deviceparammapping/
+POST {{PQM.Server_HostAddress}}/api/deviceparammapping/
 Accept: */*
 Content-Type: application/json
 Body:[
@@ -81,12 +81,12 @@ Body:[
 ###
 
 
-GET {{PQM.Server_HostAddress}}/devicelog/
+GET {{PQM.Server_HostAddress}}/api/devicelog/
 Accept: application/json
 
 ###
 
-POST {{PQM.Server_HostAddress}}/devicelog/
+POST {{PQM.Server_HostAddress}}/api/devicelog/
 Accept: */*
 Content-Type: application/json
 Body:[{
@@ -104,15 +104,15 @@ Body:[{
 
 
 
-GET {{PQM.Server_HostAddress}}/devicelog/search?deviceId=1&parameterId=1&pageNumber=1&pageSize=10&startDate=07/01/2025&endDate=07/22/2025
+GET {{PQM.Server_HostAddress}}/api/devicelog/search?deviceId=1&parameterId=1&pageNumber=1&pageSize=10&startDate=07/01/2025&endDate=07/22/2025
 Accept: */*
 ###
 
-GET {{PQM.Server_HostAddress}}/ftp/
+GET {{PQM.Server_HostAddress}}/api/ftp/
 Accept: application/json
 ###
 
-PUT {{PQM.Server_HostAddress}}/ftp/
+PUT {{PQM.Server_HostAddress}}/api/ftp/
 Accept: */*
 Content-Type: application/json
 Body:{
@@ -123,7 +123,11 @@ Body:{
     }
 ###
 
-GET {{PQM.Server_HostAddress}}/ftp/ftpconnectiontest?ftphost=ftp://103.83.106.174:21/&username=enp&password=enp123
+GET {{PQM.Server_HostAddress}}/api/ftp/ftpconnectiontest?ftphost=ftp://103.83.106.174:21/&username=enp&password=enp123
+Accept: */*
+###
+
+GET {{PQM.Server_HostAddress}}/api/eventslog/search?deviceId=1&eventtype=dip&pageNumber=1&pageSize=10&startDate=07/01/2025&endDate=08/22/2025
 Accept: */*
 ###
 

@@ -1,0 +1,23 @@
+CREATE TABLE EventLog (
+    Id BIGINT IDENTITY(1,1) PRIMARY KEY,
+    EventType NVARCHAR(50) NULL,
+    DeviceId INT NOT NULL,
+    Start_Time DATETIME2 NOT NULL,
+    End_Time DATETIME2 NOT NULL,
+    Phase NVARCHAR(200) NULL,
+    Duration FLOAT NOT NULL,
+    Min_Voltage FLOAT NULL,
+    Max_Voltage FLOAT NULL,
+    UMAX FLOAT NULL,
+    USS FLOAT NULL,
+    CreatedDate DATETIME2 NOT NULL,
+    CONSTRAINT FK_EventLog_Device FOREIGN KEY (DeviceId) REFERENCES Device(Id)
+);
+
+ALTER TABLE EventLog ALTER COLUMN duration float NULL;
+ALTER TABLE EventLog ALTER COLUMN Start_Time DATETIME NULL;
+ALTER TABLE EventLog ALTER COLUMN End_Time DATETIME NULL;
+ALTER TABLE EventLog Add Date DATETIME NULL;
+ALTER TABLE EventLog Add A nvarchar(100) NULL;
+ALTER TABLE EventLog Add B nvarchar(100) NULL;
+ALTER TABLE EventLog Add C nvarchar(100) NULL;

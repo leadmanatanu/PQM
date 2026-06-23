@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 namespace PQM.Server.Controllers
 {
     [ApiController]
-    [Route("[controller]")]
+    [Route("api/[controller]")]
     public class DeviceController : ControllerBase
     {
         public APIResponse _apiResponse;

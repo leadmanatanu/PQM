@@ -111,7 +111,7 @@ export function EventRTable({
                                             <TableCell key={col.field}>
                                                 {col.type === "date"
                                                     ? row[col.field]
-                                                        ? dayjs(row[col.field]).format("MMM D, YYYY HH:mm")
+                                                        ? dayjs(row[col.field]).format("MMM D, YYYY HH:mm:ss.SSS")
                                                         : "-"
                                                     : row[col.field] ?? "N/A"}
                                             </TableCell>

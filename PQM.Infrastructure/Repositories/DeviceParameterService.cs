@@ -14,10 +14,11 @@ namespace PQM.Infrastructure.Repositories
 
         public bool AddDeviceParameterMapping(List<DeviceParameterMapping> data)
         {
+            int deviceId = data.FirstOrDefault().DeviceId;
             data.ForEach(x => { x.DateStamp = DateTime.UtcNow; });
             using (var dbContext = new DataContext(this._connectionString))
             {
-                var mappingData = dbContext.DeviceParameterMapping;
+                var mappingData = dbContext.DeviceParameterMapping.Where(x => x.DeviceId == deviceId);
                 var existingItems = mappingData
                     .Select(x => new { x.DeviceId, x.ParameterId })
                     .ToList();

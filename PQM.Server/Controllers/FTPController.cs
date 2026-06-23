@@ -8,7 +8,7 @@ using System.Net;
 namespace PQM.Server.Controllers
 {
     [ApiController]
-    [Route("[controller]")]
+    [Route("api/[controller]")]
     public class FTPController : ControllerBase
     {
         public APIResponse _apiResponse;

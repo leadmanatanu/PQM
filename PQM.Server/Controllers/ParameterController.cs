@@ -8,7 +8,7 @@ using PQM.Infrastructure.Repositories;
 namespace PQM.Server.Controllers
 {
     [ApiController]
-    [Route("[controller]")]
+    [Route("api/[controller]")]
     public class ParameterController : ControllerBase
     {
         public APIResponse _apiResponse;
