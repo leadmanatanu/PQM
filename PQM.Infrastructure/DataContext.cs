@@ -22,6 +22,10 @@ namespace PQM.Infrastructure
         public DbSet<FTPSetting> FTPSetting { get; set; } = null!;
         public DbSet<Register> Register { get; set; } = null!;
         public DbSet<Data> Data { get; set; } = null!;
+        public DbSet<IecHdlcSetup> IecHdlcSetup { get; set; } = null!;
+        public DbSet<TcpUdpSetup> TcpUdpSetup { get; set; } = null!;
+        public DbSet<Ip4Setup> Ip4Setup { get; set; } = null!;
+        public DbSet<MacAddressSetup> MacAddressSetup { get; set; } = null!;
         public DbSet<ConnectedHeader> ConnectedHeader { get; set; } = null!;
         public DbSet<DLMSObject> DLMSObject { get; set; } = null!;
         public DbSet<ObjectParameter> ObjectParameter { get; set; } = null!;

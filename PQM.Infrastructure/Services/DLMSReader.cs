@@ -217,6 +217,65 @@ namespace PQM.Infrastructure.Services
             }
         }
 
+        public string ReadObjectAttribute(GXDLMSObject obj, int attributeId)
+        {
+            try
+            {
+                if (obj is GXDLMSRegister && attributeId == 2)
+                {
+                    try
+                    {
+                        byte[][] readScale = _client.Read(obj, 3);
+                        var replyScale = new GXReplyData();
+                        if (ReadDataBlock(readScale, replyScale))
+                        {
+                            _client.UpdateValue(obj, 3, replyScale.Value);
+                        }
+                    }
+                    catch { }
+                }
+
+                if (obj is GXDLMSRegister && attributeId == 3)
+                {
+                    return ReadObjectAttribute3(obj);
+                }
+
+                byte[][] readCmd = _client.Read(obj, attributeId);
+                var reply = new GXReplyData();
+
+                if (ReadDataBlock(readCmd, reply))
+                {
+                    _client.UpdateValue(obj, attributeId, reply.Value);
+                    
+                    if (obj is GXDLMSClock clock && attributeId == 2)
+                    {
+                        return clock.Time?.ToString() ?? "";
+                    }
+                    
+                    if (obj is GXDLMSRegister reg && attributeId == 2)
+                    {
+                        return FormatValue(reg.Value);
+                    }
+                    
+                    var valProp = obj.GetType().GetProperty("Value");
+                    if (valProp != null && attributeId == 2)
+                    {
+                        return FormatValue(valProp.GetValue(obj));
+                    }
+                    
+                    return FormatValue(reply.Value);
+                }
+                else
+                {
+                    return $"Error: {reply.Error}";
+                }
+            }
+            catch (Exception ex)
+            {
+                return $"Error: {ex.Message}";
+            }
+        }
+
         public List<Parameter> GetAssociationView()
         {
             var list = new List<Parameter>();
@@ -233,7 +292,11 @@ namespace PQM.Infrastructure.Services
                     if (obj.ObjectType != ObjectType.Register && 
                         obj.ObjectType != ObjectType.ExtendedRegister && 
                         obj.ObjectType != ObjectType.DemandRegister &&
-                        obj.ObjectType != ObjectType.Data)
+                        obj.ObjectType != ObjectType.Data &&
+                        obj.ObjectType != ObjectType.IecHdlcSetup &&
+                        obj.ObjectType != ObjectType.TcpUdpSetup &&
+                        obj.ObjectType != ObjectType.Ip4Setup &&
+                        obj.ObjectType != ObjectType.MacAddressSetup)
                     {
                         continue;
                     }
@@ -282,7 +345,11 @@ namespace PQM.Infrastructure.Services
                         if (obj.ObjectType != ObjectType.Register && 
                             obj.ObjectType != ObjectType.ExtendedRegister && 
                             obj.ObjectType != ObjectType.DemandRegister &&
-                            obj.ObjectType != ObjectType.Data)
+                            obj.ObjectType != ObjectType.Data &&
+                            obj.ObjectType != ObjectType.IecHdlcSetup &&
+                            obj.ObjectType != ObjectType.TcpUdpSetup &&
+                            obj.ObjectType != ObjectType.Ip4Setup &&
+                            obj.ObjectType != ObjectType.MacAddressSetup)
                         {
                             continue;
                         }
@@ -297,7 +364,11 @@ namespace PQM.Infrastructure.Services
                         obj.ObjectType == ObjectType.Data || 
                         obj.ObjectType == ObjectType.Clock || 
                         obj.ObjectType == ObjectType.ExtendedRegister || 
-                        obj.ObjectType == ObjectType.DemandRegister)
+                        obj.ObjectType == ObjectType.DemandRegister ||
+                        obj.ObjectType == ObjectType.IecHdlcSetup ||
+                        obj.ObjectType == ObjectType.TcpUdpSetup ||
+                        obj.ObjectType == ObjectType.Ip4Setup ||
+                        obj.ObjectType == ObjectType.MacAddressSetup)
                     {
                         val = ReadObjectValue(obj);
                     }

@@ -40,7 +40,7 @@ export default function Page(): React.JSX.Element {
     const [selectedObjectId, setSelectedObjectId] = useState<string | number>('');
 
     const selectedHeader = headers.find((h: any) => h.id === selectedHeaderId);
-    const isDataObjectType = selectedHeader?.name === 'Data';
+    const isDataObjectType = selectedHeader?.name === 'Data' || selectedHeader?.name === 'iecHdlcSetup' || selectedHeader?.name === 'lecHdlcSetup' || selectedHeader?.name === 'TcpUdpSetup' || selectedHeader?.name === 'Ip4Setup' || selectedHeader?.name === 'MacAddressSetup';
 
     const [discoveredParams, setDiscoveredParams] = useState<any[]>([]);
     const [discovering, setDiscovering] = useState<boolean>(false);
@@ -139,8 +139,14 @@ export default function Page(): React.JSX.Element {
                 setDiscoveredParams((prev) => {
                     const next = [...prev];
                     if (result && result.status && Array.isArray(result.data)) {
-                        const valItem = result.data.find((item: any) => item.attributeId === 2);
-                        const unitItem = result.data.find((item: any) => item.attributeId === 3);
+                        const isRegister = param.objectType?.toLowerCase().includes('register');
+                        const valItem = isRegister
+                            ? result.data.find((item: any) => item.attributeId === 2)
+                            : result.data[0];
+
+                        const unitItem = isRegister
+                            ? result.data.find((item: any) => item.attributeId === 3)
+                            : null;
 
                         next[i] = {
                             ...next[i],

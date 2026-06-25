@@ -17,6 +17,7 @@ using Microsoft.EntityFrameworkCore;
 
 Console.WriteLine("Start reading ftp files");
 
+
 var config = new ConfigurationBuilder()
         .AddJsonFile("appsettings.json", optional: false)
         .Build();
@@ -302,6 +303,86 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                     Console.WriteLine($"[DLMS Reader] Warning: Could not ensure Data table exists: {ex.Message}");
                 }
 
+                // Ensure IecHdlcSetup table exists
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='IecHdlcSetup' AND xtype='U')
+                        CREATE TABLE [IecHdlcSetup] (
+                            [Id] BIGINT IDENTITY(1,1) PRIMARY KEY,
+                            [DeviceId] INT NOT NULL,
+                            [Name] NVARCHAR(MAX) NULL,
+                            [ObjectType] NVARCHAR(MAX) NULL,
+                            [Value] NVARCHAR(MAX) NULL,
+                            [DateEntered] DATETIME2 NOT NULL
+                        )
+                    ");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DLMS Reader] Warning: Could not ensure IecHdlcSetup table exists: {ex.Message}");
+                }
+
+                // Ensure TcpUdpSetup table exists
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='TcpUdpSetup' AND xtype='U')
+                        CREATE TABLE [TcpUdpSetup] (
+                            [Id] BIGINT IDENTITY(1,1) PRIMARY KEY,
+                            [DeviceId] INT NOT NULL,
+                            [Name] NVARCHAR(MAX) NULL,
+                            [ObjectType] NVARCHAR(MAX) NULL,
+                            [Value] NVARCHAR(MAX) NULL,
+                            [DateEntered] DATETIME2 NOT NULL
+                        )
+                    ");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DLMS Reader] Warning: Could not ensure TcpUdpSetup table exists: {ex.Message}");
+                }
+
+                // Ensure Ip4Setup table exists
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Ip4Setup' AND xtype='U')
+                        CREATE TABLE [Ip4Setup] (
+                            [Id] BIGINT IDENTITY(1,1) PRIMARY KEY,
+                            [DeviceId] INT NOT NULL,
+                            [Name] NVARCHAR(MAX) NULL,
+                            [ObjectType] NVARCHAR(MAX) NULL,
+                            [Value] NVARCHAR(MAX) NULL,
+                            [DateEntered] DATETIME2 NOT NULL
+                        )
+                    ");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DLMS Reader] Warning: Could not ensure Ip4Setup table exists: {ex.Message}");
+                }
+
+                // Ensure MacAddressSetup table exists
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='MacAddressSetup' AND xtype='U')
+                        CREATE TABLE [MacAddressSetup] (
+                            [Id] BIGINT IDENTITY(1,1) PRIMARY KEY,
+                            [DeviceId] INT NOT NULL,
+                            [Name] NVARCHAR(MAX) NULL,
+                            [ObjectType] NVARCHAR(MAX) NULL,
+                            [Value] NVARCHAR(MAX) NULL,
+                            [DateEntered] DATETIME2 NOT NULL
+                        )
+                    ");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DLMS Reader] Warning: Could not ensure MacAddressSetup table exists: {ex.Message}");
+                }
+
                 using (var reader = new DLMSReader(item.IP, item.PORT, clientAddress, serverAddress, authentication, password, useLogicalNameReferencing, standard))
                 {
                     reader.Connect();
@@ -349,11 +430,15 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
 
                     foreach (var obj in reader.Objects)
                     {
-                        // Process ONLY Register, ExtendedRegister, DemandRegister
+                        // Process ONLY Register, ExtendedRegister, DemandRegister, Data, IecHdlcSetup, TcpUdpSetup, Ip4Setup, MacAddressSetup
                         if (obj.ObjectType != ObjectType.Register && 
                             obj.ObjectType != ObjectType.ExtendedRegister && 
                             obj.ObjectType != ObjectType.DemandRegister &&
-                            obj.ObjectType != ObjectType.Data)
+                            obj.ObjectType != ObjectType.Data &&
+                            obj.ObjectType != ObjectType.IecHdlcSetup &&
+                            obj.ObjectType != ObjectType.TcpUdpSetup &&
+                            obj.ObjectType != ObjectType.Ip4Setup &&
+                            obj.ObjectType != ObjectType.MacAddressSetup)
                         {
                             continue;
                         }
@@ -465,6 +550,166 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                                 catch (Exception ex)
                                 {
                                     Console.WriteLine($"[DLMS Reader] Failed to save register to Data table: {ex.Message}");
+                                }
+                            }
+                            else if (obj.ObjectType == ObjectType.IecHdlcSetup)
+                            {
+                                var attributes = new Dictionary<string, int>
+                                {
+                                    { "Speed", 2 },
+                                    { "Transmit Window Size", 3 },
+                                    { "Receive Window Size", 4 },
+                                    { "Transmit Maximum Length", 5 },
+                                    { "Receive Maximum Length", 6 },
+                                    { "Internal Timeout", 7 },
+                                    { "Inactivity Timeout", 8 },
+                                    { "Device Address", 9 }
+                                };
+
+                                foreach (var attr in attributes)
+                                {
+                                    try
+                                    {
+                                        string val = reader.ReadObjectAttribute(obj, attr.Value);
+                                        if (!string.IsNullOrEmpty(val) && !val.StartsWith("Error"))
+                                        {
+                                            var hdlcVal = new PQM.Core.Entities.IecHdlcSetup
+                                            {
+                                                DeviceId = item.Id,
+                                                Name = attr.Key,
+                                                ObjectType = obj.ObjectType.ToString(),
+                                                Value = val,
+                                                DateEntered = dateStamp
+                                            };
+                                            dbContext.IecHdlcSetup.Add(hdlcVal);
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Console.WriteLine($"[DLMS Reader] Failed to save {attr.Key} to IecHdlcSetup table: {ex.Message}");
+                                    }
+                                }
+                                try
+                                {
+                                    dbContext.SaveChanges();
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.WriteLine($"[DLMS Reader] Failed to save changes for IecHdlcSetup: {ex.Message}");
+                                }
+                            }
+                            else if (obj.ObjectType == ObjectType.TcpUdpSetup)
+                            {
+                                var attributes = new Dictionary<string, int>
+                                {
+                                    { "Port", 2 },
+                                    { "IP Reference", 3 },
+                                    { "Max Segment Size", 4 },
+                                    { "Max Connections", 5 },
+                                    { "Inactivity Timeout", 6 }
+                                };
+
+                                foreach (var attr in attributes)
+                                {
+                                    try
+                                    {
+                                        string val = reader.ReadObjectAttribute(obj, attr.Value);
+                                        if (!string.IsNullOrEmpty(val) && !val.StartsWith("Error"))
+                                        {
+                                            var tcpVal = new PQM.Core.Entities.TcpUdpSetup
+                                            {
+                                                DeviceId = item.Id,
+                                                Name = attr.Key,
+                                                ObjectType = obj.ObjectType.ToString(),
+                                                Value = val,
+                                                DateEntered = dateStamp
+                                            };
+                                            dbContext.TcpUdpSetup.Add(tcpVal);
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Console.WriteLine($"[DLMS Reader] Failed to save {attr.Key} to TcpUdpSetup table: {ex.Message}");
+                                    }
+                                }
+                                try
+                                {
+                                    dbContext.SaveChanges();
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.WriteLine($"[DLMS Reader] Failed to save changes for TcpUdpSetup: {ex.Message}");
+                                }
+                            }
+                            else if (obj.ObjectType == ObjectType.Ip4Setup)
+                            {
+                                var attributes = new Dictionary<string, int>
+                                {
+                                    { "Data Link Layer Reference", 2 },
+                                    { "IP Address", 3 },
+                                    { "Multicast IP Address", 4 },
+                                    { "IP Options", 5 },
+                                    { "Subnet Mask", 6 },
+                                    { "Gateway IP Address", 7 },
+                                    { "Use DHCP", 8 },
+                                    { "Primary DNS Address", 9 },
+                                    { "Secondary DNS Address", 10 }
+                                };
+
+                                foreach (var attr in attributes)
+                                {
+                                    try
+                                    {
+                                        string val = reader.ReadObjectAttribute(obj, attr.Value);
+                                        if (!string.IsNullOrEmpty(val) && !val.StartsWith("Error"))
+                                        {
+                                            var ipVal = new PQM.Core.Entities.Ip4Setup
+                                            {
+                                                DeviceId = item.Id,
+                                                Name = attr.Key,
+                                                ObjectType = obj.ObjectType.ToString(),
+                                                Value = val,
+                                                DateEntered = dateStamp
+                                            };
+                                            dbContext.Ip4Setup.Add(ipVal);
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Console.WriteLine($"[DLMS Reader] Failed to save {attr.Key} to Ip4Setup table: {ex.Message}");
+                                    }
+                                }
+                                try
+                                {
+                                    dbContext.SaveChanges();
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.WriteLine($"[DLMS Reader] Failed to save changes for Ip4Setup: {ex.Message}");
+                                }
+                            }
+                            else if (obj.ObjectType == ObjectType.MacAddressSetup)
+                            {
+                                try
+                                {
+                                    string val = reader.ReadObjectAttribute(obj, 2);
+                                    if (!string.IsNullOrEmpty(val) && !val.StartsWith("Error"))
+                                    {
+                                        var macVal = new PQM.Core.Entities.MacAddressSetup
+                                        {
+                                            DeviceId = item.Id,
+                                            Name = "MAC Address",
+                                            ObjectType = obj.ObjectType.ToString(),
+                                            Value = val,
+                                            DateEntered = dateStamp
+                                        };
+                                        dbContext.MacAddressSetup.Add(macVal);
+                                        dbContext.SaveChanges();
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.WriteLine($"[DLMS Reader] Failed to save MAC Address to MacAddressSetup table: {ex.Message}");
                                 }
                             }
                         }

@@ -21,3 +21,6 @@ Meter expects Short Name referencing.
 6/25/2026 12:51:53 PM Connecting to DLMS meter Test Meter 1 at 192.168.0.3:4059
 6/25/2026 1:23:47 PM Connecting to DLMS meter Test Meter 1 at 192.168.0.3:4059
 6/25/2026 1:24:08 PM Error while reading DLMS data of Test Meter 1. Error: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond.
+6/25/2026 5:11:33 PM Connecting to DLMS meter Test Meter 1 at 192.168.0.3:4059
+6/25/2026 5:47:37 PM Connecting to DLMS meter Test Meter 1 at 192.168.0.3:4059
+6/25/2026 6:03:17 PM Connecting to DLMS meter Test Meter 1 at 192.168.0.3:4059
