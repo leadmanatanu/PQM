@@ -99,11 +99,8 @@ export function DeviceRTable({
                         <TableRow>
                             <TableCell>Id</TableCell>
                             <TableCell>Timestamp</TableCell>
-                            {!allParam ? (
-                                <TableCell>{paramterString}</TableCell>
-                            ) : (
-                                <TableCell>All Parameters</TableCell>
-                            )}
+                            <TableCell>Parameter</TableCell>
+                            <TableCell>Value</TableCell>
                         </TableRow>
                     </TableHead>
                     <TableBody>
@@ -116,7 +113,8 @@ export function DeviceRTable({
                 <TableCell>
                   {row.dateStamp ? dayjs(row.dateStamp).format('MMM D, YYYY HH:mm:ss') : '-'}
                 </TableCell>
-                <TableCell>{row.value}</TableCell>
+                <TableCell>{row.parameterName || paramterString}</TableCell>
+                <TableCell sx={{ fontWeight: 'bold', color: 'primary.main' }}>{row.value}</TableCell>
               </TableRow>
             );
           })

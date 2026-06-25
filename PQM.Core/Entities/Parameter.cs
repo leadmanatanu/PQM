@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace PQM.Core.Entities
@@ -8,6 +8,9 @@ namespace PQM.Core.Entities
         [Key]
         public int Id { get; set; }
         public string Name { get; set; }
+        public string? ObisCode { get; set; }
+        public string? ObjectType { get; set; }
+        public string? Attribute3 { get; set; }
         public bool IsActive { get; set; }
         public bool IsDeleted { get; set; }
         public DateTime CreatedDate { get; set; }

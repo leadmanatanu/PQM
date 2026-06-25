@@ -1,9 +1,14 @@
-using PQM.Server.Models;
+using Gurux.DLMS;
+using Gurux.DLMS.Enums;
+using Gurux.DLMS.Objects;
 using Microsoft.AspNetCore.Mvc;
-using PQM.Core.IRepositories;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using PQM.Core.Entities;
-using System.DirectoryServices.Protocols;
-using Microsoft.EntityFrameworkCore;
+using PQM.Core.IRepositories;
+using PQM.Infrastructure;
+using PQM.Infrastructure.Services;
+using PQM.Server.Models;
 
 namespace PQM.Server.Controllers
 {
@@ -11,225 +16,384 @@ namespace PQM.Server.Controllers
     [Route("api/[controller]")]
     public class DeviceController : ControllerBase
     {
-        public APIResponse _apiResponse;
+        private readonly APIResponse _apiResponse = new();
         private readonly IDeviceService _deviceService;
-        private readonly ILogger<DeviceLogController> _logger;
+        private readonly ILogger<DeviceController> _logger;
+        private readonly IConfiguration _configuration;
+        private readonly string _connectionString;
 
-        public DeviceController(ILogger<DeviceLogController> logger, IDeviceService deviceService)
+        public DeviceController(
+            ILogger<DeviceController> logger,
+            IDeviceService deviceService,
+            IConfiguration configuration)
         {
-            _apiResponse = new APIResponse();
             _logger = logger;
             _deviceService = deviceService;
+            _configuration = configuration;
+
+            _connectionString =
+                configuration.GetConnectionString("DefaultConnection")
+                ?? throw new InvalidOperationException("Connection string not found.");
         }
 
-        [HttpGet(Name = "GetDevices")]
-        public ActionResult Get()
+        // -------------------- GET DEVICES --------------------
+        [HttpGet]
+        public IActionResult Get()
         {
-            var data = _deviceService.GetDevices().ToList();
             _apiResponse.Status = true;
             _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-            _apiResponse.Data = data;
+            _apiResponse.Data = _deviceService.GetDevices().ToList();
             return Ok(_apiResponse);
         }
 
-        [HttpPost(Name = "AddDevice")]
-        public ActionResult Post([FromBody] Device device)
+        // -------------------- ADD DEVICE --------------------
+        [HttpPost]
+        public IActionResult Post([FromBody] Device device)
         {
-            _apiResponse.Status = false;
-            _apiResponse.Data = null;
+            _apiResponse.Errors.Clear();
+
+            if (!RequiredFieldValidation(device) || !IsDeviceAlreadyExist(device))
+            {
+                _apiResponse.StatusCode = System.Net.HttpStatusCode.NotAcceptable;
+                return Ok(_apiResponse);
+            }
+
+            device.CreatedDate = DateTime.UtcNow;
+            device.Id = _deviceService.AddDevice(device);
+
+            _apiResponse.Status = true;
+            _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
+            _apiResponse.Data = device;
+            return Ok(_apiResponse);
+        }
+
+        // -------------------- DISCOVER PARAMETERS --------------------
+        [HttpPost("{id}/discover-parameters")]
+        public IActionResult DiscoverParameters(int id, [FromQuery] string? objectType = null)
+        {
+            _apiResponse.Errors.Clear();
+
+            var device = _deviceService.GetDevices().FirstOrDefault(d => d.Id == id);
+            if (device == null)
+                return Error("Device not found", System.Net.HttpStatusCode.NotFound);
+
+            int clientAddress = _configuration.GetValue("DlmsSettings:ClientAddress", 1);
+            int serverAddress = _configuration.GetValue("DlmsSettings:ServerAddress", 1);
+            string authStr = _configuration.GetValue("DlmsSettings:Authentication", "None");
+            string password = _configuration.GetValue("DlmsSettings:Password", "");
+            bool useLogicalNameReferencing = _configuration.GetValue("DlmsSettings:UseLogicalNameReferencing", true);
+            string standardStr = _configuration.GetValue("DlmsSettings:Standard", "DLMS");
+
+            if (!Enum.TryParse(authStr, true, out Authentication authentication))
+                authentication = Authentication.None;
+
+            if (!Enum.TryParse(standardStr, true, out Standard standard))
+                standard = Standard.DLMS;
+
+            List<DiscoveredParameter> parameters;
+            using (var reader = new DLMSReader(device.IP, device.PORT, clientAddress, serverAddress, authentication, password, useLogicalNameReferencing, standard))
+            {
+                reader.Connect();
+                parameters = reader.GetAssociationViewWithValues(objectType);
+            }
+
+            using var db = new DataContext(_connectionString);
+
+            var existingParams = db.Parameter
+                .Where(p => !string.IsNullOrEmpty(p.ObisCode))
+                .ToList();
+
+            var obisMap = existingParams
+                .ToDictionary(p => p.ObisCode!, p => p);
+
+            foreach (var p in parameters)
+            {
+                if (!obisMap.ContainsKey(p.ObisCode))
+                {
+                    var param = new Parameter
+                    {
+                        Name = p.Name,
+                        ObisCode = p.ObisCode,
+                        ObjectType = p.ObjectType,
+                        IsActive = true,
+                        CreatedDate = DateTime.UtcNow
+                    };
+                    db.Parameter.Add(param);
+                    obisMap[p.ObisCode] = param;
+                }
+            }
+
+            db.SaveChanges();
+
+            _apiResponse.Status = true;
+            _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
+            _apiResponse.Data = parameters;
+            return Ok(_apiResponse);
+        }
+
+        [HttpPost("{id}/read-parameter/{parameterId}")]
+        public IActionResult ReadParameter(int id, int parameterId)
+        {
+            _apiResponse.Errors.Clear();
+
+            var device = _deviceService.GetDevices().FirstOrDefault(d => d.Id == id);
+            if (device == null)
+                return Error("Device not found", System.Net.HttpStatusCode.NotFound);
+
+            using var db = new DataContext(_connectionString);
+            var param = db.Parameter.FirstOrDefault(p => p.Id == parameterId);
+
+            if (param == null || string.IsNullOrEmpty(param.ObisCode))
+                return Error("Invalid parameter", System.Net.HttpStatusCode.NotFound);
+
+            int clientAddress = _configuration.GetValue("DlmsSettings:ClientAddress", 1);
+            int serverAddress = _configuration.GetValue("DlmsSettings:ServerAddress", 1);
+            string authStr = _configuration.GetValue("DlmsSettings:Authentication", "None");
+            string password = _configuration.GetValue("DlmsSettings:Password", "");
+            bool useLogicalNameReferencing = _configuration.GetValue("DlmsSettings:UseLogicalNameReferencing", true);
+            string standardStr = _configuration.GetValue("DlmsSettings:Standard", "DLMS");
+
+            Enum.TryParse(authStr, true, out Authentication authentication);
+            if (!Enum.TryParse(standardStr, true, out Standard standard))
+                standard = Standard.DLMS;
+
+            string value;
+            using (var reader = new DLMSReader(device.IP, device.PORT, clientAddress, serverAddress, authentication, password, useLogicalNameReferencing, standard))
+            {
+                reader.Connect();
+                value = reader.ReadRegister(param.ObisCode, param.Name ?? "");
+            }
+
+            db.DeviceLog.Add(new DeviceLog
+            {
+                DeviceId = id,
+                ParameterId = parameterId,
+                Value = value,
+                DateStamp = DateTime.UtcNow
+            });
+
+            if (!string.IsNullOrEmpty(value) && !value.StartsWith("Error"))
+            {
+                if (param.ObjectType == "Register" || param.ObjectType == "ExtendedRegister" || param.ObjectType == "DemandRegister")
+                {
+                    try
+                    {
+                        var registerData = new Register
+                        {
+                            DeviceId = id,
+                            Name = param.Name ?? "",
+                            ObjectType = param.ObjectType,
+                            Value = value,
+                            DateEntered = DateTime.UtcNow
+                        };
+                        db.Register.Add(registerData);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to save to Register table in ReadParameter");
+                    }
+                }
+                else if (param.ObjectType == "Data")
+                {
+                    try
+                    {
+                        var dataVal = new PQM.Core.Entities.Data
+                        {
+                            DeviceId = id,
+                            Name = param.Name ?? "",
+                            ObjectType = param.ObjectType,
+                            Value = value,
+                            DateEntered = DateTime.UtcNow
+                        };
+                        db.Data.Add(dataVal);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to save to Data table in ReadParameter");
+                    }
+                }
+            }
+
+            db.SaveChanges();
+
+            _apiResponse.Status = true;
+            _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
+            _apiResponse.Data = value;
+            return Ok(_apiResponse);
+        }
+
+        // -------------------- READ OBJECT --------------------
+        [HttpPost("{id}/read-object/{objectId}")]
+        public IActionResult ReadObject(int id, int objectId)
+        {
+            _apiResponse.Errors.Clear();
+
+            var device = _deviceService.GetDevices().FirstOrDefault(d => d.Id == id);
+            if (device == null)
+                return Error("Device not found", System.Net.HttpStatusCode.NotFound);
+
+            using var db = new DataContext(_connectionString);
+            var dlmsObject = db.DLMSObject.FirstOrDefault(o => o.Id == objectId);
+            if (dlmsObject == null)
+                return Error("DLMS Object not found", System.Net.HttpStatusCode.NotFound);
+
+            var parameters = db.ObjectParameter.Where(p => p.ObjectId == objectId).ToList();
+            if (!parameters.Any())
+                return Error("No parameters found for the object", System.Net.HttpStatusCode.NotFound);
+
+            int clientAddress = _configuration.GetValue("DlmsSettings:ClientAddress", 1);
+            int serverAddress = _configuration.GetValue("DlmsSettings:ServerAddress", 1);
+            string authStr = _configuration.GetValue("DlmsSettings:Authentication", "None");
+            string password = _configuration.GetValue("DlmsSettings:Password", "");
+            bool useLogicalNameReferencing = _configuration.GetValue("DlmsSettings:UseLogicalNameReferencing", true);
+            string standardStr = _configuration.GetValue("DlmsSettings:Standard", "DLMS");
+
+            if (!Enum.TryParse(authStr, true, out Authentication authentication))
+                authentication = Authentication.None;
+
+            if (!Enum.TryParse(standardStr, true, out Standard standard))
+                standard = Standard.DLMS;
+
+            var results = new List<object>();
+
             try
             {
-                _apiResponse.Errors = new List<string> { };
-                if (!RequiredFieldValidation(device))
+                using (var reader = new DLMSReader(device.IP, device.PORT, clientAddress, serverAddress, authentication, password, useLogicalNameReferencing, standard))
                 {
-                    _apiResponse.StatusCode = System.Net.HttpStatusCode.NotAcceptable;
-                    return Ok(_apiResponse);
-                }
-                if (!IsDeviceAlreadyExist(device))
-                {
-                    _apiResponse.StatusCode = System.Net.HttpStatusCode.NotAcceptable;
-                    return Ok(_apiResponse);
+                    reader.Connect();
+
+                    Gurux.DLMS.Objects.GXDLMSObject? obj = null;
+                    if (reader.Objects != null)
+                    {
+                        obj = reader.Objects.FirstOrDefault(o => o.LogicalName == dlmsObject.ObisCode);
+                    }
+
+                    if (obj == null)
+                    {
+                        if (!Enum.TryParse<ObjectType>(dlmsObject.ObjectType, out var objectType))
+                        {
+                            objectType = ObjectType.Register;
+                        }
+                        obj = GXDLMSClient.CreateObject(objectType);
+                        obj.LogicalName = dlmsObject.ObisCode;
+                    }
+
+                    foreach (var param in parameters)
+                    {
+                        string value = "";
+                        if (param.AttributeId == 2)
+                        {
+                            value = reader.ReadObjectValue(obj);
+                        }
+                        else if (param.AttributeId == 3)
+                        {
+                            value = reader.ReadObjectAttribute3(obj);
+                        }
+
+                        if (!string.IsNullOrEmpty(value) && !value.StartsWith("Error"))
+                        {
+                            var pv = new ParameterValue
+                            {
+                                ParameterId = param.Id,
+                                Value = value,
+                                Timestamp = DateTime.UtcNow
+                            };
+                            db.ParameterValue.Add(pv);
+                            results.Add(new
+                            {
+                                pv.Id,
+                                pv.ParameterId,
+                                AttributeId = param.AttributeId,
+                                pv.Value,
+                                pv.Timestamp
+                            });
+
+                            if (param.AttributeId == 2)
+                            {
+                                if (dlmsObject.ObjectType == "Register" || 
+                                    dlmsObject.ObjectType == "ExtendedRegister" || 
+                                    dlmsObject.ObjectType == "DemandRegister")
+                                {
+                                    try
+                                    {
+                                        var registerData = new Register
+                                        {
+                                            DeviceId = id,
+                                            Name = dlmsObject.Name ?? "",
+                                            ObjectType = dlmsObject.ObjectType,
+                                            Value = value,
+                                            DateEntered = DateTime.UtcNow
+                                        };
+                                        db.Register.Add(registerData);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        _logger.LogError(ex, "Failed to save to Register table in ReadObject");
+                                    }
+                                }
+                                else if (dlmsObject.ObjectType == "Data")
+                                {
+                                    try
+                                    {
+                                        var dataVal = new PQM.Core.Entities.Data
+                                        {
+                                            DeviceId = id,
+                                            Name = dlmsObject.Name ?? "",
+                                            ObjectType = dlmsObject.ObjectType,
+                                            Value = value,
+                                            DateEntered = DateTime.UtcNow
+                                        };
+                                        db.Data.Add(dataVal);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        _logger.LogError(ex, "Failed to save to Data table in ReadObject");
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    db.SaveChanges();
                 }
 
-                device.CreatedDate = DateTime.UtcNow;
-                var data = _deviceService.AddDevice(device);
-                device.Id = data;
                 _apiResponse.Status = true;
                 _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-                _apiResponse.Data = device;
+                _apiResponse.Data = results;
                 return Ok(_apiResponse);
             }
             catch (Exception ex)
             {
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
-                _apiResponse.Errors = new List<string> { ex.Message };
-                return Ok(_apiResponse);
-
+                return Error($"DLMS Error: {ex.Message}", System.Net.HttpStatusCode.InternalServerError);
             }
         }
 
-
-        [HttpPut(Name = "UpdateDevice")]
-        public ActionResult Put([FromBody] Device device)
+        // -------------------- HELPERS --------------------
+        private IActionResult Error(string message, System.Net.HttpStatusCode code)
         {
-            try
-            {
-                _apiResponse.Status = false;
-                _apiResponse.Data = null;
-                if (!RequiredFieldValidation(device))
-                {
-                    _apiResponse.StatusCode = System.Net.HttpStatusCode.NotAcceptable;
-                    return Ok(_apiResponse);
-                }
-                if (!IsDeviceAlreadyExist(device))
-                {
-                    _apiResponse.StatusCode = System.Net.HttpStatusCode.NotAcceptable;
-                    return Ok(_apiResponse);
-                }
-                var result = _deviceService.UpdateDevice(device);
-                if (result)
-                {
-                    _apiResponse.Status = true;
-                    _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-                    _apiResponse.Data = device;
-                }
-                else
-                {
-                    _apiResponse.Status = false;
-                    _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
-                    _apiResponse.Data = null;
-                    _apiResponse.Errors = new List<string> { "No device found." };
-                    return Ok(_apiResponse);
-                }
-                return Ok(_apiResponse);
-            }
-            catch (Exception ex)
-            {
-                _apiResponse.Status = false;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
-                _apiResponse.Data = null;
-                _apiResponse.Errors = new List<string> { ex.Message };
-                return Ok(_apiResponse);
-
-            }
-        }
-
-        [HttpDelete("{id}")]
-        public ActionResult Delete(int id)
-        {
-            try
-            {
-                if (id <= 0)
-                {
-                    _apiResponse.Status = false;
-                    _apiResponse.Data = null;
-                    _apiResponse.StatusCode = System.Net.HttpStatusCode.NotAcceptable;
-                    _apiResponse.Errors = new List<string> { "Id is required." };
-                    return Ok(_apiResponse);
-                }
-                var result = _deviceService.DeleteDevice(id);
-                if (result)
-                {
-                    _apiResponse.Status = true;
-                    _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-                    _apiResponse.Data = null;
-                }
-                else
-                {
-                    _apiResponse.Status = false;
-                    _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
-                    _apiResponse.Data = null;
-                    _apiResponse.Errors = new List<string> { "No device found." };
-                    return Ok(_apiResponse);
-                }
-                return Ok(_apiResponse);
-            }
-            catch (Exception ex)
-            {
-                _apiResponse.Status = false;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
-                _apiResponse.Data = null;
-                _apiResponse.Errors = new List<string> { ex.Message };
-                return Ok(_apiResponse);
-
-            }
+            _apiResponse.Status = false;
+            _apiResponse.StatusCode = code;
+            _apiResponse.Errors.Add(message);
+            return Ok(_apiResponse);
         }
 
         private bool RequiredFieldValidation(Device device)
         {
-            bool isValidData = true;
-            if (String.IsNullOrEmpty(device.Name))
-            {
-                _apiResponse.Errors.Add("Name is required.");
-                isValidData = false;
-            }
-            if (String.IsNullOrEmpty(device.ConsumerNumber))
-            {
-                _apiResponse.Errors.Add("Consumer Number is required.");
-                isValidData = false;
-            }
-            if (String.IsNullOrEmpty(device.SerialNumber))
-            {
-                _apiResponse.Errors.Add("Serial Number is required.");
-                isValidData = false;
-            }
-            if (String.IsNullOrEmpty(device.FtpFolder))
-            {
-                _apiResponse.Errors.Add("Ftp Folder is required.");
-                isValidData = false;
-            }
-            if (String.IsNullOrEmpty(device.IP))
-            {
-                _apiResponse.Errors.Add("IP is required.");
-                isValidData = false;
-            }
-            if (device.PORT <= 0)
-            {
-                _apiResponse.Errors.Add("PORT is required.");
-                isValidData = false;
-            }
-            return isValidData;
+            if (string.IsNullOrWhiteSpace(device.Name)) _apiResponse.Errors.Add("Name required");
+            if (string.IsNullOrWhiteSpace(device.IP)) _apiResponse.Errors.Add("IP required");
+            if (device.PORT <= 0) _apiResponse.Errors.Add("Port required");
+            return !_apiResponse.Errors.Any();
         }
 
         private bool IsDeviceAlreadyExist(Device device)
         {
-            bool isValidData = true;
-            var lstDevices = _deviceService.GetDevices();
-            if (device.Id > 0) // Edit scanario
+            var devices = _deviceService.GetDevices();
+            if (devices.Any(d => d.Id != device.Id && d.IP == device.IP && d.PORT == device.PORT))
             {
-                lstDevices = _deviceService.GetDevices().Where(x => x.Id != device.Id && (x.Name == device.Name ||
-                            x.SerialNumber == device.SerialNumber || x.ConsumerNumber == device.ConsumerNumber ||
-                            (x.IP == device.IP && x.PORT == device.PORT) || x.FtpFolder == device.FtpFolder));
+                _apiResponse.Errors.Add("Device already exists");
+                return false;
             }
-            _apiResponse.Errors = new List<string> { };
-            if (lstDevices.Any(x => x.Name == device.Name))
-            {
-                _apiResponse.Errors.Add("Device Name already exist.");
-                isValidData = false;
-            }
-            if (lstDevices.Any(x => x.SerialNumber == device.SerialNumber))
-            {
-                _apiResponse.Errors.Add("Serial Number already exist.");
-                isValidData = false;
-            }
-            if (lstDevices.Any(x => x.ConsumerNumber == device.ConsumerNumber))
-            {
-                _apiResponse.Errors.Add("Consumer Number already exist.");
-                isValidData = false;
-            }
-            if (lstDevices.Any(x => x.IP == device.IP && x.PORT == device.PORT))
-            {
-                _apiResponse.Errors = new List<string> { "IP address and Port already exist." };
-                isValidData = false;
-
-            }
-            if (lstDevices.Any(x => x.FtpFolder == device.FtpFolder))
-            {
-                _apiResponse.Errors.Add("FTP folder name already exist.");
-                isValidData = false;
-            }
-
-            return isValidData;
+            return true;
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿using PQM.Core.Entities;
+using PQM.Core.Entities;
 using PQM.Core.IRepositories;
 
 namespace PQM.Infrastructure.Repositories
@@ -27,6 +27,8 @@ namespace PQM.Infrastructure.Repositories
                         {
                             Id = x.Id,
                             Name = x.Name,
+                            ObisCode = x.ObisCode,
+                            ObjectType = x.ObjectType,
                             IsSelected = dbContext.DeviceParameterMapping.FirstOrDefault(y => y.DeviceId == deviceId && y.ParameterId == x.Id).Id > 0,
                         });
 

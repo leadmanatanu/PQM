@@ -27,6 +27,6 @@ namespace PQM.Core.Entities
     public class DeviceLogSearchResult
     {
         public int TotalCount { get; set; }
-        public List<DeviceLogSearch> DeviceLogSearch { get; set; }
+        public List<DeviceLogSearch> DeviceLogSearch { get; set; } = new List<DeviceLogSearch>();
     }
 }

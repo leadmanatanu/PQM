@@ -1,0 +1,12 @@
+6/24/2026 11:16:57 AM Connecting to DLMS meter Test Meter 1 at 127.0.0.1:4059
+6/24/2026 11:17:01 AM Error while reading DLMS data of Test Meter 1. Error: No connection could be made because the target machine actively refused it.
+6/24/2026 11:25:28 AM Connecting to DLMS meter Test Meter 1 at 127.0.0.1:4059
+6/24/2026 11:25:31 AM Error while reading DLMS data of Test Meter 1. Error: No connection could be made because the target machine actively refused it.
+6/24/2026 11:40:34 AM Connecting to DLMS meter Test Meter 1 at 192.168.0.3:4059
+6/24/2026 11:40:49 AM Error while reading DLMS data of Test Meter 1. Error: The given value '{[8, 0, System.Byte[], [{[1, 1, ], [2, 1, ], [3, 1, ], [4, 1, ], [5, 1, ], [6, 1, ], [7, 1, ], [8, 1' of type String from the data source cannot be converted to type nvarchar for Column 1 [Value] Row 3.
+6/24/2026 11:53:29 AM Connecting to DLMS meter Test Meter 1 at 192.168.0.3:4059
+6/24/2026 11:54:23 AM Error while reading DLMS data of Test Meter 1. Error: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond.
+6/24/2026 11:57:21 AM Connecting to DLMS meter Test Meter 1 at 192.168.0.3:4059
+6/24/2026 11:57:44 AM Error while reading DLMS data of Test Meter 1. Error: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond.
+6/24/2026 2:50:43 PM Connecting to DLMS meter Test Meter 1 at 192.168.0.3:4059
+6/24/2026 2:51:06 PM Error while reading DLMS data of Test Meter 1. Error: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond.

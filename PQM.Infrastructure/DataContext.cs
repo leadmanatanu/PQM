@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using PQM.Core.Entities;
 using Microsoft.Extensions.Configuration;
 using System;
@@ -20,6 +20,12 @@ namespace PQM.Infrastructure
         public DbSet<DeviceLog> DeviceLog { get; set; } = null!;
         public DbSet<EventLog> EventLog { get; set; } = null!;
         public DbSet<FTPSetting> FTPSetting { get; set; } = null!;
+        public DbSet<Register> Register { get; set; } = null!;
+        public DbSet<Data> Data { get; set; } = null!;
+        public DbSet<ConnectedHeader> ConnectedHeader { get; set; } = null!;
+        public DbSet<DLMSObject> DLMSObject { get; set; } = null!;
+        public DbSet<ObjectParameter> ObjectParameter { get; set; } = null!;
+        public DbSet<ParameterValue> ParameterValue { get; set; } = null!;
 
         public DataContext(string connectionString)
         {

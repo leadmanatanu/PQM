@@ -34,7 +34,7 @@ namespace PQM.Server.Controllers
         public ActionResult Search([FromQuery] SearchParams searchParams)
         {
             searchParams.EndDate= searchParams.EndDate.Date.AddDays(1).AddTicks(-1);
-            var data = _eventLogService.GetEventLogs(searchParams.DeviceId, searchParams.EventType, searchParams.PageNumber, searchParams.PageSize, searchParams.StartDate, searchParams.EndDate);
+            var data = _eventLogService.GetEventLogs(searchParams.DeviceId, searchParams.EventType ??string.Empty, searchParams.PageNumber, searchParams.PageSize, searchParams.StartDate, searchParams.EndDate);
             EventLogSearchResult result = new EventLogSearchResult
             {
                 EventLogSearch = data.Item1,

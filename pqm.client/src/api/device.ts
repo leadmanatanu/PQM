@@ -2,8 +2,8 @@ import axios from 'axios';
 import dayjs from 'dayjs';
 import type { Device } from '@/components/dashboard/device/devices-table';
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-//const API_URL = 'http://localhost:5135/api';
-const API_URL = 'http://103.83.106.174:83/api';
+const API_URL = 'http://localhost:5135/api';
+//const API_URL = 'http://103.83.106.174:83/api';
 
 export interface ApiResponse<T = any> {
     status: string;
@@ -177,3 +177,72 @@ export const fetchEventReading = async (
         return null;
     }
 };
+
+// Discover and read meter parameters
+export const discoverDeviceParameters = async (id: string | number, objectType?: string): Promise<any | null> => {
+    try {
+        const { data } = await axios.post(`${API_URL}/device/${id}/discover-parameters`, null, {
+            params: objectType && objectType !== 'All' ? { objectType } : {}
+        });
+        return data;
+    } catch (error) {
+        console.error("Error discovering device parameters:", error);
+        return null;
+    }
+};
+
+// Read a single parameter value from a device
+export const readDeviceParameter = async (deviceId: string | number, parameterId: string | number): Promise<any | null> => {
+    try {
+        const { data } = await axios.post(`${API_URL}/device/${deviceId}/read-parameter/${parameterId}`);
+        return data;
+    } catch (error) {
+        console.error("Error reading device parameter:", error);
+        return null;
+    }
+};
+
+// Fetch connected headers for a device
+export const fetchConnectedHeaders = async (deviceId: string | number): Promise<any | null> => {
+    try {
+        const { data } = await axios.get(`${API_URL}/connectedheader/device/${deviceId}`);
+        return data;
+    } catch (error) {
+        console.error("Error fetching connected headers:", error);
+        return null;
+    }
+};
+
+// Fetch DLMS objects for a header
+export const fetchDLMSObjects = async (headerId: string | number): Promise<any | null> => {
+    try {
+        const { data } = await axios.get(`${API_URL}/dlmsobject/header/${headerId}`);
+        return data;
+    } catch (error) {
+        console.error("Error fetching DLMS objects:", error);
+        return null;
+    }
+};
+
+// Fetch parameters for a DLMS object
+export const fetchObjectParameters = async (objectId: string | number): Promise<any | null> => {
+    try {
+        const { data } = await axios.get(`${API_URL}/objectparameter/object/${objectId}`);
+        return data;
+    } catch (error) {
+        console.error("Error fetching object parameters:", error);
+        return null;
+    }
+};
+
+// Read a DLMS object (all parameters / attributes)
+export const readDLMSObject = async (deviceId: string | number, objectId: string | number): Promise<any | null> => {
+    try {
+        const { data } = await axios.post(`${API_URL}/device/${deviceId}/read-object/${objectId}`);
+        return data;
+    } catch (error) {
+        console.error("Error reading DLMS object:", error);
+        return null;
+    }
+};
+

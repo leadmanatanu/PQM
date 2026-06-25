@@ -1,7 +1,5 @@
 {
-  "/_not-found/page": "app/_not-found/page.js",
-  "/auth/sign-in/page": "app/auth/sign-in/page.js",
+  "/dashboard/mapping/page": "app/dashboard/mapping/page.js",
   "/dashboard/devices/page": "app/dashboard/devices/page.js",
-  "/dashboard/devicereadings/page": "app/dashboard/devicereadings/page.js",
   "/dashboard/page": "app/dashboard/page.js"
 }

@@ -1,0 +1,120 @@
+6/23/2026 6:30:08 PM Connecting to DLMS meter Test Meter 1 at 192.168.0.3:4059
+6/23/2026 6:30:13 PM Reading OBIS 0.0.1.0.255 (Cum. Billing Count) from Test Meter 1
+6/23/2026 6:30:13 PM Failed to read OBIS 0.0.1.0.255 for Test Meter 1: Error: Invalid Logical name.
+6/23/2026 6:30:13 PM Reading OBIS 0.0.1.1.255 (Available Billing Periods) from Test Meter 1
+6/23/2026 6:30:13 PM Failed to read OBIS 0.0.1.1.255 for Test Meter 1: Error: Invalid Logical name.
+6/23/2026 6:30:13 PM Reading OBIS 0.0.96.1.0.255 (Meter Serial Number) from Test Meter 1
+6/23/2026 6:30:13 PM Failed to read OBIS 0.0.96.1.0.255 for Test Meter 1: Error: 9
+6/23/2026 6:30:13 PM Reading OBIS 0.0.96.1.1.255 (Manufacturer Name) from Test Meter 1
+6/23/2026 6:30:14 PM Failed to read OBIS 0.0.96.1.1.255 for Test Meter 1: Error: 9
+6/23/2026 6:30:14 PM Reading OBIS 0.0.1.0.0.255 (Clock - 0.0.1.0.0.255) from Test Meter 1
+6/23/2026 6:30:15 PM Reading OBIS 0.0.22.0.0.255 (IecHdlcSetup - 0.0.22.0.0.255) from Test Meter 1
+6/23/2026 6:30:16 PM Reading OBIS 0.0.40.0.1.255 (AssociationLogicalName - 0.0.40.0.1.255) from Test Meter 1
+6/23/2026 6:30:18 PM Reading OBIS 0.0.42.0.0.255 (Data - 0.0.42.0.0.255) from Test Meter 1
+6/23/2026 6:30:19 PM Reading OBIS 0.128.141.128.128.255 (Data - 0.128.141.128.128.255) from Test Meter 1
+6/23/2026 6:30:20 PM Reading OBIS 0.128.150.128.128.255 (Data - 0.128.150.128.128.255) from Test Meter 1
+6/23/2026 6:30:21 PM Reading OBIS 0.128.189.128.128.255 (Data - 0.128.189.128.128.255) from Test Meter 1
+6/23/2026 6:30:22 PM Reading OBIS 0.0.0.1.2.255 (Billing Date) from Test Meter 1
+6/23/2026 6:30:23 PM Failed to read OBIS 0.0.0.1.2.255 for Test Meter 1: Error: 11
+6/23/2026 6:30:23 PM Reading OBIS 0.0.94.91.8.255 (Cum. Power Failure Duration) from Test Meter 1
+6/23/2026 6:30:24 PM Failed to read OBIS 0.0.94.91.8.255 for Test Meter 1: Error: 11
+6/23/2026 6:30:24 PM Reading OBIS 0.128.162.2.128.255 (Manufacturer specific 1) from Test Meter 1
+6/23/2026 6:30:25 PM Failed to read OBIS 0.128.162.2.128.255 for Test Meter 1: Error: 11
+6/23/2026 6:30:25 PM Reading OBIS 0.128.162.3.128.255 (Manufacturer specific 2) from Test Meter 1
+6/23/2026 6:30:26 PM Failed to read OBIS 0.128.162.3.128.255 for Test Meter 1: Error: 11
+6/23/2026 6:30:26 PM Reading OBIS 1.0.1.7.0.255 (Active Power-W) from Test Meter 1
+6/23/2026 6:30:27 PM Failed to read OBIS 1.0.1.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:30:27 PM Reading OBIS 1.0.1.8.0.255 (Cum. Energy-Wh(Imp)) from Test Meter 1
+6/23/2026 6:30:28 PM Failed to read OBIS 1.0.1.8.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:30:28 PM Reading OBIS 1.0.2.8.0.255 (Cum. Energy-Wh(Exp)) from Test Meter 1
+6/23/2026 6:30:29 PM Failed to read OBIS 1.0.2.8.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:30:29 PM Reading OBIS 1.0.3.7.0.255 (Signed Reactive Power-VAr) from Test Meter 1
+6/23/2026 6:30:30 PM Failed to read OBIS 1.0.3.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:30:30 PM Reading OBIS 1.0.5.8.0.255 (Cum. Energy-VArh, Q1) from Test Meter 1
+6/23/2026 6:30:31 PM Failed to read OBIS 1.0.5.8.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:30:31 PM Reading OBIS 1.0.8.8.0.255 (Cum. Energy-VArh, Q4) from Test Meter 1
+6/23/2026 6:30:32 PM Failed to read OBIS 1.0.8.8.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:30:32 PM Reading OBIS 1.0.9.7.0.255 (Apparent Power-VA) from Test Meter 1
+6/23/2026 6:30:33 PM Failed to read OBIS 1.0.9.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:30:33 PM Reading OBIS 1.0.9.8.0.255 (Cum. Energy-VAh(Imp)) from Test Meter 1
+6/23/2026 6:30:34 PM Failed to read OBIS 1.0.9.8.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:30:34 PM Reading OBIS 1.0.10.8.0.255 (Cum. Energy-VAh(Exp)) from Test Meter 1
+6/23/2026 6:30:36 PM Failed to read OBIS 1.0.10.8.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:30:36 PM Reading OBIS 1.0.13.7.0.255 (Signed Power Factor) from Test Meter 1
+6/23/2026 6:30:37 PM Failed to read OBIS 1.0.13.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:30:37 PM Reading OBIS 1.0.14.7.0.255 (Frequency-Hz) from Test Meter 1
+6/23/2026 6:30:38 PM Failed to read OBIS 1.0.14.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:30:38 PM Reading OBIS 1.0.31.7.0.255 (L1 Current) from Test Meter 1
+6/23/2026 6:30:39 PM Failed to read OBIS 1.0.31.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:30:39 PM Reading OBIS 1.0.32.7.0.255 (L1 Voltage) from Test Meter 1
+6/23/2026 6:30:40 PM Failed to read OBIS 1.0.32.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:30:40 PM Reading OBIS 1.0.33.7.0.255 (L1 Power Factor) from Test Meter 1
+6/23/2026 6:30:41 PM Failed to read OBIS 1.0.33.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:30:41 PM Reading OBIS 1.0.51.7.0.255 (L2 Current) from Test Meter 1
+6/23/2026 6:30:42 PM Failed to read OBIS 1.0.51.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:30:42 PM Reading OBIS 1.0.52.7.0.255 (L2 Voltage) from Test Meter 1
+6/23/2026 6:30:43 PM Failed to read OBIS 1.0.52.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:30:43 PM Reading OBIS 1.0.53.7.0.255 (L2 Power Factor) from Test Meter 1
+6/23/2026 6:30:44 PM Failed to read OBIS 1.0.53.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:30:44 PM Reading OBIS 1.0.71.7.0.255 (L3 Current) from Test Meter 1
+6/23/2026 6:30:45 PM Failed to read OBIS 1.0.71.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:30:45 PM Reading OBIS 1.0.72.7.0.255 (L3 Voltage) from Test Meter 1
+6/23/2026 6:30:46 PM Failed to read OBIS 1.0.72.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:30:46 PM Reading OBIS 1.0.73.7.0.255 (L3 Power factor) from Test Meter 1
+6/23/2026 6:30:47 PM Failed to read OBIS 1.0.73.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:30:50 PM Error while reading DLMS data of Test Meter 1. Error: The given value '{[8, 0, System.Byte[], [{[1, 1, ], [2, 1, ], [3, 1, ], [4, 1, ], [5, 1, ], [6, 1, ], [7, 1, ], [8, 1' of type String from the data source cannot be converted to type nvarchar for Column 1 [Value] Row 3.
+6/23/2026 6:35:52 PM Connecting to DLMS meter Test Meter 1 at 192.168.0.3:4059
+6/23/2026 6:36:09 PM Error while reading DLMS data of Test Meter 1. Error: ServiceError Read exception. Service Unsupported
+6/23/2026 6:36:31 PM Connecting to DLMS meter Test Meter 1 at 192.168.0.3:4059
+6/23/2026 6:36:32 PM Error while reading DLMS data of Test Meter 1. Error: ServiceError Read exception. Service Unsupported
+6/23/2026 6:39:57 PM Connecting to DLMS meter Test Meter 1 at 192.168.0.3:4059
+6/23/2026 6:40:00 PM Reading OBIS 0.0.0.1.2.255 (Billing Date) from Test Meter 1
+6/23/2026 6:40:01 PM Failed to read OBIS 0.0.0.1.2.255 for Test Meter 1: Error: 11
+6/23/2026 6:40:01 PM Reading OBIS 0.0.94.91.8.255 (Cum. Power Failure Duration) from Test Meter 1
+6/23/2026 6:40:02 PM Failed to read OBIS 0.0.94.91.8.255 for Test Meter 1: Error: 11
+6/23/2026 6:40:02 PM Reading OBIS 0.128.162.2.128.255 (Manufacturer specific 1) from Test Meter 1
+6/23/2026 6:40:03 PM Failed to read OBIS 0.128.162.2.128.255 for Test Meter 1: Error: 11
+6/23/2026 6:40:03 PM Reading OBIS 0.128.162.3.128.255 (Manufacturer specific 2) from Test Meter 1
+6/23/2026 6:40:04 PM Failed to read OBIS 0.128.162.3.128.255 for Test Meter 1: Error: 11
+6/23/2026 6:40:04 PM Reading OBIS 1.0.1.7.0.255 (Active Power-W) from Test Meter 1
+6/23/2026 6:40:05 PM Failed to read OBIS 1.0.1.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:40:05 PM Reading OBIS 1.0.1.8.0.255 (Cum. Energy-Wh(Imp)) from Test Meter 1
+6/23/2026 6:40:06 PM Failed to read OBIS 1.0.1.8.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:40:06 PM Reading OBIS 1.0.2.8.0.255 (Cum. Energy-Wh(Exp)) from Test Meter 1
+6/23/2026 6:40:07 PM Failed to read OBIS 1.0.2.8.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:40:07 PM Reading OBIS 1.0.3.7.0.255 (Signed Reactive Power-VAr) from Test Meter 1
+6/23/2026 6:40:08 PM Failed to read OBIS 1.0.3.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:40:08 PM Reading OBIS 1.0.5.8.0.255 (Cum. Energy-VArh, Q1) from Test Meter 1
+6/23/2026 6:40:09 PM Failed to read OBIS 1.0.5.8.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:40:09 PM Reading OBIS 1.0.8.8.0.255 (Cum. Energy-VArh, Q4) from Test Meter 1
+6/23/2026 6:40:11 PM Failed to read OBIS 1.0.8.8.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:40:11 PM Reading OBIS 1.0.9.7.0.255 (Apparent Power-VA) from Test Meter 1
+6/23/2026 6:40:12 PM Failed to read OBIS 1.0.9.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:40:12 PM Reading OBIS 1.0.9.8.0.255 (Cum. Energy-VAh(Imp)) from Test Meter 1
+6/23/2026 6:40:13 PM Failed to read OBIS 1.0.9.8.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:40:13 PM Reading OBIS 1.0.10.8.0.255 (Cum. Energy-VAh(Exp)) from Test Meter 1
+6/23/2026 6:40:14 PM Failed to read OBIS 1.0.10.8.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:40:14 PM Reading OBIS 1.0.13.7.0.255 (Signed Power Factor) from Test Meter 1
+6/23/2026 6:40:15 PM Failed to read OBIS 1.0.13.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:40:15 PM Reading OBIS 1.0.14.7.0.255 (Frequency-Hz) from Test Meter 1
+6/23/2026 6:40:16 PM Failed to read OBIS 1.0.14.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:40:16 PM Reading OBIS 1.0.31.7.0.255 (L1 Current) from Test Meter 1
+6/23/2026 6:40:17 PM Failed to read OBIS 1.0.31.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:40:17 PM Reading OBIS 1.0.32.7.0.255 (L1 Voltage) from Test Meter 1
+6/23/2026 6:40:18 PM Failed to read OBIS 1.0.32.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:40:18 PM Reading OBIS 1.0.33.7.0.255 (L1 Power Factor) from Test Meter 1
+6/23/2026 6:40:19 PM Failed to read OBIS 1.0.33.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:40:19 PM Reading OBIS 1.0.51.7.0.255 (L2 Current) from Test Meter 1
+6/23/2026 6:40:20 PM Failed to read OBIS 1.0.51.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:40:20 PM Reading OBIS 1.0.52.7.0.255 (L2 Voltage) from Test Meter 1
+6/23/2026 6:40:21 PM Failed to read OBIS 1.0.52.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:40:21 PM Reading OBIS 1.0.53.7.0.255 (L2 Power Factor) from Test Meter 1
+6/23/2026 6:40:22 PM Failed to read OBIS 1.0.53.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:40:22 PM Reading OBIS 1.0.71.7.0.255 (L3 Current) from Test Meter 1
+6/23/2026 6:40:23 PM Failed to read OBIS 1.0.71.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:40:23 PM Reading OBIS 1.0.72.7.0.255 (L3 Voltage) from Test Meter 1
+6/23/2026 6:40:24 PM Failed to read OBIS 1.0.72.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:40:24 PM Reading OBIS 1.0.73.7.0.255 (L3 Power factor) from Test Meter 1
+6/23/2026 6:40:25 PM Failed to read OBIS 1.0.73.7.0.255 for Test Meter 1: Error: 11
+6/23/2026 6:41:01 PM Connecting to DLMS meter Test Meter 1 at 192.168.0.3:4059
+6/23/2026 6:41:02 PM Error while reading DLMS data of Test Meter 1. Error: ServiceError Read exception. Service Unsupported

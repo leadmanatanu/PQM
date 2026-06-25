@@ -1,8 +1,8 @@
-using PQM.Server.Models;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using PQM.Server.Models;
 using PQM.Core.IRepositories;
 using PQM.Core.Entities;
-using System.DirectoryServices.Protocols;
 using System.Net;
 
 namespace PQM.Server.Controllers
@@ -11,106 +11,116 @@ namespace PQM.Server.Controllers
     [Route("api/[controller]")]
     public class FTPController : ControllerBase
     {
-        public APIResponse _apiResponse;
         private readonly IFTPSettingService _ftpSettingService;
         private readonly ILogger<FTPController> _logger;
 
-        public FTPController(ILogger<FTPController> logger, IFTPSettingService ftpSettingService)
+        public FTPController(
+            ILogger<FTPController> logger,
+            IFTPSettingService ftpSettingService)
         {
-            _apiResponse = new APIResponse();
             _logger = logger;
             _ftpSettingService = ftpSettingService;
         }
 
-        [HttpGet(Name = "GetFTP")]
-        public ActionResult Get()
+        // -------------------- GET FTP SETTINGS --------------------
+        [HttpGet]
+        public IActionResult Get()
         {
-            var data = _ftpSettingService.GetFTPSetting();
-            _apiResponse.Status = true;
-            _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-            _apiResponse.Data = data;
-            return Ok(_apiResponse);
+            var response = new APIResponse
+            {
+                Status = true,
+                StatusCode = HttpStatusCode.OK,
+                Data = _ftpSettingService.GetFTPSetting()
+            };
+            return Ok(response);
         }
 
-        [HttpPut(Name = "AddUpdateFTP")]
-        public ActionResult Put([FromBody] FTPSetting ftpData)
+        // -------------------- ADD / UPDATE FTP --------------------
+        [HttpPut]
+        public IActionResult Put([FromBody] FTPSetting ftpData)
         {
-            if (!ValidateFtpData(ftpData))
+            var response = new APIResponse();
+
+            if (!ValidateFtpData(ftpData, response))
             {
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.NotAcceptable;
-                return Ok(_apiResponse);
+                response.StatusCode = HttpStatusCode.NotAcceptable;
+                return Ok(response);
             }
 
-            var result = _ftpSettingService.AddUpdateFTP(ftpData);
-            if (result)
+            if (_ftpSettingService.AddUpdateFTP(ftpData))
             {
-                _apiResponse.Status = true;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-                _apiResponse.Data = ftpData;
+                response.Status = true;
+                response.StatusCode = HttpStatusCode.OK;
+                response.Data = ftpData;
             }
             else
             {
-                _apiResponse.Status = false;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
-                _apiResponse.Data = null;
-                _apiResponse.Errors = new List<string> { "FTP not found." };
-                return Ok(_apiResponse);
+                response.Status = false;
+                response.StatusCode = HttpStatusCode.BadRequest;
+                response.Errors.Add("FTP not found.");
             }
-            return Ok(_apiResponse);
+
+            return Ok(response);
         }
 
+        // -------------------- FTP CONNECTION TEST --------------------
         [HttpGet("FTPConnectionTest")]
-        public ActionResult FTPConnectionTest([FromQuery] FTPSetting ftpData)
+        public IActionResult FTPConnectionTest([FromQuery] FTPSetting ftpData)
         {
+            var response = new APIResponse();
+
+            if (!ValidateFtpData(ftpData, response))
+            {
+                response.StatusCode = HttpStatusCode.NotAcceptable;
+                return Ok(response);
+            }
+
             try
             {
-                if (!ValidateFtpData(ftpData))
-                {
-                    _apiResponse.StatusCode = System.Net.HttpStatusCode.NotAcceptable;
-                    return Ok(_apiResponse);
-                }
-
-                FtpWebRequest request = (FtpWebRequest)WebRequest.Create(ftpData.FtpHost);
+#pragma warning disable SYSLIB0014 // Type or member is obsolete
+                var request = (FtpWebRequest)WebRequest.Create(new Uri(ftpData.FtpHost));
+#pragma warning restore SYSLIB0014 // Type or member is obsolete
                 request.Method = WebRequestMethods.Ftp.ListDirectory;
-                request.Credentials = new NetworkCredential(ftpData.UserName, ftpData.Password);
-                _apiResponse.Status = false;
-                using (FtpWebResponse response = (FtpWebResponse)request.GetResponse())
-                    _apiResponse.Status = true;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-                _apiResponse.Data = ftpData;
-                return Ok(_apiResponse);
+                request.Credentials = new NetworkCredential(
+                    ftpData.UserName,
+                    ftpData.Password
+                );
+                request.EnableSsl = false;
+                request.UsePassive = true;
+                request.UseBinary = true;
+                request.KeepAlive = false;
+
+                using var responseFtp = (FtpWebResponse)request.GetResponse();
+
+                response.Status = true;
+                response.StatusCode = HttpStatusCode.OK;
+                response.Data = "FTP connection successful";
             }
             catch (Exception ex)
             {
-                _apiResponse.Status = false;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.NotAcceptable;
-                _apiResponse.Data = null;
-                _apiResponse.Errors = new List<string> { ex.Message };
-                return Ok(_apiResponse);
+                _logger.LogError(ex, "FTP connection failed");
+
+                response.Status = false;
+                response.StatusCode = HttpStatusCode.NotAcceptable;
+                response.Errors.Add(ex.Message);
             }
+
+            return Ok(response);
         }
 
-        private bool ValidateFtpData(FTPSetting ftpData)
+        // -------------------- VALIDATION --------------------
+        private bool ValidateFtpData(FTPSetting ftpData, APIResponse response)
         {
-            bool isValidData = true;
-            _apiResponse.Errors = new List<string> { };
-            if (String.IsNullOrEmpty(ftpData.FtpHost))
-            {
-                _apiResponse.Errors.Add("Ftp Host is required.");
-                isValidData = false;
-            }
-            if (String.IsNullOrEmpty(ftpData.UserName))
-            {
-                _apiResponse.Errors.Add("User Name is required.");
-                isValidData = false;
-            }
-            if (String.IsNullOrEmpty(ftpData.Password))
-            {
-                _apiResponse.Errors.Add("Password is required.");
-                isValidData = false;
-            }
-            return isValidData;
-        }
+            if (string.IsNullOrWhiteSpace(ftpData.FtpHost))
+                response.Errors.Add("FTP Host is required.");
 
+            if (string.IsNullOrWhiteSpace(ftpData.UserName))
+                response.Errors.Add("User Name is required.");
+
+            if (string.IsNullOrWhiteSpace(ftpData.Password))
+                response.Errors.Add("Password is required.");
+
+            return !response.Errors.Any();
+        }
     }
 }
