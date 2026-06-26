@@ -365,6 +365,44 @@ namespace PQM.Server.Controllers
                         _logger.LogError(ex, "Failed to save to ProfileGeneric table in ReadParameter");
                     }
                 }
+                else if (string.Equals(param.ObjectType, "ActionSchedule", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        var asVal = new ActionSchedule
+                        {
+                            DeviceId = id,
+                            Name = param.Name ?? "",
+                            ObjectType = param.ObjectType,
+                            Value = value,
+                            DateEntered = DateTime.UtcNow
+                        };
+                        db.ActionSchedule.Add(asVal);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to save to ActionSchedule table in ReadParameter");
+                    }
+                }
+                else if (string.Equals(param.ObjectType, "ActivityCalendar", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        var acVal = new ActivityCalendar
+                        {
+                            DeviceId = id,
+                            Name = param.Name ?? "",
+                            ObjectType = param.ObjectType,
+                            Value = value,
+                            DateEntered = DateTime.UtcNow
+                        };
+                        db.ActivityCalendar.Add(acVal);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to save to ActivityCalendar table in ReadParameter");
+                    }
+                }
             }
 
             db.SaveChanges();
@@ -507,7 +545,7 @@ namespace PQM.Server.Controllers
                                     var hdlcVal = new IecHdlcSetup
                                     {
                                         DeviceId = id,
-                                        Name = dlmsObject.Name ?? "",
+                                        Name = param.Name ?? "",
                                         ObjectType = dlmsObject.ObjectType,
                                         Value = value,
                                         DateEntered = DateTime.UtcNow
@@ -526,7 +564,7 @@ namespace PQM.Server.Controllers
                                     var tcpVal = new TcpUdpSetup
                                     {
                                         DeviceId = id,
-                                        Name = dlmsObject.Name ?? "",
+                                        Name = param.Name ?? "",
                                         ObjectType = dlmsObject.ObjectType,
                                         Value = value,
                                         DateEntered = DateTime.UtcNow
@@ -545,7 +583,7 @@ namespace PQM.Server.Controllers
                                     var ipVal = new Ip4Setup
                                     {
                                         DeviceId = id,
-                                        Name = dlmsObject.Name ?? "",
+                                        Name = param.Name ?? "",
                                         ObjectType = dlmsObject.ObjectType,
                                         Value = value,
                                         DateEntered = DateTime.UtcNow
@@ -564,7 +602,7 @@ namespace PQM.Server.Controllers
                                     var macVal = new MacAddressSetup
                                     {
                                         DeviceId = id,
-                                        Name = dlmsObject.Name ?? "",
+                                        Name = param.Name ?? "",
                                         ObjectType = dlmsObject.ObjectType,
                                         Value = value,
                                         DateEntered = DateTime.UtcNow
@@ -583,7 +621,7 @@ namespace PQM.Server.Controllers
                                     var assocVal = new AssociationLogicalName
                                     {
                                         DeviceId = id,
-                                        Name = dlmsObject.Name ?? "",
+                                        Name = param.Name ?? "",
                                         ObjectType = dlmsObject.ObjectType,
                                         Value = value,
                                         DateEntered = DateTime.UtcNow
@@ -602,7 +640,7 @@ namespace PQM.Server.Controllers
                                     var clockVal = new Clock
                                     {
                                         DeviceId = id,
-                                        Name = dlmsObject.Name ?? "",
+                                        Name = param.Name ?? "",
                                         ObjectType = dlmsObject.ObjectType,
                                         Value = value,
                                         DateEntered = DateTime.UtcNow
@@ -621,7 +659,7 @@ namespace PQM.Server.Controllers
                                     var scriptVal = new ScriptTable
                                     {
                                         DeviceId = id,
-                                        Name = dlmsObject.Name ?? "",
+                                        Name = param.Name ?? "",
                                         ObjectType = dlmsObject.ObjectType,
                                         Value = value,
                                         DateEntered = DateTime.UtcNow
@@ -640,7 +678,7 @@ namespace PQM.Server.Controllers
                                     var pgVal = new ProfileGeneric
                                     {
                                         DeviceId = id,
-                                        Name = dlmsObject.Name ?? "",
+                                        Name = param.Name ?? "",
                                         ObjectType = dlmsObject.ObjectType,
                                         Value = value,
                                         DateEntered = DateTime.UtcNow
@@ -659,7 +697,7 @@ namespace PQM.Server.Controllers
                                     var asVal = new ActionSchedule
                                     {
                                         DeviceId = id,
-                                        Name = dlmsObject.Name ?? "",
+                                        Name = param.Name ?? "",
                                         ObjectType = dlmsObject.ObjectType,
                                         Value = value,
                                         DateEntered = DateTime.UtcNow
@@ -678,7 +716,7 @@ namespace PQM.Server.Controllers
                                     var acVal = new ActivityCalendar
                                     {
                                         DeviceId = id,
-                                        Name = dlmsObject.Name ?? "",
+                                        Name = param.Name ?? "",
                                         ObjectType = dlmsObject.ObjectType,
                                         Value = value,
                                         DateEntered = DateTime.UtcNow

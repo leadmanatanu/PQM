@@ -1,4 +1,4 @@
-﻿using PQM.Core.Entities;
+using PQM.Core.Entities;
 using PQM.Core.IRepositories;
 
 namespace PQM.Infrastructure.Repositories
@@ -14,7 +14,10 @@ namespace PQM.Infrastructure.Repositories
 
         public bool AddDeviceParameterMapping(List<DeviceParameterMapping> data)
         {
-            int deviceId = data.FirstOrDefault().DeviceId;
+            var firstItem = data.FirstOrDefault();
+            if (firstItem == null)
+                return false;
+            int deviceId = firstItem.DeviceId;
             data.ForEach(x => { x.DateStamp = DateTime.UtcNow; });
             using (var dbContext = new DataContext(this._connectionString))
             {

@@ -24,6 +24,185 @@ import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import TextField from '@mui/material/TextField';
+import Tabs from '@mui/material/Tabs';
+import Tab from '@mui/material/Tab';
+import Box from '@mui/material/Box';
+import Grid from '@mui/material/Grid';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Checkbox from '@mui/material/Checkbox';
+import Select from '@mui/material/Select';
+import MenuItem from '@mui/material/MenuItem';
+import FormControl from '@mui/material/FormControl';
+import InputLabel from '@mui/material/InputLabel';
+
+const CLOCK_ATTRIBUTES = [
+    { index: 1, name: 'Logical Name', type: 'OctetString' },
+    { index: 2, name: 'Time', type: 'OctetString' },
+    { index: 3, name: 'Time Zone', type: 'Int16' },
+    { index: 4, name: 'Status', type: 'UInt8' },
+    { index: 5, name: 'Begin', type: 'OctetString' },
+    { index: 6, name: 'End', type: 'OctetString' },
+    { index: 7, name: 'Deviation', type: 'Int8' },
+    { index: 8, name: 'Enabled', type: 'Boolean' },
+    { index: 9, name: 'Clock Base', type: 'Enum' },
+];
+
+const CLOCK_METHODS = [
+    { index: 1, name: 'Adjust to quarter' },
+    { index: 2, name: 'Adjust to measuring period' },
+    { index: 3, name: 'Adjust to minute' },
+    { index: 4, name: 'Adjust to preset time' },
+    { index: 5, name: 'Preset adjusting time' },
+    { index: 6, name: 'Shift time' },
+];
+
+const parseClockStatus = (statusVal: string | null | undefined) => {
+    if (!statusVal || statusVal === 'Waiting...' || statusVal === 'Scanning...') {
+        return {
+            invalidValue: false,
+            doubtfulValue: false,
+            differentClockBase: false,
+            invalidClockStatus: false,
+            daylightSavingActive: false
+        };
+    }
+    
+    const valLower = statusVal.toLowerCase();
+    
+    // If it's a number, parse as bitmask
+    const numVal = parseInt(statusVal, 10);
+    if (!isNaN(numVal)) {
+        return {
+            invalidValue: (numVal & 1) !== 0,
+            doubtfulValue: (numVal & 2) !== 0,
+            differentClockBase: (numVal & 4) !== 0,
+            invalidClockStatus: (numVal & 8) !== 0,
+            daylightSavingActive: (numVal & 128) !== 0
+        };
+    }
+    
+    // If it's a comma-separated enum string
+    return {
+        invalidValue: valLower.includes('invalidvalue'),
+        doubtfulValue: valLower.includes('doubtfulvalue'),
+        differentClockBase: valLower.includes('differentclockbase'),
+        invalidClockStatus: valLower.includes('invalidclockstatus'),
+        daylightSavingActive: valLower.includes('daylightsavingactive')
+    };
+};
+
+const getClockBaseDisplay = (baseVal: string | null | undefined) => {
+    if (!baseVal || baseVal === 'Waiting...' || baseVal === 'Scanning...') return baseVal || 'Waiting...';
+    const valLower = baseVal.toLowerCase();
+    if (valLower === '1' || valLower === 'crystal') return 'Crystal';
+    if (valLower === '2' || valLower === 'mainsfrequency' || valLower === 'mains frequency') return 'MainsFrequency';
+    if (valLower === '3' || valLower === 'gps') return 'GPS';
+    if (valLower === '4' || valLower === 'radio') return 'Radio';
+    return baseVal;
+};
+
+const METHOD_DESCRIPTIONS: Record<string, string[]> = {
+    'clock': [
+        'Adjust to quarter',
+        'Adjust to measuring period',
+        'Adjust to minute',
+        'Adjust to preset time',
+        'Preset adjusting time',
+        'Shift time'
+    ],
+    'scripttable': [
+        'Execute'
+    ],
+    'associationlogicalname': [
+        'Reply to connect',
+        'Disconnect',
+        'Update secret',
+        'Add object',
+        'Remove object'
+    ],
+    'activitycalendar': [
+        'Activate passive calendar'
+    ],
+    'profilegeneric': [
+        'Reset',
+        'Capture'
+    ],
+    'actionschedule': [
+        'Reset'
+    ],
+    'register': [
+        'Reset'
+    ],
+    'extendedregister': [
+        'Reset'
+    ],
+    'demandregister': [
+        'Reset'
+    ]
+};
+
+const ATTRIBUTE_TYPES: Record<string, string[]> = {
+    'clock': [
+        'OctetString', 'OctetString', 'Int16', 'UInt8', 'OctetString', 'OctetString', 'Int8', 'Boolean', 'Enum'
+    ],
+    'scripttable': [
+        'OctetString', 'Array'
+    ],
+    'actionschedule': [
+        'OctetString', 'UInt16', 'UInt8', 'OctetString', 'OctetString'
+    ],
+    'activitycalendar': [
+        'OctetString', 'OctetString', 'Array', 'Array', 'Array', 'OctetString'
+    ],
+    'associationlogicalname': [
+        'OctetString', 'Array', 'OctetString', 'Structure', 'Enum', 'OctetString'
+    ],
+    'iechdlcsetup': [
+        'OctetString', 'Enum', 'Enum', 'UInt8', 'UInt8', 'UInt16', 'UInt16', 'UInt32', 'UInt16'
+    ],
+    'lechdlcsetup': [
+        'OctetString', 'Enum', 'Enum', 'UInt8', 'UInt8', 'UInt16', 'UInt16', 'UInt32', 'UInt16'
+    ],
+    'tcpudpsetup': [
+        'OctetString', 'UInt16', 'OctetString'
+    ],
+    'ip4setup': [
+        'OctetString', 'OctetString', 'Array', 'OctetString', 'OctetString', 'UInt16'
+    ],
+    'macaddresssetup': [
+        'OctetString', 'OctetString'
+    ]
+};
+
+const getAttributeDescription = (obj: any, indexStr: string) => {
+    const idx = parseInt(indexStr, 10);
+    if (isNaN(idx)) return indexStr;
+    const attr = obj.allAttributes?.find((a: any) => (a.AttributeId || a.attributeId) === idx);
+    if (attr && attr.name) return attr.name;
+    return `Attribute ${idx}`;
+};
+
+const getMethodDescription = (objectType: string | null | undefined, indexStr: string) => {
+    const idx = parseInt(indexStr, 10);
+    if (isNaN(idx)) return indexStr;
+    const typeKey = (objectType || '').toLowerCase();
+    const list = METHOD_DESCRIPTIONS[typeKey];
+    if (list && idx >= 1 && idx <= list.length) {
+        return list[idx - 1];
+    }
+    return `Method ${idx}`;
+};
+
+const getAttributeType = (objectType: string | null | undefined, indexStr: string) => {
+    const idx = parseInt(indexStr, 10);
+    if (isNaN(idx)) return 'None';
+    const typeKey = (objectType || '').toLowerCase();
+    const list = ATTRIBUTE_TYPES[typeKey];
+    if (list && idx >= 1 && idx <= list.length) {
+        return list[idx - 1];
+    }
+    return 'None';
+};
 
 import { DeviceFilters } from '@/components/dashboard/mapping/device-selection';
 import { 
@@ -43,10 +222,20 @@ export default function Page(): React.JSX.Element {
     
     const [objects, setObjects] = useState<any[]>([]);
     const [selectedObjectId, setSelectedObjectId] = useState<string | number>('');
+    
+    const [activeTab, setActiveTab] = useState<number>(0);
+    const [associationObjectList, setAssociationObjectList] = useState<any[]>([]);
 
     const selectedHeader = headers.find((h: any) => h.id === selectedHeaderId);
     const isDataObjectType = selectedHeader?.name === 'Data' || selectedHeader?.name === 'iecHdlcSetup' || selectedHeader?.name === 'lecHdlcSetup' || selectedHeader?.name === 'TcpUdpSetup' || selectedHeader?.name === 'Ip4Setup' || selectedHeader?.name === 'MacAddressSetup' || selectedHeader?.name === 'AssociationLogicalName' || selectedHeader?.name === 'Clock' || selectedHeader?.name === 'ScriptTable' || selectedHeader?.name === 'ActionSchedule' || selectedHeader?.name === 'ActivityCalendar';
     const isExtendedRegisterType = selectedHeader?.name === 'ExtendedRegister';
+    
+    const isTableObjectType = selectedHeader && [
+        'data',
+        'register',
+        'profilegeneric',
+        'extendedregister'
+    ].includes(selectedHeader.name.toLowerCase());
 
     const [discoveredParams, setDiscoveredParams] = useState<any[]>([]);
     const [discovering, setDiscovering] = useState<boolean>(false);
@@ -185,12 +374,35 @@ export default function Page(): React.JSX.Element {
         setObjects([]);
         setSelectedObjectId('');
         setDiscoveredParams([]);
+        setAssociationObjectList([]);
         
         if (Number(id) > 0) {
             try {
                 const result = await fetchConnectedHeaders(id);
                 if (result && result.status) {
                     setHeaders(result.data);
+                    
+                    // Pre-fetch association object list if AssociationLogicalName is present
+                    const assocHeader = result.data.find((h: any) => h.name === 'AssociationLogicalName');
+                    if (assocHeader) {
+                        fetchDLMSObjects(assocHeader.id).then(objectsRes => {
+                            if (objectsRes && objectsRes.status) {
+                                const objListParam = objectsRes.data.find((o: any) => 
+                                    o.name?.toLowerCase().includes('object list')
+                                );
+                                if (objListParam && objListParam.attribute2) {
+                                    try {
+                                        const parsed = JSON.parse(objListParam.attribute2);
+                                        setAssociationObjectList(parsed);
+                                    } catch (e) {
+                                        console.error('Failed to parse association object list:', e);
+                                    }
+                                }
+                            }
+                        }).catch(err => {
+                            console.error('Failed to fetch DLMS objects for AssociationLogicalName:', err);
+                        });
+                    }
                     
                     // Auto-select "Register" header if present
                     const regHeader = result.data.find((h: any) => h.name === 'Register');
@@ -231,6 +443,16 @@ export default function Page(): React.JSX.Element {
                 // Check header name to filter for AssociationLogicalName parameters
                 const currentHeader = headers.find((h: any) => h.id === headerId);
                 if (currentHeader?.name === 'AssociationLogicalName') {
+                    const objListParam = mapped.find((p: any) => p.name?.toLowerCase().includes('object list'));
+                    if (objListParam && objListParam.value && objListParam.value.startsWith('[')) {
+                        try {
+                            const parsed = JSON.parse(objListParam.value);
+                            setAssociationObjectList(parsed);
+                        } catch (e) {
+                            console.error('Failed to parse association object list:', e);
+                        }
+                    }
+
                     const allowedSubstrings = [
                         'association status',
                         'object list',
@@ -309,6 +531,82 @@ export default function Page(): React.JSX.Element {
                     return next;
                 });
             }
+            const currentHeader = headers.find((h: any) => h.id === selectedHeaderId);
+            if (currentHeader?.name === 'AssociationLogicalName') {
+                setDiscoveredParams((currentParams) => {
+                    const objListParam = currentParams.find((p: any) => p.name?.toLowerCase().includes('object list'));
+                    if (objListParam && objListParam.value && objListParam.value.startsWith('[')) {
+                        try {
+                            const parsed = JSON.parse(objListParam.value);
+                            setAssociationObjectList(parsed);
+                        } catch (e) {}
+                    }
+                    return currentParams;
+                });
+            }
+            setDisplayMsg('Scan completed successfully.');
+        } catch (error) {
+            console.error('Scan error:', error);
+            setDisplayMsg('Failed to read parameters due to an unexpected error.');
+        } finally {
+            setDiscovering(false);
+            setOpenSnackbar(true);
+        }
+    };
+
+    const handleScanSingleObject = async (objectId: string | number) => {
+        if (!selectedDeviceId || !objectId) return;
+        setDiscovering(true);
+        try {
+            const idx = discoveredParams.findIndex(p => p.id === objectId);
+            if (idx === -1) return;
+
+            setDiscoveredParams((prev) => {
+                const next = [...prev];
+                next[idx] = { ...next[idx], value: 'Scanning...' };
+                return next;
+            });
+
+            const result = await readDLMSObject(selectedDeviceId, objectId);
+
+            setDiscoveredParams((prev) => {
+                const next = [...prev];
+                if (result && result.status && Array.isArray(result.data)) {
+                    const param = next[idx];
+                    const isRegister = param.objectType?.toLowerCase().includes('register');
+                    const isProfileGeneric = param.objectType?.toLowerCase() === 'profilegeneric';
+                    const isExtReg = param.objectType?.toLowerCase() === 'extendedregister';
+                    
+                    const valItem = (isRegister || isProfileGeneric)
+                        ? result.data.find((item: any) => item.attributeId === 2)
+                        : result.data[0];
+
+                    const unitItem = (isRegister || isProfileGeneric)
+                        ? result.data.find((item: any) => item.attributeId === 3)
+                        : null;
+
+                    const statusItem = isExtReg
+                        ? result.data.find((item: any) => item.attributeId === 4)
+                        : null;
+
+                    const captureItem = isExtReg
+                        ? result.data.find((item: any) => item.attributeId === 5)
+                        : null;
+
+                    next[idx] = {
+                        ...next[idx],
+                        value: valItem ? valItem.value : 'Error',
+                        attribute3: unitItem ? unitItem.value : next[idx].attribute3,
+                        attribute4: statusItem ? statusItem.value : next[idx].attribute4,
+                        attribute5: captureItem ? captureItem.value : next[idx].attribute5,
+                        allAttributes: result.data || []
+                    };
+                } else {
+                    next[idx] = { ...next[idx], value: 'Error' };
+                }
+                return next;
+            });
+
             setDisplayMsg('Scan completed successfully.');
         } catch (error) {
             console.error('Scan error:', error);
@@ -326,6 +624,516 @@ export default function Page(): React.JSX.Element {
         if (reason === 'clickaway') return;
         setOpenSnackbar(false);
     };
+
+    const renderAttributeValue = (attr: any, row: any) => {
+        if (!attr || attr.value === undefined) return 'N/A';
+        
+        const value = attr.value;
+        const name = row.name;
+        
+        const isJsonObjectList = name?.toLowerCase().includes('object list') && value?.startsWith('[') && value?.endsWith(']');
+        const isContextOrAuthJson = value?.startsWith('{') && value?.endsWith('}') && (
+            name?.toLowerCase().includes('context name') || 
+            name?.toLowerCase().includes('mechanism name')
+        );
+        const isProfileGenericBuffer = row.objectType?.toLowerCase() === 'profilegeneric' && value?.startsWith('[') && value?.endsWith(']');
+        const isActivityCalendar = row.objectType?.toLowerCase() === 'activitycalendar';
+
+        if (isJsonObjectList) {
+            try {
+                const list = JSON.parse(value);
+                return (
+                    <Button
+                        variant="outlined"
+                        size="small"
+                        color="primary"
+                        onClick={() => {
+                            setObjectListData(list);
+                            setObjectListTitle(name);
+                            setObjectListOpen(true);
+                            setSearchQuery('');
+                        }}
+                    >
+                        View Decoded List ({list.length} Objects)
+                    </Button>
+                );
+            } catch (e) {
+                return <span>{value}</span>;
+            }
+        }
+        
+        if (isProfileGenericBuffer) {
+            try {
+                const rows2 = JSON.parse(value);
+                return (
+                    <Button
+                        variant="outlined"
+                        size="small"
+                        color="secondary"
+                        onClick={() => handleOpenPgTable(value, name)}
+                    >
+                        View Table ({rows2.length} Rows)
+                    </Button>
+                );
+            } catch (e) {
+                return <span>{value}</span>;
+            }
+        }
+        
+        if (isActivityCalendar && attr.attributeId === 2) {
+            return (
+                <Stack direction="row" spacing={2} alignItems="center">
+                    <span>{value || 'N/A'}</span>
+                    <Button
+                        variant="outlined"
+                        size="small"
+                        color="success"
+                        onClick={() => {
+                            setCalendarData(row);
+                            setCalendarTitle(name);
+                            setCalendarDialogOpen(true);
+                        }}
+                    >
+                        View Calendar Config
+                    </Button>
+                </Stack>
+            );
+        }
+        
+        if (isContextOrAuthJson) {
+            return (
+                <Button
+                    variant="outlined"
+                    size="small"
+                    color="primary"
+                    onClick={() => handleOpenContextOrAuth(value, name)}
+                >
+                    View Details
+                </Button>
+            );
+        }
+        
+        if (value?.startsWith('Error')) {
+            return (
+                <span style={{ color: '#d32f2f', fontWeight: 'normal' }}>
+                    {value.replace('Error: ', '')}
+                </span>
+            );
+        }
+        
+        return <span>{value || 'N/A'}</span>;
+    };
+
+    const parseAccessRights = (accessStr: string) => {
+        if (!accessStr) return [];
+        const parts = accessStr.split(/[;]/);
+        return parts.map(part => {
+            const colonIndex = part.indexOf(':');
+            if (colonIndex > -1) {
+                return {
+                    name: part.substring(0, colonIndex).trim(),
+                    rights: part.substring(colonIndex + 1).trim()
+                };
+            }
+            return { name: part.trim(), rights: '' };
+        }).filter(p => p.name);
+    };
+
+    const renderGenericCustomForm = (obj: any) => {
+        if (!obj.allAttributes || obj.allAttributes.length === 0) {
+            return (
+                <Alert severity="info">
+                    No attribute values found. Please click 'Scan Object' to read data from the device.
+                </Alert>
+            );
+        }
+        
+        return (
+            <Stack spacing={3} sx={{ mt: 1 }}>
+                <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2, position: 'relative', pt: 3 }}>
+                    <Typography 
+                        variant="subtitle2" 
+                        sx={{ 
+                            position: 'absolute', 
+                            top: -12, 
+                            left: 10, 
+                            bgcolor: 'background.paper', 
+                            px: 1, 
+                            fontWeight: 'bold', 
+                            color: 'text.secondary' 
+                        }}
+                    >
+                        {(obj.objectType || 'Parameters')} Details
+                    </Typography>
+                    <Grid container spacing={2}>
+                        {obj.allAttributes.map((attr: any) => {
+                            const attrId = attr.AttributeId || attr.attributeId;
+                            const attrName = attr.Name || attr.name || `Attribute ${attrId}`;
+                            const attrValue = attr.value || 'Waiting...';
+                            return (
+                                <Grid size={{ xs: 12, md: attrId === 1 ? 12 : 6 }} key={attrId}>
+                                    {attrId === 2 && obj.objectType?.toLowerCase() === 'associationlogicalname' ? (
+                                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 'medium' }}>
+                                                {attrName}
+                                            </Typography>
+                                            {renderAttributeValue(attr, obj)}
+                                        </Box>
+                                    ) : (
+                                        <TextField
+                                            label={attrName}
+                                            value={attrValue}
+                                            size="small"
+                                            fullWidth
+                                            disabled
+                                        />
+                                    )}
+                                </Grid>
+                            );
+                        })}
+                    </Grid>
+                </Box>
+            </Stack>
+        );
+    };
+
+    const renderClockCustomForm = (obj: any) => {
+        const getVal = (attrId: number) => {
+            const attr = obj.allAttributes?.find((a: any) => (a.AttributeId || a.attributeId) === attrId);
+            return attr ? attr.value : 'Waiting...';
+        };
+
+        const timeVal = getVal(2);
+        const timeZoneVal = getVal(3);
+        const statusVal = getVal(4);
+        const beginVal = getVal(5);
+        const endVal = getVal(6);
+        const deviationVal = getVal(7);
+        const enabledVal = getVal(8);
+        const clockBaseVal = getVal(9);
+
+        const status = parseClockStatus(statusVal);
+        const isEnabled = enabledVal?.toLowerCase() === 'true' || enabledVal === '1' || enabledVal === 'Enabled';
+        const clockBaseDisplay = getClockBaseDisplay(clockBaseVal);
+
+        return (
+            <Stack spacing={3} sx={{ mt: 1 }}>
+                {/* Clock Object Section */}
+                <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2, position: 'relative', pt: 3 }}>
+                    <Typography 
+                        variant="subtitle2" 
+                        sx={{ 
+                            position: 'absolute', 
+                            top: -12, 
+                            left: 10, 
+                            bgcolor: 'background.paper', 
+                            px: 1, 
+                            fontWeight: 'bold', 
+                            color: 'text.secondary' 
+                        }}
+                    >
+                        Clock Object
+                    </Typography>
+                    <Grid container spacing={2}>
+                        <Grid size={{ xs: 12 }}>
+                            <TextField
+                                label="Logical Name"
+                                value={obj.obisCode || '0.0.1.0.0.255'}
+                                size="small"
+                                fullWidth
+                                disabled
+                            />
+                        </Grid>
+                        <Grid size={{ xs: 12, md: 8 }}>
+                            <TextField
+                                label="Time"
+                                value={timeVal}
+                                size="small"
+                                fullWidth
+                                disabled
+                            />
+                        </Grid>
+                        <Grid size={{ xs: 12, md: 4 }}>
+                            <Button variant="contained" disabled fullWidth sx={{ height: '40px' }}>
+                                Current time
+                            </Button>
+                        </Grid>
+                        <Grid size={{ xs: 12, md: 6 }}>
+                            <TextField
+                                label="Time Zone"
+                                value={timeZoneVal}
+                                size="small"
+                                fullWidth
+                                disabled
+                            />
+                        </Grid>
+                        <Grid size={{ xs: 12, md: 6 }} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <FormControlLabel
+                                control={<Checkbox disabled checked={false} size="small" />}
+                                label=""
+                                sx={{ mr: 0 }}
+                            />
+                            <Button variant="contained" disabled fullWidth sx={{ height: '40px' }}>
+                                Current time Zone
+                            </Button>
+                        </Grid>
+                        <Grid size={{ xs: 12 }}>
+                            <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'medium' }}>Status:</Typography>
+                            <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2, maxHeight: 180, overflowY: 'auto' }}>
+                                <Stack spacing={0.5}>
+                                    <FormControlLabel
+                                        control={<Checkbox checked={status.invalidValue} disabled size="small" />}
+                                        label="InvalidValue"
+                                    />
+                                    <FormControlLabel
+                                        control={<Checkbox checked={status.doubtfulValue} disabled size="small" />}
+                                        label="DoubtfulValue"
+                                    />
+                                    <FormControlLabel
+                                        control={<Checkbox checked={status.differentClockBase} disabled size="small" />}
+                                        label="DifferentClockBase"
+                                    />
+                                    <FormControlLabel
+                                        control={<Checkbox checked={status.invalidClockStatus} disabled size="small" />}
+                                        label="InvalidClockStatus"
+                                    />
+                                    <FormControlLabel
+                                        control={<Checkbox checked={status.daylightSavingActive} disabled size="small" />}
+                                        label="DaylightSavingActive"
+                                    />
+                                </Stack>
+                            </Box>
+                        </Grid>
+                    </Grid>
+                </Box>
+
+                {/* Daylight Savings Section */}
+                <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2, position: 'relative', pt: 3 }}>
+                    <Typography 
+                        variant="subtitle2" 
+                        sx={{ 
+                            position: 'absolute', 
+                            top: -12, 
+                            left: 10, 
+                            bgcolor: 'background.paper', 
+                            px: 1, 
+                            fontWeight: 'bold', 
+                            color: 'text.secondary' 
+                        }}
+                    >
+                        Daylight Savings
+                    </Typography>
+                    <Grid container spacing={2} alignItems="center">
+                        <Grid size={{ xs: 12, md: 4 }}>
+                            <FormControlLabel
+                                control={<Checkbox checked={isEnabled} disabled size="small" />}
+                                label="Enabled"
+                            />
+                        </Grid>
+                        <Grid size={{ xs: 12, md: 8 }}>
+                            <TextField
+                                label="Deviation"
+                                value={deviationVal}
+                                size="small"
+                                fullWidth
+                                disabled
+                            />
+                        </Grid>
+                        <Grid size={{ xs: 12, md: 6 }}>
+                            <TextField
+                                label="Begin"
+                                value={beginVal}
+                                size="small"
+                                fullWidth
+                                disabled
+                            />
+                        </Grid>
+                        <Grid size={{ xs: 12, md: 6 }}>
+                            <TextField
+                                label="End"
+                                value={endVal}
+                                size="small"
+                                fullWidth
+                                disabled
+                            />
+                        </Grid>
+                    </Grid>
+                </Box>
+
+                {/* Clock Base & Adjust to */}
+                <Grid container spacing={2}>
+                    <Grid size={{ xs: 12, md: 6 }}>
+                        <FormControl fullWidth size="small" disabled>
+                            <InputLabel id="clock-base-label">Clock Base</InputLabel>
+                            <Select
+                                labelId="clock-base-label"
+                                value={clockBaseDisplay === 'Waiting...' || clockBaseDisplay === 'Scanning...' ? '' : clockBaseDisplay}
+                                label="Clock Base"
+                            >
+                                <MenuItem value="Crystal">Crystal</MenuItem>
+                                <MenuItem value="MainsFrequency">MainsFrequency</MenuItem>
+                                <MenuItem value="GPS">GPS</MenuItem>
+                                <MenuItem value="Radio">Radio</MenuItem>
+                            </Select>
+                        </FormControl>
+                    </Grid>
+                </Grid>
+
+                <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2, position: 'relative', pt: 3 }}>
+                    <Typography 
+                        variant="subtitle2" 
+                        sx={{ 
+                            position: 'absolute', 
+                            top: -12, 
+                            left: 10, 
+                            bgcolor: 'background.paper', 
+                            px: 1, 
+                            fontWeight: 'bold', 
+                            color: 'text.secondary' 
+                        }}
+                    >
+                        Adjust to
+                    </Typography>
+                    <Grid container spacing={2}>
+                        <Grid size={{ xs: 6, md: 4 }}>
+                            <Button variant="contained" disabled fullWidth size="small">Quarter</Button>
+                        </Grid>
+                        <Grid size={{ xs: 6, md: 4 }}>
+                            <Button variant="contained" disabled fullWidth size="small">Measuring period</Button>
+                        </Grid>
+                        <Grid size={{ xs: 6, md: 4 }}>
+                            <Button variant="contained" disabled fullWidth size="small">Minute</Button>
+                        </Grid>
+                        <Grid size={{ xs: 6, md: 4 }}>
+                            <Button variant="contained" disabled fullWidth size="small">Preset time</Button>
+                        </Grid>
+                        <Grid size={{ xs: 6, md: 4 }}>
+                            <Button variant="contained" disabled fullWidth size="small">Preset Adjusting</Button>
+                        </Grid>
+                        <Grid size={{ xs: 6, md: 4 }}>
+                            <Button variant="contained" disabled fullWidth size="small">Shift Time...</Button>
+                        </Grid>
+                    </Grid>
+                </Box>
+            </Stack>
+        );
+    };
+
+    const renderClockLastErrors = (obj: any) => {
+        return (
+            <TableContainer component={Paper} variant="outlined">
+                <Table size="small">
+                    <TableHead>
+                        <TableRow>
+                            <TableCell sx={{ fontWeight: 'bold', width: '20%' }}>Attribute Index</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold', width: '40%' }}>Description</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold', width: '40%' }}>Last error</TableCell>
+                        </TableRow>
+                    </TableHead>
+                    <TableBody>
+                        {CLOCK_ATTRIBUTES.map((attr) => {
+                            const attrVal = obj.allAttributes?.find(
+                                (a: any) => (a.AttributeId || a.attributeId) === attr.index
+                            );
+                            const isError = attrVal?.value?.startsWith('Error');
+                            const errorMsg = isError ? attrVal.value.replace('Error: ', '') : '';
+                            return (
+                                <TableRow key={attr.index} hover>
+                                    <TableCell>{attr.index}</TableCell>
+                                    <TableCell>{attr.name}</TableCell>
+                                    <TableCell sx={{ color: isError ? '#d32f2f' : 'text.secondary' }}>
+                                        {errorMsg}
+                                    </TableCell>
+                                </TableRow>
+                            );
+                        })}
+                    </TableBody>
+                </Table>
+            </TableContainer>
+        );
+    };
+
+    const renderClockAccessRights = (obj: any) => {
+        const assocObj = associationObjectList.find((item: any) => 
+            item.LogicalName === obj.obisCode
+        );
+        
+        const rights = assocObj ? parseAccessRights(assocObj.AttributeAccess) : [];
+
+        return (
+            <TableContainer component={Paper} variant="outlined">
+                <Table size="small">
+                    <TableHead>
+                        <TableRow>
+                            <TableCell sx={{ fontWeight: 'bold' }}>Attribute Index</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold' }}>Description</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold' }}>Access</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold' }}>Access Selector</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>Static</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold' }}>Type</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold' }}>UIType</TableCell>
+                        </TableRow>
+                    </TableHead>
+                    <TableBody>
+                        {CLOCK_ATTRIBUTES.map((attr) => {
+                            const rightItem = rights.find(r => r.name === attr.index.toString());
+                            const accessRight = rightItem ? rightItem.rights : 'None';
+                            return (
+                                <TableRow key={attr.index} hover>
+                                    <TableCell>{attr.index}</TableCell>
+                                    <TableCell>{attr.name}</TableCell>
+                                    <TableCell>{accessRight}</TableCell>
+                                    <TableCell></TableCell>
+                                    <TableCell align="center">
+                                        <Checkbox size="small" disabled checked={false} />
+                                    </TableCell>
+                                    <TableCell sx={{ color: 'text.secondary' }}>{attr.type}</TableCell>
+                                    <TableCell sx={{ color: 'text.secondary' }}>None</TableCell>
+                                </TableRow>
+                            );
+                        })}
+                    </TableBody>
+                </Table>
+            </TableContainer>
+        );
+    };
+
+    const renderClockMethodAccessRights = (obj: any) => {
+        const assocObj = associationObjectList.find((item: any) => 
+            item.LogicalName === obj.obisCode
+        );
+        
+        const rights = assocObj ? parseAccessRights(assocObj.MethodAccess) : [];
+
+        return (
+            <TableContainer component={Paper} variant="outlined">
+                <Table size="small">
+                    <TableHead>
+                        <TableRow>
+                            <TableCell sx={{ fontWeight: 'bold', width: '20%' }}>Attribute Index</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold', width: '50%' }}>Description</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold', width: '30%' }}>Method access</TableCell>
+                        </TableRow>
+                    </TableHead>
+                    <TableBody>
+                        {CLOCK_METHODS.map((method) => {
+                            const rightItem = rights.find(r => r.name === method.index.toString());
+                            const methodAccess = rightItem ? rightItem.rights : 'NoAccess';
+                            return (
+                                <TableRow key={method.index} hover>
+                                    <TableCell>{method.index}</TableCell>
+                                    <TableCell>{method.name}</TableCell>
+                                    <TableCell>{methodAccess}</TableCell>
+                                </TableRow>
+                            );
+                        })}
+                    </TableBody>
+                </Table>
+            </TableContainer>
+        );
+    };
+
+    const selectedObj = discoveredParams.find(p => p.id === selectedObjectId);
 
     return (
         <Stack spacing={3}>
@@ -357,7 +1165,7 @@ export default function Page(): React.JSX.Element {
                 </Stack>
             )}
 
-            {discoveredParams.length > 0 && (
+            {isTableObjectType && discoveredParams.length > 0 && (
                 <Card>
                     <CardHeader title="Discovered Meter Parameters (Current Values)" />
                     <Divider />
@@ -482,6 +1290,292 @@ export default function Page(): React.JSX.Element {
                                 </TableBody>
                             </Table>
                         </TableContainer>
+                    </CardContent>
+                </Card>
+            )}
+
+            {!isTableObjectType && discoveredParams.length > 0 && (
+                <Card>
+                    <CardHeader 
+                        title={`${selectedHeader?.name || 'Object'} Configuration & Details`} 
+                        subheader={selectedObj ? `Viewing details for: ${selectedObj.name}` : `Select an object from the dropdown or list below to view its details.`}
+                    />
+                    <Divider />
+                    <CardContent>
+                        {selectedObj ? (
+                            <Stack spacing={3}>
+                                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                    <Button 
+                                        variant="outlined" 
+                                        color="primary"
+                                        onClick={() => setSelectedObjectId('')}
+                                    >
+                                        ← Back to Object List
+                                    </Button>
+                                    <Stack direction="row" spacing={2} alignItems="center">
+                                        <Button
+                                            variant="contained"
+                                            color="secondary"
+                                            onClick={() => handleScanSingleObject(selectedObj.id)}
+                                            disabled={discovering}
+                                            size="small"
+                                        >
+                                            {discovering ? 'Scanning...' : 'Scan Object'}
+                                        </Button>
+                                        <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                                            OBIS: {selectedObj.obisCode}
+                                        </Typography>
+                                    </Stack>
+                                </Stack>
+
+                                <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+                                    <Tabs 
+                                        value={activeTab} 
+                                        onChange={(e, newValue) => setActiveTab(newValue)} 
+                                        aria-label="object details tabs"
+                                    >
+                                        <Tab label="Data" />
+                                        <Tab label="Last Errors" />
+                                        <Tab label="Access Rights" />
+                                        <Tab label="Method Access Rights" />
+                                    </Tabs>
+                                </Box>
+
+                                {/* Tab 0: Data */}
+                                {activeTab === 0 && (
+                                    <Box sx={{ py: 2 }}>
+                                        {selectedHeader?.name === 'Clock' ? (
+                                            renderClockCustomForm(selectedObj)
+                                        ) : (
+                                            renderGenericCustomForm(selectedObj)
+                                        )}
+                                    </Box>
+                                )}
+
+                                {/* Tab 1: Last Errors */}
+                                {activeTab === 1 && (
+                                    <Box sx={{ py: 2 }}>
+                                        {selectedHeader?.name === 'Clock' ? (
+                                            renderClockLastErrors(selectedObj)
+                                        ) : (() => {
+                                            const errors = (selectedObj.allAttributes || []).filter((attr: any) => 
+                                                attr.value?.startsWith('Error') || 
+                                                attr.value?.toLowerCase().includes('fail')
+                                            );
+                                            
+                                            if (errors.length > 0) {
+                                                return (
+                                                    <Stack spacing={2}>
+                                                        <Alert severity="error">
+                                                            Found {errors.length} error(s) during the last scan of this object.
+                                                        </Alert>
+                                                        <TableContainer component={Paper} variant="outlined">
+                                                            <Table size="small">
+                                                                <TableHead>
+                                                                    <TableRow>
+                                                                        <TableCell sx={{ fontWeight: 'bold', width: '20%' }}>Attribute Index</TableCell>
+                                                                        <TableCell sx={{ fontWeight: 'bold', width: '40%' }}>Description</TableCell>
+                                                                        <TableCell sx={{ fontWeight: 'bold', width: '40%' }}>Last error</TableCell>
+                                                                    </TableRow>
+                                                                </TableHead>
+                                                                <TableBody>
+                                                                    {errors.map((err: any) => (
+                                                                        <TableRow key={err.AttributeId || err.attributeId}>
+                                                                            <TableCell>{err.AttributeId || err.attributeId}</TableCell>
+                                                                            <TableCell>{err.Name || err.name || 'N/A'}</TableCell>
+                                                                            <TableCell sx={{ color: '#d32f2f' }}>
+                                                                                {err.value}
+                                                                            </TableCell>
+                                                                        </TableRow>
+                                                                    ))}
+                                                                </TableBody>
+                                                            </Table>
+                                                        </TableContainer>
+                                                    </Stack>
+                                                );
+                                            }
+                                            
+                                            const hasScanned = (selectedObj.allAttributes || []).some((attr: any) => 
+                                                attr.value && attr.value !== 'Waiting...' && attr.value !== 'Scanning...'
+                                            );
+                                            
+                                            if (!hasScanned) {
+                                                return (
+                                                    <Alert severity="info">
+                                                        No scan has been performed yet. Click 'Scan Object' or 'Scan & Discover Meter Parameters' to read parameter values.
+                                                    </Alert>
+                                                );
+                                            }
+
+                                            return (
+                                                <Alert severity="success">
+                                                    All attributes were read successfully without any errors!
+                                                </Alert>
+                                            );
+                                        })()}
+                                    </Box>
+                                )}
+
+                                {/* Tab 2: Access Rights */}
+                                {activeTab === 2 && (
+                                    <Box sx={{ py: 2 }}>
+                                        {selectedHeader?.name === 'Clock' ? (
+                                            renderClockAccessRights(selectedObj)
+                                        ) : (() => {
+                                            const assocObj = associationObjectList.find((item: any) => 
+                                                item.LogicalName === selectedObj.obisCode
+                                            );
+                                            
+                                            if (!assocObj) {
+                                                return (
+                                                    <Alert severity="warning">
+                                                        Access rights mapping not found for OBIS Code: {selectedObj.obisCode}. 
+                                                        Please make sure to select and scan the <strong>AssociationLogicalName</strong> object list first.
+                                                    </Alert>
+                                                );
+                                            }
+                                            
+                                            const rights = parseAccessRights(assocObj.AttributeAccess);
+                                            if (rights.length === 0) {
+                                                return (
+                                                    <Alert severity="info">
+                                                        No attribute access rights defined or available. Raw value: {assocObj.AttributeAccess || 'None'}
+                                                    </Alert>
+                                                );
+                                            }
+
+                                            return (
+                                                <TableContainer component={Paper} variant="outlined">
+                                                    <Table size="small">
+                                                        <TableHead>
+                                                            <TableRow>
+                                                                <TableCell sx={{ fontWeight: 'bold' }}>Attribute Index</TableCell>
+                                                                <TableCell sx={{ fontWeight: 'bold' }}>Description</TableCell>
+                                                                <TableCell sx={{ fontWeight: 'bold' }}>Access</TableCell>
+                                                                <TableCell sx={{ fontWeight: 'bold' }}>Access Selector</TableCell>
+                                                                <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>Static</TableCell>
+                                                                <TableCell sx={{ fontWeight: 'bold' }}>Type</TableCell>
+                                                                <TableCell sx={{ fontWeight: 'bold' }}>UIType</TableCell>
+                                                            </TableRow>
+                                                        </TableHead>
+                                                        <TableBody>
+                                                            {rights.map((r, ri) => {
+                                                                const desc = getAttributeDescription(selectedObj, r.name);
+                                                                const type = getAttributeType(selectedObj.objectType, r.name);
+                                                                return (
+                                                                    <TableRow key={ri} hover>
+                                                                        <TableCell>{r.name}</TableCell>
+                                                                        <TableCell>{desc}</TableCell>
+                                                                        <TableCell>{r.rights}</TableCell>
+                                                                        <TableCell></TableCell>
+                                                                        <TableCell align="center">
+                                                                            <Checkbox size="small" disabled checked={false} />
+                                                                        </TableCell>
+                                                                        <TableCell sx={{ color: 'text.secondary' }}>{type}</TableCell>
+                                                                        <TableCell sx={{ color: 'text.secondary' }}>None</TableCell>
+                                                                    </TableRow>
+                                                                );
+                                                            })}
+                                                        </TableBody>
+                                                    </Table>
+                                                </TableContainer>
+                                            );
+                                        })()}
+                                    </Box>
+                                )}
+
+                                {/* Tab 3: Method Access Rights */}
+                                {activeTab === 3 && (
+                                    <Box sx={{ py: 2 }}>
+                                        {selectedHeader?.name === 'Clock' ? (
+                                            renderClockMethodAccessRights(selectedObj)
+                                        ) : (() => {
+                                            const assocObj = associationObjectList.find((item: any) => 
+                                                item.LogicalName === selectedObj.obisCode
+                                            );
+                                            
+                                            if (!assocObj) {
+                                                return (
+                                                    <Alert severity="warning">
+                                                        Method access rights mapping not found for OBIS Code: {selectedObj.obisCode}. 
+                                                        Please make sure to select and scan the <strong>AssociationLogicalName</strong> object list first.
+                                                    </Alert>
+                                                );
+                                            }
+                                            
+                                            const rights = parseAccessRights(assocObj.MethodAccess);
+                                            if (rights.length === 0) {
+                                                return (
+                                                    <Alert severity="info">
+                                                        No method access rights defined or available. Raw value: {assocObj.MethodAccess || 'None'}
+                                                    </Alert>
+                                                );
+                                            }
+
+                                            return (
+                                                <TableContainer component={Paper} variant="outlined">
+                                                    <Table size="small">
+                                                        <TableHead>
+                                                            <TableRow>
+                                                                <TableCell sx={{ fontWeight: 'bold', width: '20%' }}>Attribute Index</TableCell>
+                                                                <TableCell sx={{ fontWeight: 'bold', width: '50%' }}>Description</TableCell>
+                                                                <TableCell sx={{ fontWeight: 'bold', width: '30%' }}>Method access</TableCell>
+                                                            </TableRow>
+                                                        </TableHead>
+                                                        <TableBody>
+                                                            {rights.map((r, ri) => {
+                                                                const desc = getMethodDescription(selectedObj.objectType, r.name);
+                                                                return (
+                                                                    <TableRow key={ri} hover>
+                                                                        <TableCell>{r.name}</TableCell>
+                                                                        <TableCell>{desc}</TableCell>
+                                                                        <TableCell>{r.rights}</TableCell>
+                                                                    </TableRow>
+                                                                );
+                                                            })}
+                                                        </TableBody>
+                                                    </Table>
+                                                </TableContainer>
+                                            );
+                                        })()}
+                                    </Box>
+                                )}
+                            </Stack>
+                        ) : (
+                            <TableContainer component={Paper} sx={{ boxShadow: 'none' }}>
+                                <Table stickyHeader aria-label="objects summary table">
+                                    <TableHead>
+                                        <TableRow>
+                                            <TableCell sx={{ fontWeight: 'bold' }}>OBIS Code</TableCell>
+                                            <TableCell sx={{ fontWeight: 'bold' }}>Object Name</TableCell>
+                                            <TableCell sx={{ fontWeight: 'bold' }}>Object Type</TableCell>
+                                            <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>Action</TableCell>
+                                        </TableRow>
+                                    </TableHead>
+                                    <TableBody>
+                                        {discoveredParams.map((row, idx) => (
+                                            <TableRow key={idx} hover>
+                                                <TableCell sx={{ fontFamily: 'monospace' }}>{row.obisCode}</TableCell>
+                                                <TableCell>{row.name}</TableCell>
+                                                <TableCell>{row.objectType}</TableCell>
+                                                <TableCell sx={{ textAlign: 'center' }}>
+                                                    <Button 
+                                                        variant="contained" 
+                                                        size="small" 
+                                                        onClick={() => {
+                                                            setSelectedObjectId(row.id);
+                                                            setActiveTab(0);
+                                                        }}
+                                                    >
+                                                        View Details
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </TableContainer>
+                        )}
                     </CardContent>
                 </Card>
             )}

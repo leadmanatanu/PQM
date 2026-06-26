@@ -1,4 +1,4 @@
-﻿using EFCore.BulkExtensions;
+using EFCore.BulkExtensions;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using PQM.Core.Entities;
@@ -40,7 +40,7 @@ namespace PQM.Infrastructure.Repositories
             return true;
         }
 
-        public FTPSetting GetFTPSetting()
+        public FTPSetting? GetFTPSetting()
         {
             DataContext dbContext = new DataContext(this._connectionString);
             return dbContext.FTPSetting.OrderByDescending(x => x.Id).FirstOrDefault();

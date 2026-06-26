@@ -22,7 +22,7 @@ var config = new ConfigurationBuilder()
         .AddJsonFile("appsettings.json", optional: false)
         .Build();
 
-var host = CreateHostBuilder(args, config.GetSection("ConnectionString").Value).Build();
+var host = CreateHostBuilder(args, config.GetSection("ConnectionString").Value ?? string.Empty).Build();
 
 static IHostBuilder CreateHostBuilder(string[] args, string strDbConnection) =>
     Host.CreateDefaultBuilder(args)
@@ -36,19 +36,19 @@ static IHostBuilder CreateHostBuilder(string[] args, string strDbConnection) =>
 
 
 // Get the service from DI
-var csvService = host.Services.GetService<ICSVService>();
-var ftpService = host.Services.GetService<ISFTPService>();
-var deviceService = host.Services.GetService<IDeviceService>();
-var deviceParamService = host.Services.GetService<IDeviceParameterService>();
-var deviceLogService = host.Services.GetService<IDeviceLogService>();
-var ftpSettingService = host.Services.GetService<IFTPSettingService>();
+var csvService = host.Services.GetRequiredService<ICSVService>();
+var ftpService = host.Services.GetRequiredService<ISFTPService>();
+var deviceService = host.Services.GetRequiredService<IDeviceService>();
+var deviceParamService = host.Services.GetRequiredService<IDeviceParameterService>();
+var deviceLogService = host.Services.GetRequiredService<IDeviceLogService>();
+var ftpSettingService = host.Services.GetRequiredService<IFTPSettingService>();
 
 
 //string url = config["FtpSetting:URL"];
 //string user = config["FtpSetting:User"];
 //string password = config["FtpSetting:Password"];
-string localFolder = config["FtpSetting:LocalFolder"];
-string errorLogPath = config["ErrorLog:Path"];
+string localFolder = config["FtpSetting:LocalFolder"] ?? string.Empty;
+string errorLogPath = config["ErrorLog:Path"] ?? string.Empty;
 bool logEnabled = Convert.ToBoolean(config["ErrorLog:LogEnabled"]);
 
 if (!Directory.Exists(errorLogPath))
@@ -101,142 +101,7 @@ Enum.TryParse<Standard>(standardStr, true, out var standard);
 // Only execute DLMS Reading, as requested
 ReadDLMSData(deviceService, deviceParamService, deviceLogService, errorLogPath, logEnabled, lstDevices, clientAddress, serverAddress, authentication, dlmsPassword, useLogicalNameReferencing, standard);
 
-static void ReadLogs(ICSVService? csvService, ISFTPService? ftpService, IDeviceService? deviceService, IDeviceParameterService? deviceParamService, IDeviceLogService? deviceLogService, string localFolder, string errorLogPath, bool logEnabled, string url, string user, string password, List<Device> lstDevices)
-{
-    foreach (var item in lstDevices)
-    {
-        try
-        {
-            string deviceLocalFolder = $"{localFolder.TrimEnd('/')}/{item.FtpFolder.Trim('/')}/";
-            if (!System.IO.Directory.Exists(deviceLocalFolder))
-                System.IO.Directory.CreateDirectory(deviceLocalFolder);
-            var mappedParatmeter = deviceParamService.GetDeviceParameterMapping(item.Id).Select(x => x.ParameterId.ToString()).ToList();
-            if (mappedParatmeter.Count <= 0) // TODO discuss => do we need to download files if parameter mapping does not exist for meter
-            {
-                if (logEnabled)
-                    ErrorLog.LogErrorMessage("No parameter mapping exist for device " + item.Name, errorLogPath);
-                continue;
-            }
-            if (String.IsNullOrEmpty(item.FtpFolder))
-            {
-                ErrorLog.LogErrorMessage("Ftp Folder name is empty for device " + item.Name, errorLogPath);
-                continue;
-            }
 
-            // download files from ftp
-            List<string> lstFtpFiles = ftpService.GetFiles(url, user, password, item.FtpFolder, deviceLocalFolder);
-            if (logEnabled)
-                ErrorLog.LogErrorMessage("Total files downloaded for " + item.Name + " =>" + lstFtpFiles.Count, errorLogPath);
-
-            // Read and add files in database
-            foreach (string file in lstFtpFiles)
-            {
-                if (logEnabled)
-                    ErrorLog.LogErrorMessage("Reading file of " + item.Name + " =>" + file, errorLogPath);
-                string filePath = deviceLocalFolder + file;
-                if (System.IO.File.Exists(filePath))
-                {
-                    List<DeviceLog> lstDeviceLogs = csvService.ReadCSVData(item.Id, filePath, mappedParatmeter);
-                    if (lstDeviceLogs.Count > 0)
-                    {
-                        var data = deviceLogService.AddBulkDeviceLogs(lstDeviceLogs);
-                        if (data)
-                        {
-                            // update last date in device table
-                            deviceService.UpdateLastSync(item.Id, lstDeviceLogs.LastOrDefault().DateStamp);
-                        }
-                        else
-                        {
-                            ErrorLog.LogErrorMessage("Adding logs fails for device " + item.Name + " and file => " + filePath, errorLogPath);
-                        }
-                    }
-                }
-                else
-                {
-                    ErrorLog.LogErrorMessage("File does not exist => " + filePath, errorLogPath);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            ErrorLog.LogErrorMessage("Error while reading data of " + item.Name + ". Error " + ex.Message, errorLogPath);
-        }
-    }
-}
-
-static void ReadEvents(ICSVService? csvService, ISFTPService? ftpService, IDeviceService? deviceService, IDeviceParameterService? deviceParamService, IDeviceLogService? deviceLogService, string localFolder, string errorLogPath, bool logEnabled, string url, string user, string password, List<Device> lstDevices)
-{
-    foreach (var item in lstDevices)
-    {
-        try
-        {
-            string eventFolder = item.FtpFolder + "/" + "Events";
-            string deviceLocalFolder = $"{localFolder.TrimEnd('/')}/{item.FtpFolder.Trim('/')}/";
-            if (!System.IO.Directory.Exists(deviceLocalFolder))
-                System.IO.Directory.CreateDirectory(deviceLocalFolder);
-            string eventLocalFolder = deviceLocalFolder + "Events/";
-            if (!System.IO.Directory.Exists(eventLocalFolder))
-                System.IO.Directory.CreateDirectory(eventLocalFolder);
-
-            // download files from ftp
-            List<string> lstFtpFiles = ftpService.GetFiles(url, user, password, eventFolder, eventLocalFolder);
-            //eventLocalFolder = @"D:\Projects\Compac\Documents\";
-            //List<string> lstFtpFiles = new List<string>();
-            //lstFtpFiles.Add("dip_event_log_2025-08-07_22.csv");
-            //lstFtpFiles.Add("interrupt_event_log_2025-08-07_22.csv");
-            //lstFtpFiles.Add("rvc_event_log_2025-08-07_22.csv");
-            //lstFtpFiles.Add("swell_event_log_2025-08-07_22.csv");
-            //lstFtpFiles.Add("long_flicker_event_log_2025-08-22_22.csv");
-            //lstFtpFiles.Add("short_flicker_event_log_2025-08-22_22.csv");
-
-            if (logEnabled)
-                ErrorLog.LogErrorMessage("Total Event files downloaded for " + item.Name + " =>" + lstFtpFiles.Count, errorLogPath);
-
-            // Read and add files in database
-            foreach (string file in lstFtpFiles)
-            {
-                string eventType = Path.GetFileName(file).Split('_')[0];
-                eventType = eventType.ToLower() switch
-                {
-                    "short" => "shortflicker",
-                    "long" => "longflicker",
-                    _ => eventType
-                };
-
-                bool exists = Enum.IsDefined(typeof(EventType), eventType?.ToLower());
-                if (!exists)
-                {
-                    ErrorLog.LogErrorMessage("Event file doesn't exist " + item.Name + " and file => " + file, errorLogPath);
-                    continue;
-                }
-
-                if (logEnabled)
-                    ErrorLog.LogErrorMessage("Reading event file of " + item.Name + " =>" + file, errorLogPath);
-                string filePath = eventLocalFolder + file;
-                if (System.IO.File.Exists(filePath))
-                {
-                    List<EventLog> lstDeviceEventLogs = csvService.ReadEventLog(item.Id, eventType.ToLower(), filePath);
-                    if (lstDeviceEventLogs.Count > 0)
-                    {
-                        var data = deviceLogService.AddDeviceEventLogs(lstDeviceEventLogs);
-                        if (!data)
-                        {
-                            ErrorLog.LogErrorMessage("Adding event logs fails for device " + item.Name + " and file => " + filePath, errorLogPath);
-                        }
-                    }
-                }
-                else
-                {
-                    ErrorLog.LogErrorMessage("Event file does not exist => " + filePath, errorLogPath);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            ErrorLog.LogErrorMessage("Error while reading event data of " + item.Name + ". Error " + ex.Message, errorLogPath);
-        }
-    }
-}
 
 static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService? deviceParamService, IDeviceLogService? deviceLogService, string errorLogPath, bool logEnabled, List<Device> lstDevices, int clientAddress, int serverAddress, Authentication authentication, string password, bool useLogicalNameReferencing, Standard standard)
 {

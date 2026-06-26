@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -12,7 +12,7 @@ namespace PQM.Core.Entities
     {
         [Key]
         public long Id { get; set; }
-        public string EventType { get; set; }
+        public required string EventType { get; set; }
         public int DeviceId { get; set; }
         public DateTime CreatedDate { get; set; }
         public DateTime? Start_Time { get; set; }
@@ -78,7 +78,7 @@ namespace PQM.Core.Entities
     public class EventLogSearchResult
     {
         public int TotalCount { get; set; }
-        public List<EventLog> EventLogSearch { get; set; }
+        public required List<EventLog> EventLogSearch { get; set; }
     }
 
     public class FlickerEvent : IBaseEvent

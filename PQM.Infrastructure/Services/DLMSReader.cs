@@ -13,10 +13,10 @@ namespace PQM.Infrastructure.Services
 {
     public class DiscoveredParameter
     {
-        public string Name { get; set; }
-        public string ObisCode { get; set; }
-        public string ObjectType { get; set; }
-        public string Value { get; set; }
+        public required string Name { get; set; }
+        public required string ObisCode { get; set; }
+        public required string ObjectType { get; set; }
+        public required string Value { get; set; }
     }
 
     public class DLMSReader : IDisposable
@@ -88,7 +88,7 @@ namespace PQM.Infrastructure.Services
         {
             try
             {
-                GXDLMSObject obj = null;
+                GXDLMSObject? obj = null;
 
                 // Try to find the object in the association view by Logical Name (OBIS) only
                 if (_client.Objects != null)
@@ -814,7 +814,7 @@ namespace PQM.Infrastructure.Services
             return reply.Error == 0;
         }
 
-        public void ReadDataBlock(byte[] data, GXReplyData reply)
+        public void ReadDataBlock(byte[]? data, GXReplyData reply)
         {
             ReadDLMSPacket(data, reply);
             lock (_media.Synchronous)
@@ -836,7 +836,7 @@ namespace PQM.Infrastructure.Services
             }
         }
 
-        public void ReadDLMSPacket(byte[] data, GXReplyData reply)
+        public void ReadDLMSPacket(byte[]? data, GXReplyData reply)
         {
             if (data == null && !reply.IsStreaming())
             {
@@ -844,7 +844,7 @@ namespace PQM.Infrastructure.Services
             }
             GXReplyData notify = new GXReplyData();
             reply.Error = 0;
-            object eop = (byte)0x7E;
+            object? eop = (byte)0x7E;
             
             if (_client.InterfaceType != InterfaceType.HDLC &&
                 _client.InterfaceType != InterfaceType.HdlcWithModeE)
@@ -867,8 +867,11 @@ namespace PQM.Infrastructure.Services
                 {
                     if (!reply.IsStreaming())
                     {
-                        p.Reply = null;
-                        _media.Send(data, null);
+                        p.Reply = null!;
+                        if (data != null)
+                        {
+                            _media.Send(data, null);
+                        }
                     }
                     succeeded = _media.Receive(p);
                     if (!succeeded)
@@ -884,39 +887,35 @@ namespace PQM.Infrastructure.Services
                     }
                 }
                 rd = new GXByteBuffer(p.Reply);
-                try
+                pos = 0;
+                while (!_client.GetData(rd, reply, notify))
                 {
-                    pos = 0;
-                    while (!_client.GetData(rd, reply, notify))
+                    p.Reply = null!;
+                    if (notify.IsComplete && notify.Data.Data != null)
                     {
-                        p.Reply = null;
-                        if (notify.IsComplete && notify.Data.Data != null)
+                        if (!notify.IsMoreData)
                         {
-                            if (!notify.IsMoreData)
-                            {
-                                notify.Clear();
-                                continue;
-                            }
+                            notify.Clear();
+                            continue;
                         }
-                        if (p.Eop == null)
+                    }
+                    if (p.Eop == null)
+                    {
+                        p.Count = _client.GetFrameSize(rd);
+                    }
+                    while (!_media.Receive(p))
+                    {
+                        if (++pos >= RetryCount)
                         {
-                            p.Count = _client.GetFrameSize(rd);
+                            throw new Exception("Failed to receive reply from the device in given time.");
                         }
-                        while (!_media.Receive(p))
+                        p.Reply = null!;
+                        if (data != null)
                         {
-                            if (++pos >= RetryCount)
-                            {
-                                throw new Exception("Failed to receive reply from the device in given time.");
-                            }
-                            p.Reply = null;
                             _media.Send(data, null);
                         }
-                        rd.Set(p.Reply);
                     }
-                }
-                catch (Exception ex)
-                {
-                    throw ex;
+                    rd.Set(p.Reply);
                 }
             }
         }

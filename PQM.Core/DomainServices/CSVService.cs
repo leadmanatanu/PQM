@@ -1,4 +1,4 @@
-﻿using CsvHelper;
+using CsvHelper;
 using CsvHelper.Configuration;
 using Microsoft.VisualBasic.FileIO;
 using PQM.Core.Entities;
@@ -28,7 +28,9 @@ namespace PQM.Core.DomainServices
                 int counter = 0;
                 while (!parser.EndOfData)
                 {
-                    string[] fields = parser.ReadFields();
+                    string[]? fields = parser.ReadFields();
+                    if (fields == null)
+                        break;
                     int innerCounter = 0;
                     int matchedHeaderCounter = 0;
                     DateTime dateStamp = new DateTime();
@@ -70,11 +72,13 @@ namespace PQM.Core.DomainServices
                                 if (header == matchedHeader)
                                 {
                                     matchedHeaderCounter++;
-                                    DeviceLog log = new DeviceLog();
-                                    log.DateStamp = dateStamp;
-                                    log.DeviceId = deviceId;
-                                    log.ParameterId = Convert.ToInt32(matchedHeader);
-                                    log.Value = field;
+                                    DeviceLog log = new DeviceLog
+                                    {
+                                        DateStamp = dateStamp,
+                                        DeviceId = deviceId,
+                                        ParameterId = Convert.ToInt32(matchedHeader),
+                                        Value = field
+                                    };
                                     logList.Add(log);
                                 }
                             }
@@ -107,7 +111,7 @@ namespace PQM.Core.DomainServices
             };
         }
 
-        private List<EventLog> MapEvents<T>(CsvReader csv, int deviceId, string eventType, Action<T, EventLog> extraMapping = null)
+        private List<EventLog> MapEvents<T>(CsvReader csv, int deviceId, string eventType, Action<T, EventLog>? extraMapping = null)
             where T : IBaseEvent
         {
             var list = new List<EventLog>();
