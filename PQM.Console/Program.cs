@@ -383,6 +383,26 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                     Console.WriteLine($"[DLMS Reader] Warning: Could not ensure MacAddressSetup table exists: {ex.Message}");
                 }
 
+                // Ensure AssociationLogicalName table exists
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='AssociationLogicalName' AND xtype='U')
+                        CREATE TABLE [AssociationLogicalName] (
+                            [Id] BIGINT IDENTITY(1,1) PRIMARY KEY,
+                            [DeviceId] INT NOT NULL,
+                            [Name] NVARCHAR(MAX) NULL,
+                            [ObjectType] NVARCHAR(MAX) NULL,
+                            [Value] NVARCHAR(MAX) NULL,
+                            [DateEntered] DATETIME2 NOT NULL
+                        )
+                    ");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DLMS Reader] Warning: Could not ensure AssociationLogicalName table exists: {ex.Message}");
+                }
+
                 using (var reader = new DLMSReader(item.IP, item.PORT, clientAddress, serverAddress, authentication, password, useLogicalNameReferencing, standard))
                 {
                     reader.Connect();
@@ -430,7 +450,7 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
 
                     foreach (var obj in reader.Objects)
                     {
-                        // Process ONLY Register, ExtendedRegister, DemandRegister, Data, IecHdlcSetup, TcpUdpSetup, Ip4Setup, MacAddressSetup
+                        // Process ONLY Register, ExtendedRegister, DemandRegister, Data, IecHdlcSetup, TcpUdpSetup, Ip4Setup, MacAddressSetup, AssociationLogicalName
                         if (obj.ObjectType != ObjectType.Register && 
                             obj.ObjectType != ObjectType.ExtendedRegister && 
                             obj.ObjectType != ObjectType.DemandRegister &&
@@ -438,7 +458,8 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                             obj.ObjectType != ObjectType.IecHdlcSetup &&
                             obj.ObjectType != ObjectType.TcpUdpSetup &&
                             obj.ObjectType != ObjectType.Ip4Setup &&
-                            obj.ObjectType != ObjectType.MacAddressSetup)
+                            obj.ObjectType != ObjectType.MacAddressSetup &&
+                            obj.ObjectType != ObjectType.AssociationLogicalName)
                         {
                             continue;
                         }
@@ -712,6 +733,53 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                                     Console.WriteLine($"[DLMS Reader] Failed to save MAC Address to MacAddressSetup table: {ex.Message}");
                                 }
                             }
+                            else if (obj.ObjectType == ObjectType.AssociationLogicalName)
+                            {
+                                var attributes = new Dictionary<string, int>
+                                {
+                                    { "Object List", 2 },
+                                    { "Associated Partners ID", 3 },
+                                    { "Application Context Name", 4 },
+                                    { "xDLMS Context Info", 5 },
+                                    { "Authentication Mechanism Name", 6 },
+                                    { "LLS Secret", 7 },
+                                    { "Association Status", 8 },
+                                    { "Security Setup Reference", 9 },
+                                    { "User List", 10 }
+                                };
+
+                                foreach (var attr in attributes)
+                                {
+                                    try
+                                    {
+                                        string val = reader.ReadObjectAttribute(obj, attr.Value);
+                                        if (!string.IsNullOrEmpty(val) && !val.StartsWith("Error"))
+                                        {
+                                            var assocVal = new PQM.Core.Entities.AssociationLogicalName
+                                            {
+                                                DeviceId = item.Id,
+                                                Name = attr.Key,
+                                                ObjectType = obj.ObjectType.ToString(),
+                                                Value = val,
+                                                DateEntered = dateStamp
+                                            };
+                                            dbContext.AssociationLogicalName.Add(assocVal);
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Console.WriteLine($"[DLMS Reader] Failed to save {attr.Key} to AssociationLogicalName table: {ex.Message}");
+                                    }
+                                }
+                                try
+                                {
+                                    dbContext.SaveChanges();
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.WriteLine($"[DLMS Reader] Failed to save changes for AssociationLogicalName: {ex.Message}");
+                                }
+                            }
                         }
                     }
                     Console.WriteLine(new string('-', 120));
@@ -749,3 +817,4 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
     Console.WriteLine("Finished reading DLMS smart meters.");
     Console.WriteLine("==================================================");
 }
+

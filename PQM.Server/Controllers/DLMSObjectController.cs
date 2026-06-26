@@ -76,6 +76,13 @@ namespace PQM.Server.Controllers
                             ? ""
                             : (latestValues.TryGetValue(unitParam.Id, out var v3) ? v3.Value : "Waiting...");
 
+                    var allAttrsList = objectParams.Select(p => new
+                    {
+                        p.AttributeId,
+                        Name = p.Name ?? "",
+                        Value = latestValues.TryGetValue(p.Id, out var pv) ? pv.Value : "Waiting..."
+                    }).ToList();
+
                     return new
                     {
                         o.Id,
@@ -84,7 +91,8 @@ namespace PQM.Server.Controllers
                         o.ObisCode,
                         o.ObjectType,
                         Attribute2 = attr2,
-                        Attribute3 = attr3
+                        Attribute3 = attr3,
+                        AllAttributes = allAttrsList
                     };
                 }).ToList();
 

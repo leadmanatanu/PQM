@@ -289,6 +289,82 @@ namespace PQM.Server.Controllers
                         _logger.LogError(ex, "Failed to save to MacAddressSetup table in ReadParameter");
                     }
                 }
+                else if (string.Equals(param.ObjectType, "AssociationLogicalName", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        var assocVal = new AssociationLogicalName
+                        {
+                            DeviceId = id,
+                            Name = param.Name ?? "",
+                            ObjectType = param.ObjectType,
+                            Value = value,
+                            DateEntered = DateTime.UtcNow
+                        };
+                        db.AssociationLogicalName.Add(assocVal);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to save to AssociationLogicalName table in ReadParameter");
+                    }
+                }
+                else if (string.Equals(param.ObjectType, "Clock", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        var clockVal = new Clock
+                        {
+                            DeviceId = id,
+                            Name = param.Name ?? "",
+                            ObjectType = param.ObjectType,
+                            Value = value,
+                            DateEntered = DateTime.UtcNow
+                        };
+                        db.Clock.Add(clockVal);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to save to Clock table in ReadParameter");
+                    }
+                }
+                else if (string.Equals(param.ObjectType, "ScriptTable", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        var scriptVal = new ScriptTable
+                        {
+                            DeviceId = id,
+                            Name = param.Name ?? "",
+                            ObjectType = param.ObjectType,
+                            Value = value,
+                            DateEntered = DateTime.UtcNow
+                        };
+                        db.ScriptTable.Add(scriptVal);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to save to ScriptTable table in ReadParameter");
+                    }
+                }
+                else if (string.Equals(param.ObjectType, "ProfileGeneric", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        var pgVal = new ProfileGeneric
+                        {
+                            DeviceId = id,
+                            Name = param.Name ?? "",
+                            ObjectType = param.ObjectType,
+                            Value = value,
+                            DateEntered = DateTime.UtcNow
+                        };
+                        db.ProfileGeneric.Add(pgVal);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to save to ProfileGeneric table in ReadParameter");
+                    }
+                }
             }
 
             db.SaveChanges();
@@ -299,7 +375,6 @@ namespace PQM.Server.Controllers
             return Ok(_apiResponse);
         }
 
-        // -------------------- READ OBJECT --------------------
         [HttpPost("{id}/read-object/{objectId}")]
         public IActionResult ReadObject(int id, int objectId)
         {
@@ -359,23 +434,24 @@ namespace PQM.Server.Controllers
                     {
                         string value = reader.ReadObjectAttribute(obj, param.AttributeId);
 
+                        var pv = new ParameterValue
+                        {
+                            ParameterId = param.Id,
+                            Value = value ?? "",
+                            Timestamp = DateTime.UtcNow
+                        };
+                        db.ParameterValue.Add(pv);
+                        results.Add(new
+                        {
+                            pv.Id,
+                            pv.ParameterId,
+                            AttributeId = param.AttributeId,
+                            pv.Value,
+                            pv.Timestamp
+                        });
+
                         if (!string.IsNullOrEmpty(value) && !value.StartsWith("Error"))
                         {
-                            var pv = new ParameterValue
-                            {
-                                ParameterId = param.Id,
-                                Value = value,
-                                Timestamp = DateTime.UtcNow
-                            };
-                            db.ParameterValue.Add(pv);
-                            results.Add(new
-                            {
-                                pv.Id,
-                                pv.ParameterId,
-                                AttributeId = param.AttributeId,
-                                pv.Value,
-                                pv.Timestamp
-                            });
 
                             if (dlmsObject.ObjectType == "Register" || 
                                 dlmsObject.ObjectType == "ExtendedRegister" || 
@@ -498,6 +574,120 @@ namespace PQM.Server.Controllers
                                 catch (Exception ex)
                                 {
                                     _logger.LogError(ex, "Failed to save to MacAddressSetup table in ReadObject");
+                                }
+                            }
+                            else if (string.Equals(dlmsObject.ObjectType, "AssociationLogicalName", StringComparison.OrdinalIgnoreCase))
+                            {
+                                try
+                                {
+                                    var assocVal = new AssociationLogicalName
+                                    {
+                                        DeviceId = id,
+                                        Name = dlmsObject.Name ?? "",
+                                        ObjectType = dlmsObject.ObjectType,
+                                        Value = value,
+                                        DateEntered = DateTime.UtcNow
+                                    };
+                                    db.AssociationLogicalName.Add(assocVal);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogError(ex, "Failed to save to AssociationLogicalName table in ReadObject");
+                                }
+                            }
+                            else if (string.Equals(dlmsObject.ObjectType, "Clock", StringComparison.OrdinalIgnoreCase))
+                            {
+                                try
+                                {
+                                    var clockVal = new Clock
+                                    {
+                                        DeviceId = id,
+                                        Name = dlmsObject.Name ?? "",
+                                        ObjectType = dlmsObject.ObjectType,
+                                        Value = value,
+                                        DateEntered = DateTime.UtcNow
+                                    };
+                                    db.Clock.Add(clockVal);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogError(ex, "Failed to save to Clock table in ReadObject");
+                                }
+                            }
+                            else if (string.Equals(dlmsObject.ObjectType, "ScriptTable", StringComparison.OrdinalIgnoreCase))
+                            {
+                                try
+                                {
+                                    var scriptVal = new ScriptTable
+                                    {
+                                        DeviceId = id,
+                                        Name = dlmsObject.Name ?? "",
+                                        ObjectType = dlmsObject.ObjectType,
+                                        Value = value,
+                                        DateEntered = DateTime.UtcNow
+                                    };
+                                    db.ScriptTable.Add(scriptVal);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogError(ex, "Failed to save to ScriptTable table in ReadObject");
+                                }
+                            }
+                            else if (string.Equals(dlmsObject.ObjectType, "ProfileGeneric", StringComparison.OrdinalIgnoreCase))
+                            {
+                                try
+                                {
+                                    var pgVal = new ProfileGeneric
+                                    {
+                                        DeviceId = id,
+                                        Name = dlmsObject.Name ?? "",
+                                        ObjectType = dlmsObject.ObjectType,
+                                        Value = value,
+                                        DateEntered = DateTime.UtcNow
+                                    };
+                                    db.ProfileGeneric.Add(pgVal);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogError(ex, "Failed to save to ProfileGeneric table in ReadObject");
+                                }
+                            }
+                            else if (string.Equals(dlmsObject.ObjectType, "ActionSchedule", StringComparison.OrdinalIgnoreCase))
+                            {
+                                try
+                                {
+                                    var asVal = new ActionSchedule
+                                    {
+                                        DeviceId = id,
+                                        Name = dlmsObject.Name ?? "",
+                                        ObjectType = dlmsObject.ObjectType,
+                                        Value = value,
+                                        DateEntered = DateTime.UtcNow
+                                    };
+                                    db.ActionSchedule.Add(asVal);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogError(ex, "Failed to save to ActionSchedule table in ReadObject");
+                                }
+                            }
+                            else if (string.Equals(dlmsObject.ObjectType, "ActivityCalendar", StringComparison.OrdinalIgnoreCase))
+                            {
+                                try
+                                {
+                                    var acVal = new ActivityCalendar
+                                    {
+                                        DeviceId = id,
+                                        Name = dlmsObject.Name ?? "",
+                                        ObjectType = dlmsObject.ObjectType,
+                                        Value = value,
+                                        DateEntered = DateTime.UtcNow
+                                    };
+                                    db.ActivityCalendar.Add(acVal);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogError(ex, "Failed to save to ActivityCalendar table in ReadObject");
                                 }
                             }
                         }

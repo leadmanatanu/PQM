@@ -22,7 +22,6 @@ namespace PQM.Server.Controllers
             _ftpSettingService = ftpSettingService;
         }
 
-        // -------------------- GET FTP SETTINGS --------------------
         [HttpGet]
         public IActionResult Get()
         {
@@ -35,7 +34,6 @@ namespace PQM.Server.Controllers
             return Ok(response);
         }
 
-        // -------------------- ADD / UPDATE FTP --------------------
         [HttpPut]
         public IActionResult Put([FromBody] FTPSetting ftpData)
         {
@@ -63,7 +61,6 @@ namespace PQM.Server.Controllers
             return Ok(response);
         }
 
-        // -------------------- FTP CONNECTION TEST --------------------
         [HttpGet("FTPConnectionTest")]
         public IActionResult FTPConnectionTest([FromQuery] FTPSetting ftpData)
         {
