@@ -51,21 +51,30 @@ namespace PQM.Server.Controllers
 
                 var data = objects.Select(o =>
                 {
-                    var param2 = parameters
-                        .FirstOrDefault(p => p.ObjectId == o.Id && p.AttributeId == 2);
+                    var objectParams = parameters.Where(p => p.ObjectId == o.Id).ToList();
 
-                    var param3 = parameters
-                        .FirstOrDefault(p => p.ObjectId == o.Id && p.AttributeId == 3);
+                    ObjectParameter? valParam = null;
+                    ObjectParameter? unitParam = null;
+
+                    if (o.ObjectType == "Register" || o.ObjectType == "ExtendedRegister" || o.ObjectType == "DemandRegister")
+                    {
+                        valParam = objectParams.FirstOrDefault(p => p.AttributeId == 2);
+                        unitParam = objectParams.FirstOrDefault(p => p.AttributeId == 3);
+                    }
+                    else
+                    {
+                        valParam = objectParams.FirstOrDefault();
+                    }
 
                     var attr2 =
-                        param2 != null && latestValues.TryGetValue(param2.Id, out var v2)
+                        valParam != null && latestValues.TryGetValue(valParam.Id, out var v2)
                             ? v2.Value
                             : "Waiting...";
 
                     var attr3 =
-                        param3 == null
+                        unitParam == null
                             ? ""
-                            : (latestValues.TryGetValue(param3.Id, out var v3) ? v3.Value : "Waiting...");
+                            : (latestValues.TryGetValue(unitParam.Id, out var v3) ? v3.Value : "Waiting...");
 
                     return new
                     {

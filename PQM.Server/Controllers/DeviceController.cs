@@ -212,6 +212,83 @@ namespace PQM.Server.Controllers
                         _logger.LogError(ex, "Failed to save to Data table in ReadParameter");
                     }
                 }
+                else if (string.Equals(param.ObjectType, "IecHdlcSetup", StringComparison.OrdinalIgnoreCase) ||
+                         string.Equals(param.ObjectType, "lecHdlcSetup", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        var hdlcVal = new IecHdlcSetup
+                        {
+                            DeviceId = id,
+                            Name = param.Name ?? "",
+                            ObjectType = param.ObjectType,
+                            Value = value,
+                            DateEntered = DateTime.UtcNow
+                        };
+                        db.IecHdlcSetup.Add(hdlcVal);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to save to IecHdlcSetup table in ReadParameter");
+                    }
+                }
+                else if (string.Equals(param.ObjectType, "TcpUdpSetup", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        var tcpVal = new TcpUdpSetup
+                        {
+                            DeviceId = id,
+                            Name = param.Name ?? "",
+                            ObjectType = param.ObjectType,
+                            Value = value,
+                            DateEntered = DateTime.UtcNow
+                        };
+                        db.TcpUdpSetup.Add(tcpVal);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to save to TcpUdpSetup table in ReadParameter");
+                    }
+                }
+                else if (string.Equals(param.ObjectType, "Ip4Setup", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        var ipVal = new Ip4Setup
+                        {
+                            DeviceId = id,
+                            Name = param.Name ?? "",
+                            ObjectType = param.ObjectType,
+                            Value = value,
+                            DateEntered = DateTime.UtcNow
+                        };
+                        db.Ip4Setup.Add(ipVal);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to save to Ip4Setup table in ReadParameter");
+                    }
+                }
+                else if (string.Equals(param.ObjectType, "MacAddressSetup", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        var macVal = new MacAddressSetup
+                        {
+                            DeviceId = id,
+                            Name = param.Name ?? "",
+                            ObjectType = param.ObjectType,
+                            Value = value,
+                            DateEntered = DateTime.UtcNow
+                        };
+                        db.MacAddressSetup.Add(macVal);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to save to MacAddressSetup table in ReadParameter");
+                    }
+                }
             }
 
             db.SaveChanges();
@@ -280,15 +357,7 @@ namespace PQM.Server.Controllers
 
                     foreach (var param in parameters)
                     {
-                        string value = "";
-                        if (param.AttributeId == 2)
-                        {
-                            value = reader.ReadObjectValue(obj);
-                        }
-                        else if (param.AttributeId == 3)
-                        {
-                            value = reader.ReadObjectAttribute3(obj);
-                        }
+                        string value = reader.ReadObjectAttribute(obj, param.AttributeId);
 
                         if (!string.IsNullOrEmpty(value) && !value.StartsWith("Error"))
                         {
@@ -308,11 +377,11 @@ namespace PQM.Server.Controllers
                                 pv.Timestamp
                             });
 
-                            if (param.AttributeId == 2)
+                            if (dlmsObject.ObjectType == "Register" || 
+                                dlmsObject.ObjectType == "ExtendedRegister" || 
+                                dlmsObject.ObjectType == "DemandRegister")
                             {
-                                if (dlmsObject.ObjectType == "Register" || 
-                                    dlmsObject.ObjectType == "ExtendedRegister" || 
-                                    dlmsObject.ObjectType == "DemandRegister")
+                                if (param.AttributeId == 2)
                                 {
                                     try
                                     {
@@ -331,7 +400,10 @@ namespace PQM.Server.Controllers
                                         _logger.LogError(ex, "Failed to save to Register table in ReadObject");
                                     }
                                 }
-                                else if (dlmsObject.ObjectType == "Data")
+                            }
+                            else if (dlmsObject.ObjectType == "Data")
+                            {
+                                if (param.AttributeId == 2)
                                 {
                                     try
                                     {
@@ -349,6 +421,83 @@ namespace PQM.Server.Controllers
                                     {
                                         _logger.LogError(ex, "Failed to save to Data table in ReadObject");
                                     }
+                                }
+                            }
+                            else if (string.Equals(dlmsObject.ObjectType, "IecHdlcSetup", StringComparison.OrdinalIgnoreCase) ||
+                                     string.Equals(dlmsObject.ObjectType, "lecHdlcSetup", StringComparison.OrdinalIgnoreCase))
+                            {
+                                try
+                                {
+                                    var hdlcVal = new IecHdlcSetup
+                                    {
+                                        DeviceId = id,
+                                        Name = dlmsObject.Name ?? "",
+                                        ObjectType = dlmsObject.ObjectType,
+                                        Value = value,
+                                        DateEntered = DateTime.UtcNow
+                                    };
+                                    db.IecHdlcSetup.Add(hdlcVal);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogError(ex, "Failed to save to IecHdlcSetup table in ReadObject");
+                                }
+                            }
+                             else if (string.Equals(dlmsObject.ObjectType, "TcpUdpSetup", StringComparison.OrdinalIgnoreCase))
+                            {
+                                try
+                                {
+                                    var tcpVal = new TcpUdpSetup
+                                    {
+                                        DeviceId = id,
+                                        Name = dlmsObject.Name ?? "",
+                                        ObjectType = dlmsObject.ObjectType,
+                                        Value = value,
+                                        DateEntered = DateTime.UtcNow
+                                    };
+                                    db.TcpUdpSetup.Add(tcpVal);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogError(ex, "Failed to save to TcpUdpSetup table in ReadObject");
+                                }
+                            }
+                            else if (string.Equals(dlmsObject.ObjectType, "Ip4Setup", StringComparison.OrdinalIgnoreCase))
+                            {
+                                try
+                                {
+                                    var ipVal = new Ip4Setup
+                                    {
+                                        DeviceId = id,
+                                        Name = dlmsObject.Name ?? "",
+                                        ObjectType = dlmsObject.ObjectType,
+                                        Value = value,
+                                        DateEntered = DateTime.UtcNow
+                                    };
+                                    db.Ip4Setup.Add(ipVal);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogError(ex, "Failed to save to Ip4Setup table in ReadObject");
+                                }
+                            }
+                            else if (string.Equals(dlmsObject.ObjectType, "MacAddressSetup", StringComparison.OrdinalIgnoreCase))
+                            {
+                                try
+                                {
+                                    var macVal = new MacAddressSetup
+                                    {
+                                        DeviceId = id,
+                                        Name = dlmsObject.Name ?? "",
+                                        ObjectType = dlmsObject.ObjectType,
+                                        Value = value,
+                                        DateEntered = DateTime.UtcNow
+                                    };
+                                    db.MacAddressSetup.Add(macVal);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogError(ex, "Failed to save to MacAddressSetup table in ReadObject");
                                 }
                             }
                         }

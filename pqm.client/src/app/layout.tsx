@@ -1,3 +1,4 @@
+/// <reference path="../types/phosphor.d.ts" />
 import * as React from 'react';
 import type { Viewport } from 'next';
 
