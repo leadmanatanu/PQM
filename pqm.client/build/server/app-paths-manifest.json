@@ -1,3 +1,4 @@
 {
+  "/dashboard/page": "app/dashboard/page.js",
   "/dashboard/mapping/page": "app/dashboard/mapping/page.js"
 }

@@ -34,7 +34,6 @@ import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
 import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
-import Tooltip from '@mui/material/Tooltip';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 
 const CLOCK_ATTRIBUTES = [
@@ -144,6 +143,9 @@ const METHOD_DESCRIPTIONS: Record<string, string[]> = {
 };
 
 const ATTRIBUTE_TYPES: Record<string, string[]> = {
+    'data': [
+        'OctetString', 'None'
+    ],
     'clock': [
         'OctetString', 'OctetString', 'Int16', 'UInt8', 'OctetString', 'OctetString', 'Int8', 'Boolean', 'Enum'
     ],
@@ -275,7 +277,11 @@ const getAttributeDescription = (obj: any, indexStr: string) => {
     const idx = parseInt(indexStr, 10);
     if (isNaN(idx)) return indexStr;
     const attr = obj.allAttributes?.find((a: any) => (a.AttributeId || a.attributeId) === idx);
-    if (attr && attr.name) return attr.name;
+    if (attr && (attr.Name || attr.name)) return attr.Name || attr.name;
+    if ((obj.objectType || '').toLowerCase() === 'data') {
+        if (idx === 1) return 'Logical Name';
+        if (idx === 2) return obj.name?.replace(obj.obisCode, '').trim() || 'Value';
+    }
     return `Attribute ${idx}`;
 };
 
@@ -319,6 +325,7 @@ export default function Page(): React.JSX.Element {
     
     const [objects, setObjects] = useState<any[]>([]);
     const [selectedObjectId, setSelectedObjectId] = useState<string | number>('');
+    const [detailsObjectId, setDetailsObjectId] = useState<string | number>('');
     
     const [activeTab, setActiveTab] = useState<number>(0);
     const [associationObjectList, setAssociationObjectList] = useState<any[]>([]);
@@ -363,11 +370,6 @@ export default function Page(): React.JSX.Element {
     const [calendarData, setCalendarData] = useState<any>(null);
     const [calendarTitle, setCalendarTitle] = useState('');
 
-    // Event status modal states
-    const [eventStatusOpen, setEventStatusOpen] = useState(false);
-    const [eventStatusRow, setEventStatusRow] = useState<any>(null);
-    const [eventStatusTab, setEventStatusTab] = useState<number>(0);
-
     const isEventStatusRow = (row: any): boolean => {
         const obisCode = row?.obisCode || '';
         return EVENT_STATUS_SECTIONS.some(section => section.obisCode === obisCode);
@@ -409,12 +411,6 @@ export default function Page(): React.JSX.Element {
         });
 
         return activeCodes;
-    };
-
-    const handleOpenEventStatus = (row: any) => {
-        setEventStatusRow(row);
-        setEventStatusTab(0);
-        setEventStatusOpen(true);
     };
 
     const getAttrValue = (attrs: any[] | undefined, attrId: number): string => {
@@ -505,6 +501,121 @@ export default function Page(): React.JSX.Element {
         } catch (e) {
             console.error('Failed to parse context/auth json:', e);
         }
+    };
+
+    const getReadResultItem = (items: any[], attributeId: number) => {
+        return items.find((item: any) => item.attributeId === attributeId || item.AttributeId === attributeId);
+    };
+
+    const getPrimaryReadResultItem = (items: any[]) => {
+        return getReadResultItem(items, 2) || items.find((item: any) => {
+            const attrId = item.attributeId ?? item.AttributeId;
+            return attrId !== 1;
+        }) || items[0];
+    };
+
+    const applyReadResultToRow = (row: any, items: any[]) => {
+        const valItem = getPrimaryReadResultItem(items);
+        const unitItem = getReadResultItem(items, 3);
+        const statusItem = getReadResultItem(items, 4);
+        const captureItem = getReadResultItem(items, 5);
+
+        return {
+            ...row,
+            value: valItem ? valItem.value ?? valItem.Value ?? 'Error' : 'Error',
+            attribute3: unitItem ? unitItem.value ?? unitItem.Value : row.attribute3,
+            attribute4: statusItem ? statusItem.value ?? statusItem.Value : row.attribute4,
+            attribute5: captureItem ? captureItem.value ?? captureItem.Value : row.attribute5,
+            allAttributes: items || []
+        };
+    };
+
+    const getAttributeRows = (obj: any) => {
+        const attrs = Array.isArray(obj?.allAttributes) ? obj.allAttributes : [];
+        const rows = attrs.map((attr: any) => {
+            const attributeId = attr.AttributeId ?? attr.attributeId;
+            return {
+                attributeId,
+                name: attr.Name || attr.name || getAttributeDescription(obj, String(attributeId)),
+                value: attr.value ?? attr.Value ?? 'Waiting...',
+                dataType: attr.DataType || attr.dataType || getAttributeType(obj.objectType, String(attributeId)),
+                accessType: attr.AccessType || attr.accessType || ''
+            };
+        });
+
+        if ((obj?.objectType || '').toLowerCase() === 'data') {
+            if (!rows.some((row: any) => row.attributeId === 1)) {
+                rows.unshift({
+                    attributeId: 1,
+                    name: 'Logical Name',
+                    value: obj.obisCode || 'Waiting...',
+                    dataType: 'OctetString',
+                    accessType: 'Read'
+                });
+            }
+
+            if (!rows.some((row: any) => row.attributeId === 2)) {
+                rows.push({
+                    attributeId: 2,
+                    name: obj.name?.replace(obj.obisCode, '').trim() || 'Value',
+                    value: obj.value || 'Waiting...',
+                    dataType: 'None',
+                    accessType: 'ReadWrite'
+                });
+            }
+        }
+
+        return rows.sort((a: any, b: any) => Number(a.attributeId) - Number(b.attributeId));
+    };
+
+    const canReadAccess = (access: string | null | undefined) => {
+        const normalized = (access || '').toLowerCase();
+        return normalized.includes('read') && !normalized.includes('noaccess') && !normalized.includes('no access');
+    };
+
+    const isAttributeReadRequired = (obj: any, index: string | number, access?: string) => {
+        const attrIndex = Number(index);
+        if (attrIndex === 1 || !canReadAccess(access || (attrIndex === 1 ? 'Read' : 'ReadWrite'))) {
+            return false;
+        }
+
+        const attr = (obj?.allAttributes || []).find((item: any) => {
+            const itemIndex = item.AttributeId ?? item.attributeId;
+            return Number(itemIndex) === attrIndex;
+        });
+        const value = attr?.value ?? attr?.Value ?? (attrIndex === 2 ? obj?.value : undefined);
+
+        return value === undefined ||
+            value === null ||
+            value === '' ||
+            value === 'Waiting...' ||
+            value === 'Scanning...' ||
+            String(value).startsWith('Error');
+    };
+
+    const getRequiredText = (required: boolean) => required ? 'Required' : 'Not required';
+
+    const getAttributeSourceText = (obj: any, index: string | number) => {
+        const attrIndex = Number(index);
+        if (attrIndex === 1) {
+            return 'Device association';
+        }
+
+        const attr = (obj?.allAttributes || []).find((item: any) => {
+            const itemIndex = item.AttributeId ?? item.attributeId;
+            return Number(itemIndex) === attrIndex;
+        });
+        const value = attr?.value ?? attr?.Value ?? (attrIndex === 2 ? obj?.value : undefined);
+
+        if (value === 'Waiting...' || value === 'Scanning...' || value === undefined || value === null || value === '') {
+            return 'Pending device read';
+        }
+
+        if (String(value).startsWith('Error')) {
+            return 'Device error';
+        }
+
+        return 'Device';
     };
 
     useEffect(() => {
@@ -628,6 +739,16 @@ export default function Page(): React.JSX.Element {
         setSelectedObjectId(objectId);
     };
 
+    const handleOpenDetails = (objectId: string | number) => {
+        setDetailsObjectId(objectId);
+        setActiveTab(0);
+    };
+
+    const handleCloseDetails = () => {
+        setDetailsObjectId('');
+        setActiveTab(0);
+    };
+
     const handleDiscoverParameters = async () => {
         if (!selectedDeviceId || discoveredParams.length === 0) return;
         setDiscovering(true);
@@ -649,33 +770,7 @@ export default function Page(): React.JSX.Element {
                 setDiscoveredParams((prev) => {
                     const next = [...prev];
                     if (result && result.status && Array.isArray(result.data)) {
-                        const isRegister = param.objectType?.toLowerCase().includes('register');
-                        const isProfileGeneric = param.objectType?.toLowerCase() === 'profilegeneric';
-                        const isExtReg = param.objectType?.toLowerCase() === 'extendedregister';
-                        const valItem = (isRegister || isProfileGeneric)
-                            ? result.data.find((item: any) => item.attributeId === 2)
-                            : result.data[0];
-
-                        const unitItem = (isRegister || isProfileGeneric)
-                            ? result.data.find((item: any) => item.attributeId === 3)
-                            : null;
-
-                        const statusItem = isExtReg
-                            ? result.data.find((item: any) => item.attributeId === 4)
-                            : null;
-
-                        const captureItem = isExtReg
-                            ? result.data.find((item: any) => item.attributeId === 5)
-                            : null;
-
-                        next[i] = {
-                            ...next[i],
-                            value: valItem ? valItem.value : 'Error',
-                            attribute3: unitItem ? unitItem.value : next[i].attribute3,
-                            attribute4: statusItem ? statusItem.value : next[i].attribute4,
-                            attribute5: captureItem ? captureItem.value : next[i].attribute5,
-                            allAttributes: result.data || []
-                        };
+                        next[i] = applyReadResultToRow(param, result.data);
                     } else {
                         next[i] = { ...next[i], value: 'Error' };
                     }
@@ -724,34 +819,7 @@ export default function Page(): React.JSX.Element {
                 const next = [...prev];
                 if (result && result.status && Array.isArray(result.data)) {
                     const param = next[idx];
-                    const isRegister = param.objectType?.toLowerCase().includes('register');
-                    const isProfileGeneric = param.objectType?.toLowerCase() === 'profilegeneric';
-                    const isExtReg = param.objectType?.toLowerCase() === 'extendedregister';
-                    
-                    const valItem = (isRegister || isProfileGeneric)
-                        ? result.data.find((item: any) => item.attributeId === 2)
-                        : result.data[0];
-
-                    const unitItem = (isRegister || isProfileGeneric)
-                        ? result.data.find((item: any) => item.attributeId === 3)
-                        : null;
-
-                    const statusItem = isExtReg
-                        ? result.data.find((item: any) => item.attributeId === 4)
-                        : null;
-
-                    const captureItem = isExtReg
-                        ? result.data.find((item: any) => item.attributeId === 5)
-                        : null;
-
-                    next[idx] = {
-                        ...next[idx],
-                        value: valItem ? valItem.value : 'Error',
-                        attribute3: unitItem ? unitItem.value : next[idx].attribute3,
-                        attribute4: statusItem ? statusItem.value : next[idx].attribute4,
-                        attribute5: captureItem ? captureItem.value : next[idx].attribute5,
-                        allAttributes: result.data || []
-                    };
+                    next[idx] = applyReadResultToRow(param, result.data);
                 } else {
                     next[idx] = { ...next[idx], value: 'Error' };
                 }
@@ -890,8 +958,86 @@ export default function Page(): React.JSX.Element {
         }).filter(p => p.name);
     };
 
+    const renderEventStatusDetails = (obj: any) => {
+        const matchingSections = EVENT_STATUS_SECTIONS.filter(section => section.obisCode === obj?.obisCode);
+
+        return (
+            <Stack spacing={2}>
+                <Box>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                        {obj?.name || 'Event Data Object'}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+                        Value: {obj?.value || 'N/A'}
+                    </Typography>
+                </Box>
+                <Alert severity="info">
+                    Event section names use the standard OBIS mapping. The active event state is decoded from the value read from the device.
+                </Alert>
+                <Grid container spacing={2}>
+                    {matchingSections.length === 0 && (
+                        <Grid size={{ xs: 12 }}>
+                            <Alert severity="info">
+                                No event status mapping is configured for this data object.
+                            </Alert>
+                        </Grid>
+                    )}
+                    {matchingSections.map(section => {
+                        const activeCodes = parseEventStatusValue(obj?.value, section);
+
+                        return (
+                            <Grid key={section.key} size={{ xs: 12 }}>
+                                <Card
+                                    variant="outlined"
+                                    sx={{
+                                        height: '100%',
+                                        borderColor: 'primary.main',
+                                        bgcolor: 'action.hover',
+                                    }}
+                                >
+                                    <CardHeader
+                                        title={section.title}
+                                        subheader={section.obisCode}
+                                        titleTypographyProps={{ variant: 'subtitle1', fontWeight: 'bold' }}
+                                        subheaderTypographyProps={{ fontFamily: 'monospace' }}
+                                    />
+                                    <Divider />
+                                    <CardContent sx={{ py: 1.5 }}>
+                                        <Stack spacing={0.5}>
+                                            {section.items.map(item => (
+                                                <FormControlLabel
+                                                    key={item.code}
+                                                    control={
+                                                        <Checkbox
+                                                            checked={activeCodes.has(item.code)}
+                                                            disabled
+                                                            size="small"
+                                                        />
+                                                    }
+                                                    label={`${item.label} (${item.code})`}
+                                                    sx={{
+                                                        m: 0,
+                                                        '& .MuiFormControlLabel-label': {
+                                                            fontSize: '0.875rem',
+                                                        },
+                                                    }}
+                                                />
+                                            ))}
+                                        </Stack>
+                                    </CardContent>
+                                </Card>
+                            </Grid>
+                        );
+                    })}
+                </Grid>
+            </Stack>
+        );
+    };
+
     const renderGenericCustomForm = (obj: any) => {
-        if (!obj.allAttributes || obj.allAttributes.length === 0) {
+        const attributeRows = getAttributeRows(obj);
+
+        if (attributeRows.length === 0) {
             return (
                 <Alert severity="info">
                     No attribute values found. Please click 'Scan Object' to read data from the device.
@@ -917,9 +1063,9 @@ export default function Page(): React.JSX.Element {
                         {(obj.objectType || 'Parameters')} Details
                     </Typography>
                     <Grid container spacing={2}>
-                        {obj.allAttributes.map((attr: any) => {
-                            const attrId = attr.AttributeId || attr.attributeId;
-                            const attrName = attr.Name || attr.name || `Attribute ${attrId}`;
+                        {attributeRows.map((attr: any) => {
+                            const attrId = attr.attributeId;
+                            const attrName = attr.name || `Attribute ${attrId}`;
                             const attrValue = attr.value || 'Waiting...';
                             return (
                                 <Grid size={{ xs: 12, md: attrId === 1 ? 12 : 6 }} key={attrId}>
@@ -1285,6 +1431,7 @@ export default function Page(): React.JSX.Element {
     };
 
     const selectedObj = discoveredParams.find(p => p.id === selectedObjectId);
+    const detailsObj = discoveredParams.find(p => p.id === detailsObjectId);
 
     return (
         <Stack spacing={3}>
@@ -1328,7 +1475,7 @@ export default function Page(): React.JSX.Element {
                                         <TableCell sx={{ fontWeight: 'bold' }}>Name</TableCell>
                                         <TableCell sx={{ fontWeight: 'bold' }}>Object Type</TableCell>
                                         <TableCell sx={{ fontWeight: 'bold' }}>Attribute 2</TableCell>
-                                        {isDataObjectType && <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>Details</TableCell>}
+                                        <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>Details</TableCell>
                                         {!isDataObjectType && <TableCell sx={{ fontWeight: 'bold' }}>Attribute 3</TableCell>}
                                         {isExtendedRegisterType && <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>}
                                         {isExtendedRegisterType && <TableCell sx={{ fontWeight: 'bold' }}>Capture Time</TableCell>}
@@ -1421,24 +1568,16 @@ export default function Page(): React.JSX.Element {
                                                         )
                                                     )}
                                                 </TableCell>
-                                                {isDataObjectType && (
-                                                    <TableCell sx={{ textAlign: 'center' }}>
-                                                        {isEventStatusRow(row) ? (
-                                                            <Tooltip title="View event status sections">
-                                                                <Button
-                                                                    variant="outlined"
-                                                                    size="small"
-                                                                    startIcon={<VisibilityIcon fontSize="small" />}
-                                                                    onClick={() => handleOpenEventStatus(row)}
-                                                                >
-                                                                    Detail
-                                                                </Button>
-                                                            </Tooltip>
-                                                        ) : (
-                                                            <span style={{ color: '#6b7280' }}>-</span>
-                                                        )}
-                                                    </TableCell>
-                                                )}
+                                                <TableCell sx={{ textAlign: 'center' }}>
+                                                    <Button
+                                                        variant="outlined"
+                                                        size="small"
+                                                        startIcon={<VisibilityIcon fontSize="small" />}
+                                                        onClick={() => handleOpenDetails(row.id)}
+                                                    >
+                                                        View Details
+                                                    </Button>
+                                                </TableCell>
                                                 {!isDataObjectType && (
                                                     <TableCell sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
                                                         {row.attribute3 || 'N/A'}
@@ -1464,7 +1603,7 @@ export default function Page(): React.JSX.Element {
                 </Card>
             )}
 
-            {!isTableObjectType && discoveredParams.length > 0 && (
+            {discoveredParams.length > 0 && (!isTableObjectType || selectedObj) && (
                 <Card>
                     <CardHeader 
                         title={`${selectedHeader?.name || 'Object'} Configuration & Details`} 
@@ -1596,7 +1735,10 @@ export default function Page(): React.JSX.Element {
                                                 item.LogicalName === selectedObj.obisCode
                                             );
                                             
-                                            if (!assocObj) {
+                                            const isDataObject = selectedObj.objectType?.toLowerCase() === 'data';
+                                            const fallbackRows = getAttributeRows(selectedObj);
+
+                                            if (!assocObj && !isDataObject) {
                                                 return (
                                                     <Alert severity="warning">
                                                         Access rights mapping not found for OBIS Code: {selectedObj.obisCode}. 
@@ -1604,15 +1746,39 @@ export default function Page(): React.JSX.Element {
                                                     </Alert>
                                                 );
                                             }
-                                            
-                                            const rights = parseAccessRights(assocObj.AttributeAccess);
+                                             
+                                            const rights = assocObj ? parseAccessRights(assocObj.AttributeAccess) : [];
                                             if (rights.length === 0) {
-                                                return (
-                                                    <Alert severity="info">
-                                                        No attribute access rights defined or available. Raw value: {assocObj.AttributeAccess || 'None'}
-                                                    </Alert>
-                                                );
+                                                if (!isDataObject) {
+                                                    return (
+                                                        <Alert severity="info">
+                                                            No attribute access rights defined or available. Raw value: {assocObj?.AttributeAccess || 'None'}
+                                                        </Alert>
+                                                    );
+                                                }
                                             }
+
+                                            const accessRows = rights.length > 0
+                                                ? rights.map((r: any) => ({
+                                                    index: r.name,
+                                                    description: getAttributeDescription(selectedObj, r.name),
+                                                    access: r.rights,
+                                                    type: getAttributeType(selectedObj.objectType, r.name),
+                                                    required: isAttributeReadRequired(selectedObj, r.name, r.rights),
+                                                    source: getAttributeSourceText(selectedObj, r.name)
+                                                }))
+                                                : fallbackRows.map((row: any) => ({
+                                                    index: String(row.attributeId),
+                                                    description: row.name,
+                                                    access: row.accessType || (row.attributeId === 1 ? 'Read' : 'ReadWrite'),
+                                                    type: row.dataType || getAttributeType(selectedObj.objectType, String(row.attributeId)),
+                                                    required: isAttributeReadRequired(
+                                                        selectedObj,
+                                                        row.attributeId,
+                                                        row.accessType || (row.attributeId === 1 ? 'Read' : 'ReadWrite')
+                                                    ),
+                                                    source: getAttributeSourceText(selectedObj, row.attributeId)
+                                                }));
 
                                             return (
                                                 <TableContainer component={Paper} variant="outlined">
@@ -1622,30 +1788,34 @@ export default function Page(): React.JSX.Element {
                                                                 <TableCell sx={{ fontWeight: 'bold' }}>Attribute Index</TableCell>
                                                                 <TableCell sx={{ fontWeight: 'bold' }}>Description</TableCell>
                                                                 <TableCell sx={{ fontWeight: 'bold' }}>Access</TableCell>
+                                                                <TableCell sx={{ fontWeight: 'bold' }}>Required</TableCell>
+                                                                <TableCell sx={{ fontWeight: 'bold' }}>Source</TableCell>
                                                                 <TableCell sx={{ fontWeight: 'bold' }}>Access Selector</TableCell>
                                                                 <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>Static</TableCell>
                                                                 <TableCell sx={{ fontWeight: 'bold' }}>Type</TableCell>
                                                                 <TableCell sx={{ fontWeight: 'bold' }}>UIType</TableCell>
                                                             </TableRow>
-                                                        </TableHead>
-                                                        <TableBody>
-                                                            {rights.map((r, ri) => {
-                                                                const desc = getAttributeDescription(selectedObj, r.name);
-                                                                const type = getAttributeType(selectedObj.objectType, r.name);
-                                                                return (
-                                                                    <TableRow key={ri} hover>
-                                                                        <TableCell>{r.name}</TableCell>
-                                                                        <TableCell>{desc}</TableCell>
-                                                                        <TableCell>{r.rights}</TableCell>
-                                                                        <TableCell></TableCell>
-                                                                        <TableCell align="center">
-                                                                            <Checkbox size="small" disabled checked={false} />
-                                                                        </TableCell>
-                                                                        <TableCell sx={{ color: 'text.secondary' }}>{type}</TableCell>
-                                                                        <TableCell sx={{ color: 'text.secondary' }}>None</TableCell>
-                                                                    </TableRow>
-                                                                );
-                                                            })}
+                                                         </TableHead>
+                                                         <TableBody>
+                                                            {accessRows.map((row: any, ri: number) => (
+                                                                <TableRow key={ri} hover>
+                                                                    <TableCell>{row.index}</TableCell>
+                                                                    <TableCell>{row.description}</TableCell>
+                                                                    <TableCell>{row.access}</TableCell>
+                                                                    <TableCell sx={{ color: row.required ? 'warning.main' : 'text.secondary' }}>
+                                                                        {getRequiredText(row.required)}
+                                                                    </TableCell>
+                                                                    <TableCell sx={{ color: row.source === 'Device error' ? 'error.main' : 'text.secondary' }}>
+                                                                        {row.source}
+                                                                    </TableCell>
+                                                                    <TableCell></TableCell>
+                                                                    <TableCell align="center">
+                                                                        <Checkbox size="small" disabled checked={false} />
+                                                                    </TableCell>
+                                                                    <TableCell sx={{ color: 'text.secondary' }}>{row.type}</TableCell>
+                                                                    <TableCell sx={{ color: 'text.secondary' }}>None</TableCell>
+                                                                </TableRow>
+                                                            ))}
                                                         </TableBody>
                                                     </Table>
                                                 </TableContainer>
@@ -1664,7 +1834,9 @@ export default function Page(): React.JSX.Element {
                                                 item.LogicalName === selectedObj.obisCode
                                             );
                                             
-                                            if (!assocObj) {
+                                            const isDataObject = selectedObj.objectType?.toLowerCase() === 'data';
+
+                                            if (!assocObj && !isDataObject) {
                                                 return (
                                                     <Alert severity="warning">
                                                         Method access rights mapping not found for OBIS Code: {selectedObj.obisCode}. 
@@ -1672,14 +1844,16 @@ export default function Page(): React.JSX.Element {
                                                     </Alert>
                                                 );
                                             }
-                                            
-                                            const rights = parseAccessRights(assocObj.MethodAccess);
+                                             
+                                            const rights = assocObj ? parseAccessRights(assocObj.MethodAccess) : [];
                                             if (rights.length === 0) {
-                                                return (
-                                                    <Alert severity="info">
-                                                        No method access rights defined or available. Raw value: {assocObj.MethodAccess || 'None'}
-                                                    </Alert>
-                                                );
+                                                if (!isDataObject) {
+                                                    return (
+                                                        <Alert severity="info">
+                                                            No method access rights defined or available. Raw value: {assocObj?.MethodAccess || 'None'}
+                                                        </Alert>
+                                                    );
+                                                }
                                             }
 
                                             return (
@@ -1691,18 +1865,26 @@ export default function Page(): React.JSX.Element {
                                                                 <TableCell sx={{ fontWeight: 'bold', width: '50%' }}>Description</TableCell>
                                                                 <TableCell sx={{ fontWeight: 'bold', width: '30%' }}>Method access</TableCell>
                                                             </TableRow>
-                                                        </TableHead>
-                                                        <TableBody>
-                                                            {rights.map((r, ri) => {
-                                                                const desc = getMethodDescription(selectedObj.objectType, r.name);
-                                                                return (
-                                                                    <TableRow key={ri} hover>
-                                                                        <TableCell>{r.name}</TableCell>
-                                                                        <TableCell>{desc}</TableCell>
-                                                                        <TableCell>{r.rights}</TableCell>
-                                                                    </TableRow>
-                                                                );
-                                                            })}
+                                                         </TableHead>
+                                                         <TableBody>
+                                                            {rights.length > 0 ? (
+                                                                rights.map((r, ri) => {
+                                                                    const desc = getMethodDescription(selectedObj.objectType, r.name);
+                                                                    return (
+                                                                        <TableRow key={ri} hover>
+                                                                            <TableCell>{r.name}</TableCell>
+                                                                            <TableCell>{desc}</TableCell>
+                                                                            <TableCell>{r.rights}</TableCell>
+                                                                        </TableRow>
+                                                                    );
+                                                                })
+                                                            ) : (
+                                                                <TableRow hover>
+                                                                    <TableCell colSpan={3} align="center" sx={{ color: 'text.secondary' }}>
+                                                                        No methods defined for Data object.
+                                                                    </TableCell>
+                                                                </TableRow>
+                                                            )}
                                                         </TableBody>
                                                     </Table>
                                                 </TableContainer>
@@ -1732,10 +1914,7 @@ export default function Page(): React.JSX.Element {
                                                     <Button 
                                                         variant="contained" 
                                                         size="small" 
-                                                        onClick={() => {
-                                                            setSelectedObjectId(row.id);
-                                                            setActiveTab(0);
-                                                        }}
+                                                        onClick={() => handleOpenDetails(row.id)}
                                                     >
                                                         View Details
                                                     </Button>
@@ -1749,6 +1928,248 @@ export default function Page(): React.JSX.Element {
                     </CardContent>
                 </Card>
             )}
+
+            <Dialog
+                open={!!detailsObj}
+                onClose={handleCloseDetails}
+                maxWidth="lg"
+                fullWidth
+            >
+                <DialogTitle sx={{ fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2 }}>
+                    <Box>
+                        <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                            {detailsObj?.name || 'Parameter'} Details
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+                            OBIS: {detailsObj?.obisCode || 'N/A'}
+                        </Typography>
+                    </Box>
+                    {detailsObj && (
+                        <Button
+                            variant="contained"
+                            color="secondary"
+                            onClick={() => handleScanSingleObject(detailsObj.id)}
+                            disabled={discovering}
+                            size="small"
+                        >
+                            {discovering ? 'Scanning...' : 'Scan Object'}
+                        </Button>
+                    )}
+                </DialogTitle>
+                <Divider />
+                <DialogContent>
+                    {detailsObj && (
+                        <Stack spacing={3}>
+                            <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+                                <Tabs
+                                    value={activeTab}
+                                    onChange={(e, newValue) => setActiveTab(newValue)}
+                                    aria-label="parameter details tabs"
+                                >
+                                    <Tab label="Data" />
+                                    <Tab label="Last Errors" />
+                                    <Tab label="Access Rights" />
+                                    <Tab label="Method Access Rights" />
+                                    {isEventStatusRow(detailsObj) && <Tab label="Event Status" />}
+                                </Tabs>
+                            </Box>
+
+                            {activeTab === 0 && (
+                                <Box sx={{ py: 2 }}>
+                                    {detailsObj.objectType?.toLowerCase() === 'clock' ? (
+                                        renderClockCustomForm(detailsObj)
+                                    ) : (
+                                        renderGenericCustomForm(detailsObj)
+                                    )}
+                                </Box>
+                            )}
+
+                            {activeTab === 1 && (
+                                <Box sx={{ py: 2 }}>
+                                    {(() => {
+                                        const errors = (detailsObj.allAttributes || []).filter((attr: any) => {
+                                            const value = attr.value ?? attr.Value ?? '';
+                                            return value?.startsWith?.('Error') || value?.toLowerCase?.().includes('fail');
+                                        });
+
+                                        if (errors.length === 0) {
+                                            const hasScanned = (detailsObj.allAttributes || []).some((attr: any) => {
+                                                const value = attr.value ?? attr.Value;
+                                                return value && value !== 'Waiting...' && value !== 'Scanning...';
+                                            });
+
+                                            return (
+                                                <Alert severity={hasScanned ? 'success' : 'info'}>
+                                                    {hasScanned
+                                                        ? 'All attributes were read successfully without any errors.'
+                                                        : 'No scan has been performed yet. Click Scan Object to read parameter values.'}
+                                                </Alert>
+                                            );
+                                        }
+
+                                        return (
+                                            <Stack spacing={2}>
+                                                <Alert severity="error">
+                                                    Found {errors.length} error(s) during the last scan of this object.
+                                                </Alert>
+                                                <TableContainer component={Paper} variant="outlined">
+                                                    <Table size="small">
+                                                        <TableHead>
+                                                            <TableRow>
+                                                                <TableCell sx={{ fontWeight: 'bold' }}>Attribute Index</TableCell>
+                                                                <TableCell sx={{ fontWeight: 'bold' }}>Description</TableCell>
+                                                                <TableCell sx={{ fontWeight: 'bold' }}>Last error</TableCell>
+                                                            </TableRow>
+                                                        </TableHead>
+                                                        <TableBody>
+                                                            {errors.map((err: any) => {
+                                                                const attrId = err.AttributeId ?? err.attributeId;
+                                                                return (
+                                                                    <TableRow key={attrId}>
+                                                                        <TableCell>{attrId}</TableCell>
+                                                                        <TableCell>{err.Name || err.name || getAttributeDescription(detailsObj, String(attrId))}</TableCell>
+                                                                        <TableCell sx={{ color: '#d32f2f' }}>
+                                                                            {err.value ?? err.Value}
+                                                                        </TableCell>
+                                                                    </TableRow>
+                                                                );
+                                                            })}
+                                                        </TableBody>
+                                                    </Table>
+                                                </TableContainer>
+                                            </Stack>
+                                        );
+                                    })()}
+                                </Box>
+                            )}
+
+                            {activeTab === 2 && (
+                                <Box sx={{ py: 2 }}>
+                                    {(() => {
+                                        const assocObj = associationObjectList.find((item: any) => item.LogicalName === detailsObj.obisCode);
+                                        const rights = assocObj ? parseAccessRights(assocObj.AttributeAccess) : [];
+                                        const fallbackRows = getAttributeRows(detailsObj);
+                                        const accessRows = rights.length > 0
+                                            ? rights.map((r: any) => ({
+                                                index: r.name,
+                                                description: getAttributeDescription(detailsObj, r.name),
+                                                access: r.rights,
+                                                type: getAttributeType(detailsObj.objectType, r.name),
+                                                required: isAttributeReadRequired(detailsObj, r.name, r.rights),
+                                                source: getAttributeSourceText(detailsObj, r.name)
+                                            }))
+                                            : fallbackRows.map((row: any) => ({
+                                                index: String(row.attributeId),
+                                                description: row.name,
+                                                access: row.accessType || (row.attributeId === 1 ? 'Read' : 'ReadWrite'),
+                                                type: row.dataType || getAttributeType(detailsObj.objectType, String(row.attributeId)),
+                                                required: isAttributeReadRequired(
+                                                    detailsObj,
+                                                    row.attributeId,
+                                                    row.accessType || (row.attributeId === 1 ? 'Read' : 'ReadWrite')
+                                                ),
+                                                source: getAttributeSourceText(detailsObj, row.attributeId)
+                                            }));
+
+                                        return (
+                                            <TableContainer component={Paper} variant="outlined">
+                                                <Table size="small">
+                                                    <TableHead>
+                                                        <TableRow>
+                                                            <TableCell sx={{ fontWeight: 'bold' }}>Attribute Index</TableCell>
+                                                            <TableCell sx={{ fontWeight: 'bold' }}>Description</TableCell>
+                                                            <TableCell sx={{ fontWeight: 'bold' }}>Access</TableCell>
+                                                            <TableCell sx={{ fontWeight: 'bold' }}>Required</TableCell>
+                                                            <TableCell sx={{ fontWeight: 'bold' }}>Source</TableCell>
+                                                            <TableCell sx={{ fontWeight: 'bold' }}>Access Selector</TableCell>
+                                                            <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>Static</TableCell>
+                                                            <TableCell sx={{ fontWeight: 'bold' }}>Type</TableCell>
+                                                            <TableCell sx={{ fontWeight: 'bold' }}>UIType</TableCell>
+                                                        </TableRow>
+                                                    </TableHead>
+                                                    <TableBody>
+                                                        {accessRows.map((row: any, ri: number) => (
+                                                            <TableRow key={ri} hover>
+                                                                <TableCell>{row.index}</TableCell>
+                                                                <TableCell>{row.description}</TableCell>
+                                                                <TableCell>{row.access}</TableCell>
+                                                                <TableCell sx={{ color: row.required ? 'warning.main' : 'text.secondary' }}>
+                                                                    {getRequiredText(row.required)}
+                                                                </TableCell>
+                                                                <TableCell sx={{ color: row.source === 'Device error' ? 'error.main' : 'text.secondary' }}>
+                                                                    {row.source}
+                                                                </TableCell>
+                                                                <TableCell></TableCell>
+                                                                <TableCell align="center">
+                                                                    <Checkbox size="small" disabled checked={false} />
+                                                                </TableCell>
+                                                                <TableCell sx={{ color: 'text.secondary' }}>{row.type}</TableCell>
+                                                                <TableCell sx={{ color: 'text.secondary' }}>None</TableCell>
+                                                            </TableRow>
+                                                        ))}
+                                                    </TableBody>
+                                                </Table>
+                                            </TableContainer>
+                                        );
+                                    })()}
+                                </Box>
+                            )}
+
+                            {activeTab === 3 && (
+                                <Box sx={{ py: 2 }}>
+                                    {(() => {
+                                        const assocObj = associationObjectList.find((item: any) => item.LogicalName === detailsObj.obisCode);
+                                        const rights = assocObj ? parseAccessRights(assocObj.MethodAccess) : [];
+
+                                        return (
+                                            <TableContainer component={Paper} variant="outlined">
+                                                <Table size="small">
+                                                    <TableHead>
+                                                        <TableRow>
+                                                            <TableCell sx={{ fontWeight: 'bold', width: '20%' }}>Method Index</TableCell>
+                                                            <TableCell sx={{ fontWeight: 'bold', width: '50%' }}>Description</TableCell>
+                                                            <TableCell sx={{ fontWeight: 'bold', width: '30%' }}>Method access</TableCell>
+                                                        </TableRow>
+                                                    </TableHead>
+                                                    <TableBody>
+                                                        {rights.length > 0 ? (
+                                                            rights.map((r, ri) => (
+                                                                <TableRow key={ri} hover>
+                                                                    <TableCell>{r.name}</TableCell>
+                                                                    <TableCell>{getMethodDescription(detailsObj.objectType, r.name)}</TableCell>
+                                                                    <TableCell>{r.rights}</TableCell>
+                                                                </TableRow>
+                                                            ))
+                                                        ) : (
+                                                            <TableRow hover>
+                                                                <TableCell colSpan={3} align="center" sx={{ color: 'text.secondary' }}>
+                                                                    No methods defined for {detailsObj.objectType || 'this'} object.
+                                                                </TableCell>
+                                                            </TableRow>
+                                                        )}
+                                                    </TableBody>
+                                                </Table>
+                                            </TableContainer>
+                                        );
+                                    })()}
+                                </Box>
+                            )}
+
+                            {activeTab === 4 && isEventStatusRow(detailsObj) && (
+                                <Box sx={{ py: 2 }}>
+                                    {renderEventStatusDetails(detailsObj)}
+                                </Box>
+                            )}
+                        </Stack>
+                    )}
+                </DialogContent>
+                <Divider />
+                <DialogActions>
+                    <Button onClick={handleCloseDetails} variant="contained" color="primary">
+                        Close
+                    </Button>
+                </DialogActions>
+            </Dialog>
 
             {/* Object List Dialog Modal */}
             <Dialog 
@@ -1952,213 +2373,6 @@ export default function Page(): React.JSX.Element {
                 <Divider />
                 <DialogActions>
                     <Button onClick={() => setContextAuthOpen(false)} variant="contained" color="primary">
-                        Close
-                    </Button>
-                </DialogActions>
-            </Dialog>
-
-            {/* Event Status Sections Dialog */}
-            <Dialog
-                open={eventStatusOpen}
-                onClose={() => setEventStatusOpen(false)}
-                maxWidth="lg"
-                fullWidth
-            >
-                <DialogTitle sx={{ fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2 }}>
-                    <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                        Event Status Details
-                    </Typography>
-                    <Typography variant="subtitle2" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
-                        {eventStatusRow?.obisCode || ''}
-                    </Typography>
-                </DialogTitle>
-                <Divider />
-                <DialogContent>
-                    <Tabs
-                        value={eventStatusTab}
-                        onChange={(event, newValue) => setEventStatusTab(newValue)}
-                        sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}
-                    >
-                        <Tab label="Data" />
-                        <Tab label="Last errors" />
-                        <Tab label="Access rights" />
-                        <Tab label="Method Access Rights" />
-                    </Tabs>
-
-                    {eventStatusTab === 0 && (
-                        <Stack spacing={2}>
-                            <Box>
-                                <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-                                    {eventStatusRow?.name || 'Event Data Object'}
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
-                                    Value: {eventStatusRow?.value || 'N/A'}
-                                </Typography>
-                            </Box>
-                            <Grid container spacing={2}>
-                                {!EVENT_STATUS_SECTIONS.some(section => section.obisCode === eventStatusRow?.obisCode) && (
-                                    <Grid size={{ xs: 12 }}>
-                                        <Alert severity="info">
-                                            No event status mapping is configured for this data object.
-                                        </Alert>
-                                    </Grid>
-                                )}
-                                {EVENT_STATUS_SECTIONS
-                                    .filter(section => section.obisCode === eventStatusRow?.obisCode)
-                                    .map(section => {
-                                        const activeCodes = parseEventStatusValue(
-                                            eventStatusRow?.value,
-                                            section
-                                        );
-                                        return (
-                                            <Grid key={section.key} size={{ xs: 12 }}>
-                                                <Card
-                                                    variant="outlined"
-                                                    sx={{
-                                                        height: '100%',
-                                                        borderColor: 'primary.main',
-                                                        bgcolor: 'action.hover',
-                                                    }}
-                                                >
-                                                    <CardHeader
-                                                        title={section.title}
-                                                        subheader={section.obisCode}
-                                                        titleTypographyProps={{ variant: 'subtitle1', fontWeight: 'bold' }}
-                                                        subheaderTypographyProps={{ fontFamily: 'monospace' }}
-                                                    />
-                                                    <Divider />
-                                                    <CardContent sx={{ py: 1.5 }}>
-                                                        <Stack spacing={0.5}>
-                                                            {section.items.map(item => (
-                                                                <FormControlLabel
-                                                                    key={item.code}
-                                                                    control={
-                                                                        <Checkbox
-                                                                            checked={activeCodes.has(item.code)}
-                                                                            disabled
-                                                                            size="small"
-                                                                        />
-                                                                    }
-                                                                    label={`${item.label} (${item.code})`}
-                                                                    sx={{
-                                                                        m: 0,
-                                                                        '& .MuiFormControlLabel-label': {
-                                                                            fontSize: '0.875rem',
-                                                                        },
-                                                                    }}
-                                                                />
-                                                            ))}
-                                                        </Stack>
-                                                    </CardContent>
-                                                </Card>
-                                            </Grid>
-                                        );
-                                    })}
-                            </Grid>
-                        </Stack>
-                    )}
-
-                    {eventStatusTab === 1 && (
-                        <TableContainer component={Paper} variant="outlined">
-                            <Table size="small">
-                                <TableHead>
-                                    <TableRow>
-                                        <TableCell sx={{ fontWeight: 'bold', width: '20%' }}>Attribute Index</TableCell>
-                                        <TableCell sx={{ fontWeight: 'bold', width: '40%' }}>Description</TableCell>
-                                        <TableCell sx={{ fontWeight: 'bold', width: '40%' }}>Last error</TableCell>
-                                    </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                    {[1, 2].map((attrIndex) => {
-                                        const attrVal = eventStatusRow?.allAttributes?.find(
-                                            (attr: any) => (attr.AttributeId || attr.attributeId) === attrIndex
-                                        );
-                                        const isError = attrVal?.value?.startsWith('Error');
-                                        return (
-                                            <TableRow key={attrIndex} hover>
-                                                <TableCell>{attrIndex}</TableCell>
-                                                <TableCell>{attrIndex === 1 ? 'Logical Name' : eventStatusRow?.name?.replace(eventStatusRow?.obisCode, '').trim() || 'Value'}</TableCell>
-                                                <TableCell sx={{ color: isError ? '#d32f2f' : 'text.secondary' }}>
-                                                    {isError ? attrVal.value.replace('Error: ', '') : ''}
-                                                </TableCell>
-                                            </TableRow>
-                                        );
-                                    })}
-                                </TableBody>
-                            </Table>
-                        </TableContainer>
-                    )}
-
-                    {eventStatusTab === 2 && (() => {
-                        const assocObj = associationObjectList.find((item: any) => item.LogicalName === eventStatusRow?.obisCode);
-                        const rights = assocObj ? parseAccessRights(assocObj.AttributeAccess) : [];
-                        const rows = [
-                            { index: 1, description: 'Logical Name', type: 'OctetString' },
-                            { index: 2, description: eventStatusRow?.name?.replace(eventStatusRow?.obisCode, '').trim() || 'Value', type: 'Enum' },
-                        ];
-
-                        return (
-                            <TableContainer component={Paper} variant="outlined">
-                                <Table size="small">
-                                    <TableHead>
-                                        <TableRow>
-                                            <TableCell sx={{ fontWeight: 'bold' }}>Attribute Index</TableCell>
-                                            <TableCell sx={{ fontWeight: 'bold' }}>Description</TableCell>
-                                            <TableCell sx={{ fontWeight: 'bold' }}>Access</TableCell>
-                                            <TableCell sx={{ fontWeight: 'bold' }}>Access Selector</TableCell>
-                                            <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>Static</TableCell>
-                                            <TableCell sx={{ fontWeight: 'bold' }}>Type</TableCell>
-                                            <TableCell sx={{ fontWeight: 'bold' }}>UIType</TableCell>
-                                        </TableRow>
-                                    </TableHead>
-                                    <TableBody>
-                                        {rows.map((row) => {
-                                            const rightItem = rights.find(r => r.name === row.index.toString());
-                                            const accessRight = rightItem ? rightItem.rights : row.index === 1 ? 'Read' : 'ReadWrite';
-                                            return (
-                                                <TableRow key={row.index} hover>
-                                                    <TableCell>{row.index}</TableCell>
-                                                    <TableCell>{row.description}</TableCell>
-                                                    <TableCell>{accessRight}</TableCell>
-                                                    <TableCell></TableCell>
-                                                    <TableCell align="center">
-                                                        <Checkbox size="small" disabled checked={false} />
-                                                    </TableCell>
-                                                    <TableCell sx={{ color: 'text.secondary' }}>{row.type}</TableCell>
-                                                    <TableCell sx={{ color: 'text.secondary' }}>None</TableCell>
-                                                </TableRow>
-                                            );
-                                        })}
-                                    </TableBody>
-                                </Table>
-                            </TableContainer>
-                        );
-                    })()}
-
-                    {eventStatusTab === 3 && (
-                        <TableContainer component={Paper} variant="outlined">
-                            <Table size="small">
-                                <TableHead>
-                                    <TableRow>
-                                        <TableCell sx={{ fontWeight: 'bold', width: '20%' }}>Attribute Index</TableCell>
-                                        <TableCell sx={{ fontWeight: 'bold', width: '50%' }}>Description</TableCell>
-                                        <TableCell sx={{ fontWeight: 'bold', width: '30%' }}>Method access</TableCell>
-                                    </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                    <TableRow>
-                                        <TableCell colSpan={3} align="center" sx={{ color: 'text.secondary' }}>
-                                            No methods defined for Data object.
-                                        </TableCell>
-                                    </TableRow>
-                                </TableBody>
-                            </Table>
-                        </TableContainer>
-                    )}
-                </DialogContent>
-                <Divider />
-                <DialogActions>
-                    <Button onClick={() => setEventStatusOpen(false)} variant="contained" color="primary">
                         Close
                     </Button>
                 </DialogActions>
