@@ -34,6 +34,8 @@ import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
 import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
+import Tooltip from '@mui/material/Tooltip';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 
 const CLOCK_ATTRIBUTES = [
     { index: 1, name: 'Logical Name', type: 'OctetString' },
@@ -174,6 +176,101 @@ const ATTRIBUTE_TYPES: Record<string, string[]> = {
     ]
 };
 
+type EventStatusItem = {
+    code: number;
+    label: string;
+};
+
+type EventStatusSection = {
+    key: string;
+    title: string;
+    obisCode: string;
+    items: EventStatusItem[];
+};
+
+const EVENT_STATUS_SECTIONS: EventStatusSection[] = [
+    {
+        key: 'voltage',
+        title: 'Voltage Related',
+        obisCode: '0.0.96.11.0.255',
+        items: [
+            { code: 1, label: 'Missing potential - Occurrence' },
+            { code: 2, label: 'Missing potential - Restoration' },
+            { code: 3, label: 'Low voltage - Occurrence' },
+            { code: 4, label: 'Low voltage - Restoration' },
+            { code: 5, label: 'Voltage unbalance - Occurrence' },
+            { code: 6, label: 'Voltage unbalance - Restoration' },
+            { code: 7, label: 'Over voltage - Occurrence' },
+            { code: 8, label: 'Over voltage - Restoration' },
+        ],
+    },
+    {
+        key: 'current',
+        title: 'Current Related',
+        obisCode: '0.0.96.11.1.255',
+        items: [
+            { code: 51, label: 'R Phase - Current reverse - Occurrence' },
+            { code: 52, label: 'R Phase - Current reverse - Restoration' },
+            { code: 53, label: 'Y Phase - Current reverse - Occurrence' },
+            { code: 54, label: 'Y Phase - Current reverse - Restoration' },
+            { code: 55, label: 'B Phase - Current reverse - Occurrence' },
+            { code: 56, label: 'B Phase - Current reverse - Restoration' },
+            { code: 63, label: 'Current Unbalance - Occurrence' },
+            { code: 64, label: 'Current Unbalance - Restoration' },
+            { code: 65, label: 'Current bypass - Occurrence' },
+            { code: 66, label: 'Current bypass - Restoration' },
+            { code: 67, label: 'Over current in any phase - Occurrence' },
+            { code: 68, label: 'Over current in any phase - Restoration' },
+        ],
+    },
+    {
+        key: 'power',
+        title: 'Power Related',
+        obisCode: '0.0.96.11.2.255',
+        items: [
+            { code: 101, label: 'Power failure - Occurrence' },
+            { code: 102, label: 'Power failure - Restoration' },
+        ],
+    },
+    {
+        key: 'transaction',
+        title: 'Transaction Related',
+        obisCode: '0.0.96.11.3.255',
+        items: [
+            { code: 151, label: 'Real Time Clock - Date and Time' },
+            { code: 152, label: 'Demand Integration Period' },
+            { code: 153, label: 'Profile Capture Period' },
+            { code: 154, label: 'Single-action Schedule for Billing Dates' },
+            { code: 155, label: 'Activity Calendar Time Zones' },
+            { code: 157, label: 'New Firmware Activated' },
+            { code: 158, label: 'Load limit (kW) set' },
+            { code: 159, label: 'Enabled - load limit function' },
+            { code: 160, label: 'Disabled - load limit function' },
+            { code: 161, label: 'LLS secret (MR) change' },
+            { code: 162, label: 'HLS key (US) change' },
+            { code: 163, label: 'HLS key (FW) change' },
+            { code: 164, label: 'Global key change(encryption and authentication)' },
+            { code: 165, label: 'ESWF change' },
+            { code: 166, label: 'MD reset' },
+            { code: 169, label: 'Single Action Schedule for Image Activation' },
+            { code: 182, label: 'Passive Relay time.' },
+        ],
+    },
+    {
+        key: 'others',
+        title: 'Others',
+        obisCode: '0.0.96.11.4.255',
+        items: [
+            { code: 201, label: 'Influence of permanent magnet - Occurrence' },
+            { code: 202, label: 'Influence of permanent magnet - Restoration' },
+            { code: 203, label: 'Neutral disturbance - Occurrence' },
+            { code: 204, label: 'Neutral disturbance - Restoration' },
+            { code: 205, label: 'Meter cover opened' },
+            { code: 206, label: 'Terminal cover opened' },
+        ],
+    },
+];
+
 const getAttributeDescription = (obj: any, indexStr: string) => {
     const idx = parseInt(indexStr, 10);
     if (isNaN(idx)) return indexStr;
@@ -265,6 +362,60 @@ export default function Page(): React.JSX.Element {
     const [calendarDialogOpen, setCalendarDialogOpen] = useState(false);
     const [calendarData, setCalendarData] = useState<any>(null);
     const [calendarTitle, setCalendarTitle] = useState('');
+
+    // Event status modal states
+    const [eventStatusOpen, setEventStatusOpen] = useState(false);
+    const [eventStatusRow, setEventStatusRow] = useState<any>(null);
+    const [eventStatusTab, setEventStatusTab] = useState<number>(0);
+
+    const isEventStatusRow = (row: any): boolean => {
+        const obisCode = row?.obisCode || '';
+        return EVENT_STATUS_SECTIONS.some(section => section.obisCode === obisCode);
+    };
+
+    const parseEventStatusValue = (value: string | null | undefined, section: EventStatusSection): Set<number> => {
+        const activeCodes = new Set<number>();
+        if (!value || value === 'Waiting...' || value === 'Scanning...' || value.startsWith('Error')) {
+            return activeCodes;
+        }
+
+        const normalized = value.trim();
+        const numericValue = Number(normalized);
+        if (!Number.isNaN(numericValue)) {
+            section.items.forEach((item, index) => {
+                if ((numericValue & (1 << index)) !== 0) {
+                    activeCodes.add(item.code);
+                }
+            });
+            return activeCodes;
+        }
+
+        const bitString = normalized.replace(/\s/g, '');
+        if (/^[01]+$/.test(bitString)) {
+            const reversedBits = bitString.split('').reverse();
+            section.items.forEach((item, index) => {
+                const bitIndex = index % bitString.length;
+                if (reversedBits[bitIndex] === '1') {
+                    activeCodes.add(item.code);
+                }
+            });
+            return activeCodes;
+        }
+
+        section.items.forEach(item => {
+            if (normalized.toLowerCase().includes(item.label.toLowerCase()) || normalized.includes(String(item.code))) {
+                activeCodes.add(item.code);
+            }
+        });
+
+        return activeCodes;
+    };
+
+    const handleOpenEventStatus = (row: any) => {
+        setEventStatusRow(row);
+        setEventStatusTab(0);
+        setEventStatusOpen(true);
+    };
 
     const getAttrValue = (attrs: any[] | undefined, attrId: number): string => {
         if (!attrs || !Array.isArray(attrs)) return 'Waiting...';
@@ -1177,6 +1328,7 @@ export default function Page(): React.JSX.Element {
                                         <TableCell sx={{ fontWeight: 'bold' }}>Name</TableCell>
                                         <TableCell sx={{ fontWeight: 'bold' }}>Object Type</TableCell>
                                         <TableCell sx={{ fontWeight: 'bold' }}>Attribute 2</TableCell>
+                                        {isDataObjectType && <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>Details</TableCell>}
                                         {!isDataObjectType && <TableCell sx={{ fontWeight: 'bold' }}>Attribute 3</TableCell>}
                                         {isExtendedRegisterType && <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>}
                                         {isExtendedRegisterType && <TableCell sx={{ fontWeight: 'bold' }}>Capture Time</TableCell>}
@@ -1269,6 +1421,24 @@ export default function Page(): React.JSX.Element {
                                                         )
                                                     )}
                                                 </TableCell>
+                                                {isDataObjectType && (
+                                                    <TableCell sx={{ textAlign: 'center' }}>
+                                                        {isEventStatusRow(row) ? (
+                                                            <Tooltip title="View event status sections">
+                                                                <Button
+                                                                    variant="outlined"
+                                                                    size="small"
+                                                                    startIcon={<VisibilityIcon fontSize="small" />}
+                                                                    onClick={() => handleOpenEventStatus(row)}
+                                                                >
+                                                                    Detail
+                                                                </Button>
+                                                            </Tooltip>
+                                                        ) : (
+                                                            <span style={{ color: '#6b7280' }}>-</span>
+                                                        )}
+                                                    </TableCell>
+                                                )}
                                                 {!isDataObjectType && (
                                                     <TableCell sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
                                                         {row.attribute3 || 'N/A'}
@@ -1782,6 +1952,213 @@ export default function Page(): React.JSX.Element {
                 <Divider />
                 <DialogActions>
                     <Button onClick={() => setContextAuthOpen(false)} variant="contained" color="primary">
+                        Close
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Event Status Sections Dialog */}
+            <Dialog
+                open={eventStatusOpen}
+                onClose={() => setEventStatusOpen(false)}
+                maxWidth="lg"
+                fullWidth
+            >
+                <DialogTitle sx={{ fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                        Event Status Details
+                    </Typography>
+                    <Typography variant="subtitle2" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+                        {eventStatusRow?.obisCode || ''}
+                    </Typography>
+                </DialogTitle>
+                <Divider />
+                <DialogContent>
+                    <Tabs
+                        value={eventStatusTab}
+                        onChange={(event, newValue) => setEventStatusTab(newValue)}
+                        sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}
+                    >
+                        <Tab label="Data" />
+                        <Tab label="Last errors" />
+                        <Tab label="Access rights" />
+                        <Tab label="Method Access Rights" />
+                    </Tabs>
+
+                    {eventStatusTab === 0 && (
+                        <Stack spacing={2}>
+                            <Box>
+                                <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                                    {eventStatusRow?.name || 'Event Data Object'}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+                                    Value: {eventStatusRow?.value || 'N/A'}
+                                </Typography>
+                            </Box>
+                            <Grid container spacing={2}>
+                                {!EVENT_STATUS_SECTIONS.some(section => section.obisCode === eventStatusRow?.obisCode) && (
+                                    <Grid size={{ xs: 12 }}>
+                                        <Alert severity="info">
+                                            No event status mapping is configured for this data object.
+                                        </Alert>
+                                    </Grid>
+                                )}
+                                {EVENT_STATUS_SECTIONS
+                                    .filter(section => section.obisCode === eventStatusRow?.obisCode)
+                                    .map(section => {
+                                        const activeCodes = parseEventStatusValue(
+                                            eventStatusRow?.value,
+                                            section
+                                        );
+                                        return (
+                                            <Grid key={section.key} size={{ xs: 12 }}>
+                                                <Card
+                                                    variant="outlined"
+                                                    sx={{
+                                                        height: '100%',
+                                                        borderColor: 'primary.main',
+                                                        bgcolor: 'action.hover',
+                                                    }}
+                                                >
+                                                    <CardHeader
+                                                        title={section.title}
+                                                        subheader={section.obisCode}
+                                                        titleTypographyProps={{ variant: 'subtitle1', fontWeight: 'bold' }}
+                                                        subheaderTypographyProps={{ fontFamily: 'monospace' }}
+                                                    />
+                                                    <Divider />
+                                                    <CardContent sx={{ py: 1.5 }}>
+                                                        <Stack spacing={0.5}>
+                                                            {section.items.map(item => (
+                                                                <FormControlLabel
+                                                                    key={item.code}
+                                                                    control={
+                                                                        <Checkbox
+                                                                            checked={activeCodes.has(item.code)}
+                                                                            disabled
+                                                                            size="small"
+                                                                        />
+                                                                    }
+                                                                    label={`${item.label} (${item.code})`}
+                                                                    sx={{
+                                                                        m: 0,
+                                                                        '& .MuiFormControlLabel-label': {
+                                                                            fontSize: '0.875rem',
+                                                                        },
+                                                                    }}
+                                                                />
+                                                            ))}
+                                                        </Stack>
+                                                    </CardContent>
+                                                </Card>
+                                            </Grid>
+                                        );
+                                    })}
+                            </Grid>
+                        </Stack>
+                    )}
+
+                    {eventStatusTab === 1 && (
+                        <TableContainer component={Paper} variant="outlined">
+                            <Table size="small">
+                                <TableHead>
+                                    <TableRow>
+                                        <TableCell sx={{ fontWeight: 'bold', width: '20%' }}>Attribute Index</TableCell>
+                                        <TableCell sx={{ fontWeight: 'bold', width: '40%' }}>Description</TableCell>
+                                        <TableCell sx={{ fontWeight: 'bold', width: '40%' }}>Last error</TableCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {[1, 2].map((attrIndex) => {
+                                        const attrVal = eventStatusRow?.allAttributes?.find(
+                                            (attr: any) => (attr.AttributeId || attr.attributeId) === attrIndex
+                                        );
+                                        const isError = attrVal?.value?.startsWith('Error');
+                                        return (
+                                            <TableRow key={attrIndex} hover>
+                                                <TableCell>{attrIndex}</TableCell>
+                                                <TableCell>{attrIndex === 1 ? 'Logical Name' : eventStatusRow?.name?.replace(eventStatusRow?.obisCode, '').trim() || 'Value'}</TableCell>
+                                                <TableCell sx={{ color: isError ? '#d32f2f' : 'text.secondary' }}>
+                                                    {isError ? attrVal.value.replace('Error: ', '') : ''}
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
+                                </TableBody>
+                            </Table>
+                        </TableContainer>
+                    )}
+
+                    {eventStatusTab === 2 && (() => {
+                        const assocObj = associationObjectList.find((item: any) => item.LogicalName === eventStatusRow?.obisCode);
+                        const rights = assocObj ? parseAccessRights(assocObj.AttributeAccess) : [];
+                        const rows = [
+                            { index: 1, description: 'Logical Name', type: 'OctetString' },
+                            { index: 2, description: eventStatusRow?.name?.replace(eventStatusRow?.obisCode, '').trim() || 'Value', type: 'Enum' },
+                        ];
+
+                        return (
+                            <TableContainer component={Paper} variant="outlined">
+                                <Table size="small">
+                                    <TableHead>
+                                        <TableRow>
+                                            <TableCell sx={{ fontWeight: 'bold' }}>Attribute Index</TableCell>
+                                            <TableCell sx={{ fontWeight: 'bold' }}>Description</TableCell>
+                                            <TableCell sx={{ fontWeight: 'bold' }}>Access</TableCell>
+                                            <TableCell sx={{ fontWeight: 'bold' }}>Access Selector</TableCell>
+                                            <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>Static</TableCell>
+                                            <TableCell sx={{ fontWeight: 'bold' }}>Type</TableCell>
+                                            <TableCell sx={{ fontWeight: 'bold' }}>UIType</TableCell>
+                                        </TableRow>
+                                    </TableHead>
+                                    <TableBody>
+                                        {rows.map((row) => {
+                                            const rightItem = rights.find(r => r.name === row.index.toString());
+                                            const accessRight = rightItem ? rightItem.rights : row.index === 1 ? 'Read' : 'ReadWrite';
+                                            return (
+                                                <TableRow key={row.index} hover>
+                                                    <TableCell>{row.index}</TableCell>
+                                                    <TableCell>{row.description}</TableCell>
+                                                    <TableCell>{accessRight}</TableCell>
+                                                    <TableCell></TableCell>
+                                                    <TableCell align="center">
+                                                        <Checkbox size="small" disabled checked={false} />
+                                                    </TableCell>
+                                                    <TableCell sx={{ color: 'text.secondary' }}>{row.type}</TableCell>
+                                                    <TableCell sx={{ color: 'text.secondary' }}>None</TableCell>
+                                                </TableRow>
+                                            );
+                                        })}
+                                    </TableBody>
+                                </Table>
+                            </TableContainer>
+                        );
+                    })()}
+
+                    {eventStatusTab === 3 && (
+                        <TableContainer component={Paper} variant="outlined">
+                            <Table size="small">
+                                <TableHead>
+                                    <TableRow>
+                                        <TableCell sx={{ fontWeight: 'bold', width: '20%' }}>Attribute Index</TableCell>
+                                        <TableCell sx={{ fontWeight: 'bold', width: '50%' }}>Description</TableCell>
+                                        <TableCell sx={{ fontWeight: 'bold', width: '30%' }}>Method access</TableCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    <TableRow>
+                                        <TableCell colSpan={3} align="center" sx={{ color: 'text.secondary' }}>
+                                            No methods defined for Data object.
+                                        </TableCell>
+                                    </TableRow>
+                                </TableBody>
+                            </Table>
+                        </TableContainer>
+                    )}
+                </DialogContent>
+                <Divider />
+                <DialogActions>
+                    <Button onClick={() => setEventStatusOpen(false)} variant="contained" color="primary">
                         Close
                     </Button>
                 </DialogActions>
