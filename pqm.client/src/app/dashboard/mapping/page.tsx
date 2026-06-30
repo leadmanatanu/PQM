@@ -36,147 +36,7 @@ import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 
-const CLOCK_ATTRIBUTES = [
-    { index: 1, name: 'Logical Name', type: 'OctetString' },
-    { index: 2, name: 'Time', type: 'OctetString' },
-    { index: 3, name: 'Time Zone', type: 'Int16' },
-    { index: 4, name: 'Status', type: 'UInt8' },
-    { index: 5, name: 'Begin', type: 'OctetString' },
-    { index: 6, name: 'End', type: 'OctetString' },
-    { index: 7, name: 'Deviation', type: 'Int8' },
-    { index: 8, name: 'Enabled', type: 'Boolean' },
-    { index: 9, name: 'Clock Base', type: 'Enum' },
-];
-
-const CLOCK_METHODS = [
-    { index: 1, name: 'Adjust to quarter' },
-    { index: 2, name: 'Adjust to measuring period' },
-    { index: 3, name: 'Adjust to minute' },
-    { index: 4, name: 'Adjust to preset time' },
-    { index: 5, name: 'Preset adjusting time' },
-    { index: 6, name: 'Shift time' },
-];
-
-const parseClockStatus = (statusVal: string | null | undefined) => {
-    if (!statusVal || statusVal === 'Waiting...' || statusVal === 'Scanning...') {
-        return {
-            invalidValue: false,
-            doubtfulValue: false,
-            differentClockBase: false,
-            invalidClockStatus: false,
-            daylightSavingActive: false
-        };
-    }
-    
-    const valLower = statusVal.toLowerCase();
-    
-    // If it's a number, parse as bitmask
-    const numVal = parseInt(statusVal, 10);
-    if (!isNaN(numVal)) {
-        return {
-            invalidValue: (numVal & 1) !== 0,
-            doubtfulValue: (numVal & 2) !== 0,
-            differentClockBase: (numVal & 4) !== 0,
-            invalidClockStatus: (numVal & 8) !== 0,
-            daylightSavingActive: (numVal & 128) !== 0
-        };
-    }
-    
-    // If it's a comma-separated enum string
-    return {
-        invalidValue: valLower.includes('invalidvalue'),
-        doubtfulValue: valLower.includes('doubtfulvalue'),
-        differentClockBase: valLower.includes('differentclockbase'),
-        invalidClockStatus: valLower.includes('invalidclockstatus'),
-        daylightSavingActive: valLower.includes('daylightsavingactive')
-    };
-};
-
-const getClockBaseDisplay = (baseVal: string | null | undefined) => {
-    if (!baseVal || baseVal === 'Waiting...' || baseVal === 'Scanning...') return baseVal || 'Waiting...';
-    const valLower = baseVal.toLowerCase();
-    if (valLower === '1' || valLower === 'crystal') return 'Crystal';
-    if (valLower === '2' || valLower === 'mainsfrequency' || valLower === 'mains frequency') return 'MainsFrequency';
-    if (valLower === '3' || valLower === 'gps') return 'GPS';
-    if (valLower === '4' || valLower === 'radio') return 'Radio';
-    return baseVal;
-};
-
-const METHOD_DESCRIPTIONS: Record<string, string[]> = {
-    'clock': [
-        'Adjust to quarter',
-        'Adjust to measuring period',
-        'Adjust to minute',
-        'Adjust to preset time',
-        'Preset adjusting time',
-        'Shift time'
-    ],
-    'scripttable': [
-        'Execute'
-    ],
-    'associationlogicalname': [
-        'Reply to connect',
-        'Disconnect',
-        'Update secret',
-        'Add object',
-        'Remove object'
-    ],
-    'activitycalendar': [
-        'Activate passive calendar'
-    ],
-    'profilegeneric': [
-        'Reset',
-        'Capture'
-    ],
-    'actionschedule': [
-        'Reset'
-    ],
-    'register': [
-        'Reset'
-    ],
-    'extendedregister': [
-        'Reset'
-    ],
-    'demandregister': [
-        'Reset'
-    ]
-};
-
-const ATTRIBUTE_TYPES: Record<string, string[]> = {
-    'data': [
-        'OctetString', 'None'
-    ],
-    'clock': [
-        'OctetString', 'OctetString', 'Int16', 'UInt8', 'OctetString', 'OctetString', 'Int8', 'Boolean', 'Enum'
-    ],
-    'scripttable': [
-        'OctetString', 'Array'
-    ],
-    'actionschedule': [
-        'OctetString', 'UInt16', 'UInt8', 'OctetString', 'OctetString'
-    ],
-    'activitycalendar': [
-        'OctetString', 'OctetString', 'Array', 'Array', 'Array', 'OctetString'
-    ],
-    'associationlogicalname': [
-        'OctetString', 'Array', 'OctetString', 'Structure', 'Enum', 'OctetString'
-    ],
-    'iechdlcsetup': [
-        'OctetString', 'Enum', 'Enum', 'UInt8', 'UInt8', 'UInt16', 'UInt16', 'UInt32', 'UInt16'
-    ],
-    'lechdlcsetup': [
-        'OctetString', 'Enum', 'Enum', 'UInt8', 'UInt8', 'UInt16', 'UInt16', 'UInt32', 'UInt16'
-    ],
-    'tcpudpsetup': [
-        'OctetString', 'UInt16', 'OctetString'
-    ],
-    'ip4setup': [
-        'OctetString', 'OctetString', 'Array', 'OctetString', 'OctetString', 'UInt16'
-    ],
-    'macaddresssetup': [
-        'OctetString', 'OctetString'
-    ]
-};
+// Dynamically obtained from the device
 
 type EventStatusItem = {
     code: number;
@@ -273,38 +133,29 @@ const EVENT_STATUS_SECTIONS: EventStatusSection[] = [
     },
 ];
 
-const getAttributeDescription = (obj: any, indexStr: string) => {
-    const idx = parseInt(indexStr, 10);
-    if (isNaN(idx)) return indexStr;
-    const attr = obj.allAttributes?.find((a: any) => (a.AttributeId || a.attributeId) === idx);
-    if (attr && (attr.Name || attr.name)) return attr.Name || attr.name;
-    if ((obj.objectType || '').toLowerCase() === 'data') {
-        if (idx === 1) return 'Logical Name';
-        if (idx === 2) return obj.name?.replace(obj.obisCode, '').trim() || 'Value';
-    }
-    return `Attribute ${idx}`;
-};
-
 const getMethodDescription = (objectType: string | null | undefined, indexStr: string) => {
     const idx = parseInt(indexStr, 10);
     if (isNaN(idx)) return indexStr;
     const typeKey = (objectType || '').toLowerCase();
-    const list = METHOD_DESCRIPTIONS[typeKey];
+    
+    // Standard DLMS COSEM method names mapping
+    const methods: Record<string, string[]> = {
+        'clock': ['Adjust to quarter', 'Adjust to measuring period', 'Adjust to minute', 'Adjust to preset time', 'Preset adjusting time', 'Shift time'],
+        'scripttable': ['Execute'],
+        'associationlogicalname': ['Reply to connect', 'Disconnect', 'Update secret', 'Add object', 'Remove object'],
+        'activitycalendar': ['Activate passive calendar'],
+        'profilegeneric': ['Reset', 'Capture'],
+        'actionschedule': ['Reset'],
+        'register': ['Reset'],
+        'extendedregister': ['Reset'],
+        'demandregister': ['Reset']
+    };
+    
+    const list = methods[typeKey];
     if (list && idx >= 1 && idx <= list.length) {
         return list[idx - 1];
     }
     return `Method ${idx}`;
-};
-
-const getAttributeType = (objectType: string | null | undefined, indexStr: string) => {
-    const idx = parseInt(indexStr, 10);
-    if (isNaN(idx)) return 'None';
-    const typeKey = (objectType || '').toLowerCase();
-    const list = ATTRIBUTE_TYPES[typeKey];
-    if (list && idx >= 1 && idx <= list.length) {
-        return list[idx - 1];
-    }
-    return 'None';
 };
 
 import { DeviceFilters } from '@/components/dashboard/mapping/device-selection';
@@ -375,8 +226,23 @@ export default function Page(): React.JSX.Element {
         return EVENT_STATUS_SECTIONS.some(section => section.obisCode === obisCode);
     };
 
-    const parseEventStatusValue = (value: string | null | undefined, section: EventStatusSection): Set<number> => {
+    const parseEventStatusValue = (value: string | null | undefined, section: EventStatusSection, obisCode?: string): Set<number> => {
         const activeCodes = new Set<number>();
+
+        // Try reading from localStorage first if value is empty/Waiting...
+        if ((!value || value === 'Waiting...') && obisCode) {
+            const stored = typeof window !== 'undefined' ? localStorage.getItem(`event_status_selections_${obisCode}`) : null;
+            if (stored) {
+                try {
+                    const parsed = JSON.parse(stored) as { value: number; name: string }[];
+                    parsed.forEach(item => activeCodes.add(item.value));
+                    return activeCodes;
+                } catch (e) {
+                    console.error('Failed to parse stored event status:', e);
+                }
+            }
+        }
+
         if (!value || value === 'Waiting...' || value === 'Scanning...' || value.startsWith('Error')) {
             return activeCodes;
         }
@@ -532,13 +398,23 @@ export default function Page(): React.JSX.Element {
 
     const getAttributeRows = (obj: any) => {
         const attrs = Array.isArray(obj?.allAttributes) ? obj.allAttributes : [];
+        const prevAttrs = Array.isArray(obj?.allAttributesBeforeScan) ? obj.allAttributesBeforeScan : [];
         const rows = attrs.map((attr: any) => {
             const attributeId = attr.AttributeId ?? attr.attributeId;
+            let val = attr.value ?? attr.Value ?? 'Waiting...';
+            const isValInvalid = !val || val === 'Waiting...' || val === 'Scanning...' || String(val).startsWith('Error');
+            if (isValInvalid && prevAttrs.length > 0) {
+                const prevAttr = prevAttrs.find((pa: any) => (pa.AttributeId ?? pa.attributeId) === attributeId);
+                const prevVal = prevAttr?.value ?? prevAttr?.Value;
+                if (prevVal && prevVal !== 'Waiting...' && prevVal !== 'Scanning...' && !String(prevVal).startsWith('Error')) {
+                    val = prevVal;
+                }
+            }
             return {
                 attributeId,
-                name: attr.Name || attr.name || getAttributeDescription(obj, String(attributeId)),
-                value: attr.value ?? attr.Value ?? 'Waiting...',
-                dataType: attr.DataType || attr.dataType || getAttributeType(obj.objectType, String(attributeId)),
+                name: attr.Name || attr.name || `Attribute ${attributeId}`,
+                value: val,
+                dataType: attr.DataType || attr.dataType || 'None',
                 accessType: attr.AccessType || attr.accessType || ''
             };
         });
@@ -555,10 +431,14 @@ export default function Page(): React.JSX.Element {
             }
 
             if (!rows.some((row: any) => row.attributeId === 2)) {
+                let attr2Val = obj.value || 'Waiting...';
+                if ((!attr2Val || attr2Val === 'Waiting...' || attr2Val === 'Scanning...' || attr2Val.startsWith('Error')) && obj.valueBeforeScan) {
+                    attr2Val = obj.valueBeforeScan;
+                }
                 rows.push({
                     attributeId: 2,
                     name: obj.name?.replace(obj.obisCode, '').trim() || 'Value',
-                    value: obj.value || 'Waiting...',
+                    value: attr2Val,
                     dataType: 'None',
                     accessType: 'ReadWrite'
                 });
@@ -697,9 +577,13 @@ export default function Page(): React.JSX.Element {
                     name: `${obj.obisCode} ${obj.name}`,
                     obisCode: obj.obisCode,
                     objectType: obj.objectType,
-                    value: obj.attribute2 || 'Waiting...',
-                    attribute3: obj.attribute3 || 'Waiting...',
-                    allAttributes: obj.allAttributes || []
+                    value: 'Waiting...',
+                    attribute3: 'Waiting...',
+                    allAttributes: (obj.allAttributes || []).map((attr: any) => ({
+                        ...attr,
+                        value: 'Waiting...',
+                        Value: 'Waiting...'
+                    }))
                 }));
 
                 // Check header name to filter for AssociationLogicalName parameters
@@ -755,11 +639,18 @@ export default function Page(): React.JSX.Element {
         try {
             for (let i = 0; i < discoveredParams.length; i++) {
                 const param = discoveredParams[i];
+                const currentVal = param.value;
+                const hasValidPrevValue = currentVal && currentVal !== 'Waiting...' && currentVal !== 'Scanning...' && !currentVal.startsWith('Error');
                 
                 // Update row value to Scanning...
                 setDiscoveredParams((prev) => {
                     const next = [...prev];
-                    next[i] = { ...next[i], value: 'Scanning...' };
+                    next[i] = { 
+                        ...next[i], 
+                        valueBeforeScan: hasValidPrevValue ? currentVal : next[i].valueBeforeScan,
+                        allAttributesBeforeScan: (next[i].allAttributes && next[i].allAttributes.length > 0) ? next[i].allAttributes : next[i].allAttributesBeforeScan,
+                        value: 'Scanning...' 
+                    };
                     return next;
                 });
 
@@ -770,7 +661,7 @@ export default function Page(): React.JSX.Element {
                 setDiscoveredParams((prev) => {
                     const next = [...prev];
                     if (result && result.status && Array.isArray(result.data)) {
-                        next[i] = applyReadResultToRow(param, result.data);
+                        next[i] = applyReadResultToRow(next[i], result.data);
                     } else {
                         next[i] = { ...next[i], value: 'Error' };
                     }
@@ -807,9 +698,18 @@ export default function Page(): React.JSX.Element {
             const idx = discoveredParams.findIndex(p => p.id === objectId);
             if (idx === -1) return;
 
+            const param = discoveredParams[idx];
+            const currentVal = param.value;
+            const hasValidPrevValue = currentVal && currentVal !== 'Waiting...' && currentVal !== 'Scanning...' && !currentVal.startsWith('Error');
+
             setDiscoveredParams((prev) => {
                 const next = [...prev];
-                next[idx] = { ...next[idx], value: 'Scanning...' };
+                next[idx] = { 
+                    ...next[idx], 
+                    valueBeforeScan: hasValidPrevValue ? currentVal : next[idx].valueBeforeScan,
+                    allAttributesBeforeScan: (next[idx].allAttributes && next[idx].allAttributes.length > 0) ? next[idx].allAttributes : next[idx].allAttributesBeforeScan,
+                    value: 'Scanning...' 
+                };
                 return next;
             });
 
@@ -818,8 +718,7 @@ export default function Page(): React.JSX.Element {
             setDiscoveredParams((prev) => {
                 const next = [...prev];
                 if (result && result.status && Array.isArray(result.data)) {
-                    const param = next[idx];
-                    next[idx] = applyReadResultToRow(param, result.data);
+                    next[idx] = applyReadResultToRow(next[idx], result.data);
                 } else {
                     next[idx] = { ...next[idx], value: 'Error' };
                 }
@@ -834,6 +733,60 @@ export default function Page(): React.JSX.Element {
             setDiscovering(false);
             setOpenSnackbar(true);
         }
+    };
+
+    const handleEventCheckboxChange = (obj: any, section: EventStatusSection, item: EventStatusItem, checked: boolean) => {
+        const displayValue = (obj?.value === 'Scanning...' || obj?.value?.startsWith('Error')) 
+            ? (obj?.valueBeforeScan || obj?.value) 
+            : obj?.value;
+
+        const activeCodes = parseEventStatusValue(displayValue, section, obj?.obisCode);
+        
+        if (checked) {
+            activeCodes.add(item.code);
+        } else {
+            activeCodes.delete(item.code);
+        }
+
+        // Reconstruct the numeric bitmask value
+        let newNumericValue = 0;
+        section.items.forEach((secItem, index) => {
+            if (activeCodes.has(secItem.code)) {
+                newNumericValue |= (1 << index);
+            }
+        });
+        
+        const newValueStr = String(newNumericValue);
+
+        // Update discoveredParams state in real time
+        setDiscoveredParams(prev => prev.map(p => {
+            if (p.id === obj.id) {
+                const updatedAttrs = (p.allAttributes || []).map((attr: any) => {
+                    const attrId = attr.AttributeId ?? attr.attributeId;
+                    if (attrId === 2) {
+                        return { ...attr, value: newValueStr, Value: newValueStr };
+                    }
+                    return attr;
+                });
+                return {
+                    ...p,
+                    value: newValueStr,
+                    allAttributes: updatedAttrs
+                };
+            }
+            return p;
+        }));
+
+        // Store selected checkboxes (value = code, name = label) in localStorage
+        const selectedItems = section.items
+            .filter(secItem => activeCodes.has(secItem.code))
+            .map(secItem => ({
+                value: secItem.code,
+                name: secItem.label
+            }));
+
+        localStorage.setItem(`event_status_selections_${obj.obisCode}`, JSON.stringify(selectedItems));
+        console.log(`Stored event status selections for ${obj.obisCode}:`, selectedItems);
     };
 
     const handleSnackBarClose = (
@@ -960,6 +913,9 @@ export default function Page(): React.JSX.Element {
 
     const renderEventStatusDetails = (obj: any) => {
         const matchingSections = EVENT_STATUS_SECTIONS.filter(section => section.obisCode === obj?.obisCode);
+        const displayValue = (obj?.value === 'Scanning...' || obj?.value?.startsWith('Error')) 
+            ? (obj?.valueBeforeScan || obj?.value) 
+            : obj?.value;
 
         return (
             <Stack spacing={2}>
@@ -968,7 +924,7 @@ export default function Page(): React.JSX.Element {
                         {obj?.name || 'Event Data Object'}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
-                        Value: {obj?.value || 'N/A'}
+                        Value: {displayValue || 'N/A'}
                     </Typography>
                 </Box>
                 <Alert severity="info">
@@ -983,7 +939,7 @@ export default function Page(): React.JSX.Element {
                         </Grid>
                     )}
                     {matchingSections.map(section => {
-                        const activeCodes = parseEventStatusValue(obj?.value, section);
+                        const activeCodes = parseEventStatusValue(displayValue, section, obj?.obisCode);
 
                         return (
                             <Grid key={section.key} size={{ xs: 12 }}>
@@ -1010,7 +966,8 @@ export default function Page(): React.JSX.Element {
                                                     control={
                                                         <Checkbox
                                                             checked={activeCodes.has(item.code)}
-                                                            disabled
+                                                            disabled={discovering}
+                                                            onChange={(e) => handleEventCheckboxChange(obj, section, item, e.target.checked)}
                                                             size="small"
                                                         />
                                                     }
@@ -1094,341 +1051,7 @@ export default function Page(): React.JSX.Element {
         );
     };
 
-    const renderClockCustomForm = (obj: any) => {
-        const getVal = (attrId: number) => {
-            const attr = obj.allAttributes?.find((a: any) => (a.AttributeId || a.attributeId) === attrId);
-            return attr ? attr.value : 'Waiting...';
-        };
-
-        const timeVal = getVal(2);
-        const timeZoneVal = getVal(3);
-        const statusVal = getVal(4);
-        const beginVal = getVal(5);
-        const endVal = getVal(6);
-        const deviationVal = getVal(7);
-        const enabledVal = getVal(8);
-        const clockBaseVal = getVal(9);
-
-        const status = parseClockStatus(statusVal);
-        const isEnabled = enabledVal?.toLowerCase() === 'true' || enabledVal === '1' || enabledVal === 'Enabled';
-        const clockBaseDisplay = getClockBaseDisplay(clockBaseVal);
-
-        return (
-            <Stack spacing={3} sx={{ mt: 1 }}>
-                {/* Clock Object Section */}
-                <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2, position: 'relative', pt: 3 }}>
-                    <Typography 
-                        variant="subtitle2" 
-                        sx={{ 
-                            position: 'absolute', 
-                            top: -12, 
-                            left: 10, 
-                            bgcolor: 'background.paper', 
-                            px: 1, 
-                            fontWeight: 'bold', 
-                            color: 'text.secondary' 
-                        }}
-                    >
-                        Clock Object
-                    </Typography>
-                    <Grid container spacing={2}>
-                        <Grid size={{ xs: 12 }}>
-                            <TextField
-                                label="Logical Name"
-                                value={obj.obisCode || '0.0.1.0.0.255'}
-                                size="small"
-                                fullWidth
-                                disabled
-                            />
-                        </Grid>
-                        <Grid size={{ xs: 12, md: 8 }}>
-                            <TextField
-                                label="Time"
-                                value={timeVal}
-                                size="small"
-                                fullWidth
-                                disabled
-                            />
-                        </Grid>
-                        <Grid size={{ xs: 12, md: 4 }}>
-                            <Button variant="contained" disabled fullWidth sx={{ height: '40px' }}>
-                                Current time
-                            </Button>
-                        </Grid>
-                        <Grid size={{ xs: 12, md: 6 }}>
-                            <TextField
-                                label="Time Zone"
-                                value={timeZoneVal}
-                                size="small"
-                                fullWidth
-                                disabled
-                            />
-                        </Grid>
-                        <Grid size={{ xs: 12, md: 6 }} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <FormControlLabel
-                                control={<Checkbox disabled checked={false} size="small" />}
-                                label=""
-                                sx={{ mr: 0 }}
-                            />
-                            <Button variant="contained" disabled fullWidth sx={{ height: '40px' }}>
-                                Current time Zone
-                            </Button>
-                        </Grid>
-                        <Grid size={{ xs: 12 }}>
-                            <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'medium' }}>Status:</Typography>
-                            <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2, maxHeight: 180, overflowY: 'auto' }}>
-                                <Stack spacing={0.5}>
-                                    <FormControlLabel
-                                        control={<Checkbox checked={status.invalidValue} disabled size="small" />}
-                                        label="InvalidValue"
-                                    />
-                                    <FormControlLabel
-                                        control={<Checkbox checked={status.doubtfulValue} disabled size="small" />}
-                                        label="DoubtfulValue"
-                                    />
-                                    <FormControlLabel
-                                        control={<Checkbox checked={status.differentClockBase} disabled size="small" />}
-                                        label="DifferentClockBase"
-                                    />
-                                    <FormControlLabel
-                                        control={<Checkbox checked={status.invalidClockStatus} disabled size="small" />}
-                                        label="InvalidClockStatus"
-                                    />
-                                    <FormControlLabel
-                                        control={<Checkbox checked={status.daylightSavingActive} disabled size="small" />}
-                                        label="DaylightSavingActive"
-                                    />
-                                </Stack>
-                            </Box>
-                        </Grid>
-                    </Grid>
-                </Box>
-
-                {/* Daylight Savings Section */}
-                <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2, position: 'relative', pt: 3 }}>
-                    <Typography 
-                        variant="subtitle2" 
-                        sx={{ 
-                            position: 'absolute', 
-                            top: -12, 
-                            left: 10, 
-                            bgcolor: 'background.paper', 
-                            px: 1, 
-                            fontWeight: 'bold', 
-                            color: 'text.secondary' 
-                        }}
-                    >
-                        Daylight Savings
-                    </Typography>
-                    <Grid container spacing={2} alignItems="center">
-                        <Grid size={{ xs: 12, md: 4 }}>
-                            <FormControlLabel
-                                control={<Checkbox checked={isEnabled} disabled size="small" />}
-                                label="Enabled"
-                            />
-                        </Grid>
-                        <Grid size={{ xs: 12, md: 8 }}>
-                            <TextField
-                                label="Deviation"
-                                value={deviationVal}
-                                size="small"
-                                fullWidth
-                                disabled
-                            />
-                        </Grid>
-                        <Grid size={{ xs: 12, md: 6 }}>
-                            <TextField
-                                label="Begin"
-                                value={beginVal}
-                                size="small"
-                                fullWidth
-                                disabled
-                            />
-                        </Grid>
-                        <Grid size={{ xs: 12, md: 6 }}>
-                            <TextField
-                                label="End"
-                                value={endVal}
-                                size="small"
-                                fullWidth
-                                disabled
-                            />
-                        </Grid>
-                    </Grid>
-                </Box>
-
-                {/* Clock Base & Adjust to */}
-                <Grid container spacing={2}>
-                    <Grid size={{ xs: 12, md: 6 }}>
-                        <FormControl fullWidth size="small" disabled>
-                            <InputLabel id="clock-base-label">Clock Base</InputLabel>
-                            <Select
-                                labelId="clock-base-label"
-                                value={clockBaseDisplay === 'Waiting...' || clockBaseDisplay === 'Scanning...' ? '' : clockBaseDisplay}
-                                label="Clock Base"
-                            >
-                                <MenuItem value="Crystal">Crystal</MenuItem>
-                                <MenuItem value="MainsFrequency">MainsFrequency</MenuItem>
-                                <MenuItem value="GPS">GPS</MenuItem>
-                                <MenuItem value="Radio">Radio</MenuItem>
-                            </Select>
-                        </FormControl>
-                    </Grid>
-                </Grid>
-
-                <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2, position: 'relative', pt: 3 }}>
-                    <Typography 
-                        variant="subtitle2" 
-                        sx={{ 
-                            position: 'absolute', 
-                            top: -12, 
-                            left: 10, 
-                            bgcolor: 'background.paper', 
-                            px: 1, 
-                            fontWeight: 'bold', 
-                            color: 'text.secondary' 
-                        }}
-                    >
-                        Adjust to
-                    </Typography>
-                    <Grid container spacing={2}>
-                        <Grid size={{ xs: 6, md: 4 }}>
-                            <Button variant="contained" disabled fullWidth size="small">Quarter</Button>
-                        </Grid>
-                        <Grid size={{ xs: 6, md: 4 }}>
-                            <Button variant="contained" disabled fullWidth size="small">Measuring period</Button>
-                        </Grid>
-                        <Grid size={{ xs: 6, md: 4 }}>
-                            <Button variant="contained" disabled fullWidth size="small">Minute</Button>
-                        </Grid>
-                        <Grid size={{ xs: 6, md: 4 }}>
-                            <Button variant="contained" disabled fullWidth size="small">Preset time</Button>
-                        </Grid>
-                        <Grid size={{ xs: 6, md: 4 }}>
-                            <Button variant="contained" disabled fullWidth size="small">Preset Adjusting</Button>
-                        </Grid>
-                        <Grid size={{ xs: 6, md: 4 }}>
-                            <Button variant="contained" disabled fullWidth size="small">Shift Time...</Button>
-                        </Grid>
-                    </Grid>
-                </Box>
-            </Stack>
-        );
-    };
-
-    const renderClockLastErrors = (obj: any) => {
-        return (
-            <TableContainer component={Paper} variant="outlined">
-                <Table size="small">
-                    <TableHead>
-                        <TableRow>
-                            <TableCell sx={{ fontWeight: 'bold', width: '20%' }}>Attribute Index</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold', width: '40%' }}>Description</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold', width: '40%' }}>Last error</TableCell>
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
-                        {CLOCK_ATTRIBUTES.map((attr) => {
-                            const attrVal = obj.allAttributes?.find(
-                                (a: any) => (a.AttributeId || a.attributeId) === attr.index
-                            );
-                            const isError = attrVal?.value?.startsWith('Error');
-                            const errorMsg = isError ? attrVal.value.replace('Error: ', '') : '';
-                            return (
-                                <TableRow key={attr.index} hover>
-                                    <TableCell>{attr.index}</TableCell>
-                                    <TableCell>{attr.name}</TableCell>
-                                    <TableCell sx={{ color: isError ? '#d32f2f' : 'text.secondary' }}>
-                                        {errorMsg}
-                                    </TableCell>
-                                </TableRow>
-                            );
-                        })}
-                    </TableBody>
-                </Table>
-            </TableContainer>
-        );
-    };
-
-    const renderClockAccessRights = (obj: any) => {
-        const assocObj = associationObjectList.find((item: any) => 
-            item.LogicalName === obj.obisCode
-        );
-        
-        const rights = assocObj ? parseAccessRights(assocObj.AttributeAccess) : [];
-
-        return (
-            <TableContainer component={Paper} variant="outlined">
-                <Table size="small">
-                    <TableHead>
-                        <TableRow>
-                            <TableCell sx={{ fontWeight: 'bold' }}>Attribute Index</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold' }}>Description</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold' }}>Access</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold' }}>Access Selector</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>Static</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold' }}>Type</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold' }}>UIType</TableCell>
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
-                        {CLOCK_ATTRIBUTES.map((attr) => {
-                            const rightItem = rights.find(r => r.name === attr.index.toString());
-                            const accessRight = rightItem ? rightItem.rights : 'None';
-                            return (
-                                <TableRow key={attr.index} hover>
-                                    <TableCell>{attr.index}</TableCell>
-                                    <TableCell>{attr.name}</TableCell>
-                                    <TableCell>{accessRight}</TableCell>
-                                    <TableCell></TableCell>
-                                    <TableCell align="center">
-                                        <Checkbox size="small" disabled checked={false} />
-                                    </TableCell>
-                                    <TableCell sx={{ color: 'text.secondary' }}>{attr.type}</TableCell>
-                                    <TableCell sx={{ color: 'text.secondary' }}>None</TableCell>
-                                </TableRow>
-                            );
-                        })}
-                    </TableBody>
-                </Table>
-            </TableContainer>
-        );
-    };
-
-    const renderClockMethodAccessRights = (obj: any) => {
-        const assocObj = associationObjectList.find((item: any) => 
-            item.LogicalName === obj.obisCode
-        );
-        
-        const rights = assocObj ? parseAccessRights(assocObj.MethodAccess) : [];
-
-        return (
-            <TableContainer component={Paper} variant="outlined">
-                <Table size="small">
-                    <TableHead>
-                        <TableRow>
-                            <TableCell sx={{ fontWeight: 'bold', width: '20%' }}>Attribute Index</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold', width: '50%' }}>Description</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold', width: '30%' }}>Method access</TableCell>
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
-                        {CLOCK_METHODS.map((method) => {
-                            const rightItem = rights.find(r => r.name === method.index.toString());
-                            const methodAccess = rightItem ? rightItem.rights : 'NoAccess';
-                            return (
-                                <TableRow key={method.index} hover>
-                                    <TableCell>{method.index}</TableCell>
-                                    <TableCell>{method.name}</TableCell>
-                                    <TableCell>{methodAccess}</TableCell>
-                                </TableRow>
-                            );
-                        })}
-                    </TableBody>
-                </Table>
-            </TableContainer>
-        );
-    };
+    // Generic forms and lists used instead
 
     const selectedObj = discoveredParams.find(p => p.id === selectedObjectId);
     const detailsObj = discoveredParams.find(p => p.id === detailsObjectId);
@@ -1560,9 +1183,19 @@ export default function Page(): React.JSX.Element {
                                                         </Button>
                                                     ) : (
                                                         row.value?.startsWith('Error') ? (
-                                                            <span style={{ color: '#d32f2f', fontWeight: 'normal' }}>
-                                                                {row.value.replace('Error: ', '')}
-                                                            </span>
+                                                            row.valueBeforeScan && row.valueBeforeScan !== 'Waiting...' ? (
+                                                                <span>{row.valueBeforeScan} <span style={{ color: '#d32f2f', fontWeight: 'normal', fontSize: '0.825rem' }}>(Error)</span></span>
+                                                            ) : (
+                                                                <span style={{ color: '#d32f2f', fontWeight: 'normal' }}>
+                                                                    {row.value.replace('Error: ', '')}
+                                                                </span>
+                                                            )
+                                                        ) : row.value === 'Scanning...' ? (
+                                                            row.valueBeforeScan && row.valueBeforeScan !== 'Waiting...' ? (
+                                                                <span>{row.valueBeforeScan} <span style={{ color: 'text.secondary', fontWeight: 'normal', fontSize: '0.825rem' }}>(Scanning...)</span></span>
+                                                            ) : (
+                                                                <span>Scanning...</span>
+                                                            )
                                                         ) : (
                                                             row.value || 'N/A'
                                                         )
@@ -1653,20 +1286,14 @@ export default function Page(): React.JSX.Element {
                                 {/* Tab 0: Data */}
                                 {activeTab === 0 && (
                                     <Box sx={{ py: 2 }}>
-                                        {selectedHeader?.name === 'Clock' ? (
-                                            renderClockCustomForm(selectedObj)
-                                        ) : (
-                                            renderGenericCustomForm(selectedObj)
-                                        )}
+                                        {renderGenericCustomForm(selectedObj)}
                                     </Box>
                                 )}
 
                                 {/* Tab 1: Last Errors */}
                                 {activeTab === 1 && (
                                     <Box sx={{ py: 2 }}>
-                                        {selectedHeader?.name === 'Clock' ? (
-                                            renderClockLastErrors(selectedObj)
-                                        ) : (() => {
+                                        {(() => {
                                             const errors = (selectedObj.allAttributes || []).filter((attr: any) => 
                                                 attr.value?.startsWith('Error') || 
                                                 attr.value?.toLowerCase().includes('fail')
@@ -1728,9 +1355,7 @@ export default function Page(): React.JSX.Element {
                                 {/* Tab 2: Access Rights */}
                                 {activeTab === 2 && (
                                     <Box sx={{ py: 2 }}>
-                                        {selectedHeader?.name === 'Clock' ? (
-                                            renderClockAccessRights(selectedObj)
-                                        ) : (() => {
+                                        {(() => {
                                             const assocObj = associationObjectList.find((item: any) => 
                                                 item.LogicalName === selectedObj.obisCode
                                             );
@@ -1751,27 +1376,30 @@ export default function Page(): React.JSX.Element {
                                             if (rights.length === 0) {
                                                 if (!isDataObject) {
                                                     return (
-                                                        <Alert severity="info">
+                                                         <Alert severity="info">
                                                             No attribute access rights defined or available. Raw value: {assocObj?.AttributeAccess || 'None'}
                                                         </Alert>
                                                     );
                                                 }
                                             }
-
+                                             
                                             const accessRows = rights.length > 0
-                                                ? rights.map((r: any) => ({
-                                                    index: r.name,
-                                                    description: getAttributeDescription(selectedObj, r.name),
-                                                    access: r.rights,
-                                                    type: getAttributeType(selectedObj.objectType, r.name),
-                                                    required: isAttributeReadRequired(selectedObj, r.name, r.rights),
-                                                    source: getAttributeSourceText(selectedObj, r.name)
-                                                }))
+                                                ? rights.map((r: any) => {
+                                                    const matchedAttr = fallbackRows.find((f: any) => String(f.attributeId) === r.name);
+                                                    return {
+                                                        index: r.name,
+                                                        description: matchedAttr?.name || `Attribute ${r.name}`,
+                                                        access: r.rights,
+                                                        type: matchedAttr?.dataType || 'None',
+                                                        required: isAttributeReadRequired(selectedObj, r.name, r.rights),
+                                                        source: getAttributeSourceText(selectedObj, r.name)
+                                                    };
+                                                })
                                                 : fallbackRows.map((row: any) => ({
                                                     index: String(row.attributeId),
                                                     description: row.name,
                                                     access: row.accessType || (row.attributeId === 1 ? 'Read' : 'ReadWrite'),
-                                                    type: row.dataType || getAttributeType(selectedObj.objectType, String(row.attributeId)),
+                                                    type: row.dataType || 'None',
                                                     required: isAttributeReadRequired(
                                                         selectedObj,
                                                         row.attributeId,
@@ -1827,9 +1455,7 @@ export default function Page(): React.JSX.Element {
                                 {/* Tab 3: Method Access Rights */}
                                 {activeTab === 3 && (
                                     <Box sx={{ py: 2 }}>
-                                        {selectedHeader?.name === 'Clock' ? (
-                                            renderClockMethodAccessRights(selectedObj)
-                                        ) : (() => {
+                                        {(() => {
                                             const assocObj = associationObjectList.find((item: any) => 
                                                 item.LogicalName === selectedObj.obisCode
                                             );
@@ -1976,11 +1602,7 @@ export default function Page(): React.JSX.Element {
 
                             {activeTab === 0 && (
                                 <Box sx={{ py: 2 }}>
-                                    {detailsObj.objectType?.toLowerCase() === 'clock' ? (
-                                        renderClockCustomForm(detailsObj)
-                                    ) : (
-                                        renderGenericCustomForm(detailsObj)
-                                    )}
+                                    {renderGenericCustomForm(detailsObj)}
                                 </Box>
                             )}
 
@@ -2027,7 +1649,7 @@ export default function Page(): React.JSX.Element {
                                                                 return (
                                                                     <TableRow key={attrId}>
                                                                         <TableCell>{attrId}</TableCell>
-                                                                        <TableCell>{err.Name || err.name || getAttributeDescription(detailsObj, String(attrId))}</TableCell>
+                                                                        <TableCell>{err.Name || err.name || `Attribute ${attrId}`}</TableCell>
                                                                         <TableCell sx={{ color: '#d32f2f' }}>
                                                                             {err.value ?? err.Value}
                                                                         </TableCell>
@@ -2050,19 +1672,22 @@ export default function Page(): React.JSX.Element {
                                         const rights = assocObj ? parseAccessRights(assocObj.AttributeAccess) : [];
                                         const fallbackRows = getAttributeRows(detailsObj);
                                         const accessRows = rights.length > 0
-                                            ? rights.map((r: any) => ({
-                                                index: r.name,
-                                                description: getAttributeDescription(detailsObj, r.name),
-                                                access: r.rights,
-                                                type: getAttributeType(detailsObj.objectType, r.name),
-                                                required: isAttributeReadRequired(detailsObj, r.name, r.rights),
-                                                source: getAttributeSourceText(detailsObj, r.name)
-                                            }))
+                                            ? rights.map((r: any) => {
+                                                const matchedAttr = fallbackRows.find((f: any) => String(f.attributeId) === r.name);
+                                                return {
+                                                    index: r.name,
+                                                    description: matchedAttr?.name || `Attribute ${r.name}`,
+                                                    access: r.rights,
+                                                    type: matchedAttr?.dataType || 'None',
+                                                    required: isAttributeReadRequired(detailsObj, r.name, r.rights),
+                                                    source: getAttributeSourceText(detailsObj, r.name)
+                                                };
+                                            })
                                             : fallbackRows.map((row: any) => ({
                                                 index: String(row.attributeId),
                                                 description: row.name,
                                                 access: row.accessType || (row.attributeId === 1 ? 'Read' : 'ReadWrite'),
-                                                type: row.dataType || getAttributeType(detailsObj.objectType, String(row.attributeId)),
+                                                type: row.dataType || 'None',
                                                 required: isAttributeReadRequired(
                                                     detailsObj,
                                                     row.attributeId,

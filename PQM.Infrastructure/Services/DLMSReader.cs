@@ -216,7 +216,7 @@ namespace PQM.Infrastructure.Services
             return System.Text.Json.JsonSerializer.Serialize(rows);
         }
 
-        private static string GetFriendlyClassName(ObjectType type)
+        public static string GetFriendlyClassName(ObjectType type)
         {
             return type switch
             {

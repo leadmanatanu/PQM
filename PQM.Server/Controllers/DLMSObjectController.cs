@@ -80,6 +80,8 @@ namespace PQM.Server.Controllers
                     {
                         p.AttributeId,
                         Name = p.Name ?? "",
+                        DataType = p.DataType ?? "None",
+                        AccessType = p.AccessType ?? "",
                         Value = latestValues.TryGetValue(p.Id, out var pv) ? pv.Value : "Waiting..."
                     }).ToList();
 

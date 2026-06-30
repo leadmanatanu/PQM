@@ -91,14 +91,25 @@ namespace PQM.Server.Controllers
                 standard = Standard.DLMS;
 
             List<DiscoveredParameter> parameters;
+            List<Gurux.DLMS.Objects.GXDLMSObject> allDlmsObjects = new();
+
             using (var reader = new DLMSReader(device.IP, device.PORT, clientAddress, serverAddress, authentication, password, useLogicalNameReferencing, standard))
             {
                 reader.Connect();
                 parameters = reader.GetAssociationViewWithValues(objectType);
+                
+                if (reader.Objects != null)
+                {
+                    foreach (var obj in reader.Objects)
+                    {
+                        allDlmsObjects.Add(obj);
+                    }
+                }
             }
 
             using var db = new DataContext(_connectionString);
 
+            // Backward compatibility: Populate the flat Parameter table
             var existingParams = db.Parameter
                 .Where(p => !string.IsNullOrEmpty(p.ObisCode))
                 .ToList();
@@ -122,8 +133,83 @@ namespace PQM.Server.Controllers
                     obisMap[p.ObisCode] = param;
                 }
             }
-
             db.SaveChanges();
+
+            // DYNAMIC CLONE OF GURUX DIRECTOR: Seed ConnectedHeader, DLMSObject, ObjectParameter
+            using (var transaction = db.Database.BeginTransaction())
+            {
+                try
+                {
+                    // 1. Get existing headers for this device
+                    var existingHeaders = db.ConnectedHeader.Where(h => h.DeviceId == id).ToList();
+                    var headerIds = existingHeaders.Select(h => h.Id).ToList();
+
+                    // 2. Get existing objects for these headers
+                    var existingObjects = db.DLMSObject.Where(o => headerIds.Contains(o.HeaderId)).ToList();
+                    var objectIds = existingObjects.Select(o => o.Id).ToList();
+
+                    // 3. Delete existing ParameterValues, ObjectParameters, DLMSObjects, ConnectedHeaders
+                    var parameterIds = db.ObjectParameter.Where(p => objectIds.Contains(p.ObjectId)).Select(p => p.Id).ToList();
+                    var valuesToDelete = db.ParameterValue.Where(v => parameterIds.Contains(v.ParameterId));
+                    db.ParameterValue.RemoveRange(valuesToDelete);
+
+                    var paramsToDelete = db.ObjectParameter.Where(p => objectIds.Contains(p.ObjectId));
+                    db.ObjectParameter.RemoveRange(paramsToDelete);
+
+                    db.DLMSObject.RemoveRange(existingObjects);
+                    db.ConnectedHeader.RemoveRange(existingHeaders);
+                    db.SaveChanges();
+
+                    // 4. Group discovered objects by ObjectType and seed new records
+                    var groupedObjects = allDlmsObjects.GroupBy(o => o.ObjectType);
+                    foreach (var group in groupedObjects)
+                    {
+                        var friendlyName = DLMSReader.GetFriendlyClassName(group.Key);
+                        var header = new ConnectedHeader
+                        {
+                            DeviceId = id,
+                            Name = friendlyName
+                        };
+                        db.ConnectedHeader.Add(header);
+                        db.SaveChanges(); // Populate header.Id
+
+                        foreach (var obj in group)
+                        {
+                            var dlmsObj = new DLMSObject
+                            {
+                                HeaderId = header.Id,
+                                Name = string.IsNullOrEmpty(obj.Description) ? $"{obj.ObjectType} - {obj.LogicalName}" : obj.Description,
+                                ObisCode = obj.LogicalName,
+                                ObjectType = obj.ObjectType.ToString()
+                            };
+                            db.DLMSObject.Add(dlmsObj);
+                            db.SaveChanges(); // Populate dlmsObj.Id
+
+                            foreach (var attr in obj.Attributes)
+                            {
+                                var objParam = new ObjectParameter
+                                {
+                                    ObjectId = dlmsObj.Id,
+                                    AttributeId = attr.Index,
+                                    Name = attr.Name ?? $"Attribute {attr.Index}",
+                                    DataType = attr.Type.ToString(),
+                                    AccessType = attr.Access.ToString()
+                                };
+                                db.ObjectParameter.Add(objParam);
+                            }
+                        }
+                    }
+
+                    db.SaveChanges();
+                    transaction.Commit();
+                }
+                catch (Exception ex)
+                {
+                    transaction.Rollback();
+                    _logger.LogError(ex, "Failed to dynamically save discovered objects for device {DeviceId}", id);
+                    return Error($"Failed to seed discovered objects: {ex.Message}", System.Net.HttpStatusCode.InternalServerError);
+                }
+            }
 
             _apiResponse.Status = true;
             _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
@@ -261,7 +347,7 @@ namespace PQM.Server.Controllers
                             pv.Timestamp
                         });
 
-                        SaveTypedReading(db, id, dlmsObject.Name ?? "", dlmsObject.ObjectType, value, param.AttributeId);
+                        SaveTypedReading(db, id, dlmsObject.Name ?? "", dlmsObject.ObjectType, value ?? "", param.AttributeId);
                     }
 
                     db.SaveChanges();

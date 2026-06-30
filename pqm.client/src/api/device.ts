@@ -246,3 +246,16 @@ export const readDLMSObject = async (deviceId: string | number, objectId: string
     }
 };
 
+// Import local CSV files from PQM.Server/CSVFiles directory
+export const importLocalCsvFiles = async (deviceId: string | number): Promise<any | undefined> => {
+    try {
+        const { data } = await axios.post<ApiResponse>(`${API_URL}/ftp/ImportLocalCSV`, null, {
+            params: { deviceId }
+        });
+        return data;
+    } catch (error) {
+        console.error('Error importing local CSV files:', error);
+        return undefined;
+    }
+};
+
