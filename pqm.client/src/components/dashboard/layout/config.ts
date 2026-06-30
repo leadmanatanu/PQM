@@ -2,7 +2,6 @@ import type { NavItemConfig } from '@/types/nav';
 import { paths } from '@/paths';
 
 export const navItems = [
-    { key: 'overview', title: 'Overview', href: paths.dashboard.overview, icon: 'chart-pie' },
     { key: 'devices', title: 'Devices', href: paths.dashboard.devices, icon: 'devices' },
     { key: 'mapping', title: 'Mapping', href: paths.dashboard.mapping, icon: 'gear-six' },
     { key: 'ftpfolder', title: 'FTP Folder', href: paths.dashboard.ftpfolder, icon: 'plugs-connected' },

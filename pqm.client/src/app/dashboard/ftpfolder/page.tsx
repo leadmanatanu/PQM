@@ -9,16 +9,18 @@ import Alert from '@mui/material/Alert';
 import Typography from '@mui/material/Typography';
 import CircularProgress from '@mui/material/CircularProgress';
 import Box from '@mui/material/Box';
+import Card from '@mui/material/Card';
+import Select from '@mui/material/Select';
+import MenuItem from '@mui/material/MenuItem';
+import FormControl from '@mui/material/FormControl';
+import InputLabel from '@mui/material/InputLabel';
+import Button from '@mui/material/Button';
 
 import { config } from '@/config';
-//import { DeviceParameter } from '@/components/dashboard/mapping/device-paramter';
 import { FTPDetailsForm } from '@/components/dashboard/ftpfolder/ftp-details';
 import type { FTPConfig } from '@/components/dashboard/ftpfolder/ftp-details';
-//import { DeviceFilters } from '@/components/dashboard/mapping/device-selection';
 
-import { fetchFtpDetails, updateFtpDetails, testFtpDetails } from '../../../api/device';
-
-//export const metadata = { title: `Device Mapping | Dashboard | ${config.site.name}` } satisfies Metadata;
+import { fetchFtpDetails, updateFtpDetails, testFtpDetails, fetchDevices, importLocalCsvFiles } from '../../../api/device';
 
 export default function Page(): React.JSX.Element {
   const [loading, setLoading] = React.useState(true);
@@ -29,17 +31,28 @@ export default function Page(): React.JSX.Element {
     password: '',
     rootFolderName: '',
   });
+  const [devices, setDevices] = useState<any[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | number>('');
+  const [importing, setImporting] = useState(false);
   const [openSnackbar, setOpenSnackbar] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
+
   useEffect(() => {
     const loadFTP = async () => {
       try {
         const fetchedFTPConfig = await fetchFtpDetails();
         setFtpConfig(fetchedFTPConfig);
         console.log('Fetched FTP:', fetchedFTPConfig);
+
+        const fetchedDevices = await fetchDevices();
+        setDevices(fetchedDevices ?? []);
+        if (fetchedDevices && fetchedDevices.length > 0) {
+          setSelectedDeviceId(fetchedDevices[0].id);
+        }
+
         setLoading(false);
       } catch (error) {
-        console.error('Failed to fetch devices:', error);
+        console.error('Failed to fetch details:', error);
       }
     };
     loadFTP();
@@ -92,6 +105,26 @@ export default function Page(): React.JSX.Element {
     }
   }, []);
 
+  const handleImportCSV = useCallback(async () => {
+    if (!selectedDeviceId) return;
+    setImporting(true);
+    try {
+      const result = await importLocalCsvFiles(selectedDeviceId);
+      if (result && result.status) {
+        setTestResult(result.data);
+      } else {
+        setTestResult(result?.errors?.[0] || 'Import failed');
+      }
+      setOpenSnackbar(true);
+    } catch (err) {
+      console.error('Failed to import local CSV:', err);
+      setTestResult('Import failed due to an error');
+      setOpenSnackbar(true);
+    } finally {
+      setImporting(false);
+    }
+  }, [selectedDeviceId]);
+
   const handleSnackBarClose = (
     event?: React.SyntheticEvent | Event,
     reason?: SnackbarCloseReason,
@@ -119,11 +152,47 @@ export default function Page(): React.JSX.Element {
           <div>
             <Typography variant="h4">FTP Folder</Typography>
           </div>
-          {<FTPDetailsForm
+          <FTPDetailsForm
             config={memoizedConfig}
             onUpdate={handleUpdate}
             onTestConnection={handleTestConnection}
-          />}
+          />
+          <Card sx={{ p: 3 }}>
+            <Stack spacing={2}>
+              <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                Local CSV File Import
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Scan and import meter readings and event logs from local CSV files placed inside the server's <code>CSVFiles/</code> folder.
+              </Typography>
+              <Stack direction="row" spacing={2} alignItems="center">
+                <FormControl size="small" sx={{ minWidth: 250 }}>
+                  <InputLabel id="select-device-label">Select Device</InputLabel>
+                  <Select
+                    labelId="select-device-label"
+                    value={selectedDeviceId}
+                    label="Select Device"
+                    onChange={(e) => setSelectedDeviceId(e.target.value)}
+                  >
+                    {devices.map((dev: any) => (
+                      <MenuItem key={dev.id} value={dev.id}>
+                        {dev.name} ({dev.ip})
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <Button
+                  variant="contained"
+                  color="secondary"
+                  onClick={handleImportCSV}
+                  disabled={!selectedDeviceId || importing}
+                  sx={{ height: 40 }}
+                >
+                  {importing ? <CircularProgress size={20} color="inherit" /> : 'Import CSV Files'}
+                </Button>
+              </Stack>
+            </Stack>
+          </Card>
           <Snackbar open={openSnackbar} autoHideDuration={6000} onClose={handleSnackBarClose} anchorOrigin={{ vertical: 'top', horizontal: 'center' }}>
             {/*<Alert
           onClose={handleSnackBarClose}

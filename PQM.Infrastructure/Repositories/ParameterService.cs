@@ -29,7 +29,7 @@ namespace PQM.Infrastructure.Repositories
                             Name = x.Name,
                             ObisCode = x.ObisCode,
                             ObjectType = x.ObjectType,
-                            IsSelected = dbContext.DeviceParameterMapping.FirstOrDefault(y => y.DeviceId == deviceId && y.ParameterId == x.Id).Id > 0,
+                            IsSelected = dbContext.DeviceParameterMapping.Any(y => y.DeviceId == deviceId && y.ParameterId == x.Id),
                         });
 
 

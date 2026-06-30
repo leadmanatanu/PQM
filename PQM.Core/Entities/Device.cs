@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
 namespace PQM.Core.Entities
 {
@@ -6,8 +6,8 @@ namespace PQM.Core.Entities
     {
         [Key]
         public int Id { get; set; }
-        public string Name { get; set; }
-        public string IP { get; set; }
+        public required string Name { get; set; }
+        public required string IP { get; set; }
         public int PORT { get; set; }
         public string? FtpFolder { get; set; }
         public string? SerialNumber { get; set; }

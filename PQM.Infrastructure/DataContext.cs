@@ -26,6 +26,12 @@ namespace PQM.Infrastructure
         public DbSet<TcpUdpSetup> TcpUdpSetup { get; set; } = null!;
         public DbSet<Ip4Setup> Ip4Setup { get; set; } = null!;
         public DbSet<MacAddressSetup> MacAddressSetup { get; set; } = null!;
+        public DbSet<AssociationLogicalName> AssociationLogicalName { get; set; } = null!;
+        public DbSet<Clock> Clock { get; set; } = null!;
+        public DbSet<ScriptTable> ScriptTable { get; set; } = null!;
+        public DbSet<ProfileGeneric> ProfileGeneric { get; set; } = null!;
+        public DbSet<ActionSchedule> ActionSchedule { get; set; } = null!;
+        public DbSet<ActivityCalendar> ActivityCalendar { get; set; } = null!;
         public DbSet<ConnectedHeader> ConnectedHeader { get; set; } = null!;
         public DbSet<DLMSObject> DLMSObject { get; set; } = null!;
         public DbSet<ObjectParameter> ObjectParameter { get; set; } = null!;

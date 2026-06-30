@@ -7,7 +7,7 @@ namespace PQM.Core.Entities
     {
         [Key]
         public int Id { get; set; }
-        public string Name { get; set; }
+        public required string Name { get; set; }
         public string? ObisCode { get; set; }
         public string? ObjectType { get; set; }
         public string? Attribute3 { get; set; }

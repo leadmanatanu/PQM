@@ -1,4 +1,5 @@
-﻿using PQM.Core.IRepositories;
+#pragma warning disable SYSLIB0014
+using PQM.Core.IRepositories;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -32,7 +33,7 @@ namespace PQM.Core.DomainServices
                 while (!reader.EndOfStream)
                 {
                     var fileName = reader.ReadLine();
-                    if (fileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+                    if (fileName != null && fileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
                     {
                         files.Add(fileName);
                     }

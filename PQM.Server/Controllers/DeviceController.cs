@@ -91,14 +91,25 @@ namespace PQM.Server.Controllers
                 standard = Standard.DLMS;
 
             List<DiscoveredParameter> parameters;
+            List<Gurux.DLMS.Objects.GXDLMSObject> allDlmsObjects = new();
+
             using (var reader = new DLMSReader(device.IP, device.PORT, clientAddress, serverAddress, authentication, password, useLogicalNameReferencing, standard))
             {
                 reader.Connect();
                 parameters = reader.GetAssociationViewWithValues(objectType);
+                
+                if (reader.Objects != null)
+                {
+                    foreach (var obj in reader.Objects)
+                    {
+                        allDlmsObjects.Add(obj);
+                    }
+                }
             }
 
             using var db = new DataContext(_connectionString);
 
+            // Backward compatibility: Populate the flat Parameter table
             var existingParams = db.Parameter
                 .Where(p => !string.IsNullOrEmpty(p.ObisCode))
                 .ToList();
@@ -122,8 +133,83 @@ namespace PQM.Server.Controllers
                     obisMap[p.ObisCode] = param;
                 }
             }
-
             db.SaveChanges();
+
+            // DYNAMIC CLONE OF GURUX DIRECTOR: Seed ConnectedHeader, DLMSObject, ObjectParameter
+            using (var transaction = db.Database.BeginTransaction())
+            {
+                try
+                {
+                    // 1. Get existing headers for this device
+                    var existingHeaders = db.ConnectedHeader.Where(h => h.DeviceId == id).ToList();
+                    var headerIds = existingHeaders.Select(h => h.Id).ToList();
+
+                    // 2. Get existing objects for these headers
+                    var existingObjects = db.DLMSObject.Where(o => headerIds.Contains(o.HeaderId)).ToList();
+                    var objectIds = existingObjects.Select(o => o.Id).ToList();
+
+                    // 3. Delete existing ParameterValues, ObjectParameters, DLMSObjects, ConnectedHeaders
+                    var parameterIds = db.ObjectParameter.Where(p => objectIds.Contains(p.ObjectId)).Select(p => p.Id).ToList();
+                    var valuesToDelete = db.ParameterValue.Where(v => parameterIds.Contains(v.ParameterId));
+                    db.ParameterValue.RemoveRange(valuesToDelete);
+
+                    var paramsToDelete = db.ObjectParameter.Where(p => objectIds.Contains(p.ObjectId));
+                    db.ObjectParameter.RemoveRange(paramsToDelete);
+
+                    db.DLMSObject.RemoveRange(existingObjects);
+                    db.ConnectedHeader.RemoveRange(existingHeaders);
+                    db.SaveChanges();
+
+                    // 4. Group discovered objects by ObjectType and seed new records
+                    var groupedObjects = allDlmsObjects.GroupBy(o => o.ObjectType);
+                    foreach (var group in groupedObjects)
+                    {
+                        var friendlyName = DLMSReader.GetFriendlyClassName(group.Key);
+                        var header = new ConnectedHeader
+                        {
+                            DeviceId = id,
+                            Name = friendlyName
+                        };
+                        db.ConnectedHeader.Add(header);
+                        db.SaveChanges(); // Populate header.Id
+
+                        foreach (var obj in group)
+                        {
+                            var dlmsObj = new DLMSObject
+                            {
+                                HeaderId = header.Id,
+                                Name = string.IsNullOrEmpty(obj.Description) ? $"{obj.ObjectType} - {obj.LogicalName}" : obj.Description,
+                                ObisCode = obj.LogicalName,
+                                ObjectType = obj.ObjectType.ToString()
+                            };
+                            db.DLMSObject.Add(dlmsObj);
+                            db.SaveChanges(); // Populate dlmsObj.Id
+
+                            foreach (var attr in obj.Attributes)
+                            {
+                                var objParam = new ObjectParameter
+                                {
+                                    ObjectId = dlmsObj.Id,
+                                    AttributeId = attr.Index,
+                                    Name = attr.Name ?? $"Attribute {attr.Index}",
+                                    DataType = attr.Type.ToString(),
+                                    AccessType = attr.Access.ToString()
+                                };
+                                db.ObjectParameter.Add(objParam);
+                            }
+                        }
+                    }
+
+                    db.SaveChanges();
+                    transaction.Commit();
+                }
+                catch (Exception ex)
+                {
+                    transaction.Rollback();
+                    _logger.LogError(ex, "Failed to dynamically save discovered objects for device {DeviceId}", id);
+                    return Error($"Failed to seed discovered objects: {ex.Message}", System.Net.HttpStatusCode.InternalServerError);
+                }
+            }
 
             _apiResponse.Status = true;
             _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
@@ -172,124 +258,7 @@ namespace PQM.Server.Controllers
                 DateStamp = DateTime.UtcNow
             });
 
-            if (!string.IsNullOrEmpty(value) && !value.StartsWith("Error"))
-            {
-                if (param.ObjectType == "Register" || param.ObjectType == "ExtendedRegister" || param.ObjectType == "DemandRegister")
-                {
-                    try
-                    {
-                        var registerData = new Register
-                        {
-                            DeviceId = id,
-                            Name = param.Name ?? "",
-                            ObjectType = param.ObjectType,
-                            Value = value,
-                            DateEntered = DateTime.UtcNow
-                        };
-                        db.Register.Add(registerData);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Failed to save to Register table in ReadParameter");
-                    }
-                }
-                else if (param.ObjectType == "Data")
-                {
-                    try
-                    {
-                        var dataVal = new PQM.Core.Entities.Data
-                        {
-                            DeviceId = id,
-                            Name = param.Name ?? "",
-                            ObjectType = param.ObjectType,
-                            Value = value,
-                            DateEntered = DateTime.UtcNow
-                        };
-                        db.Data.Add(dataVal);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Failed to save to Data table in ReadParameter");
-                    }
-                }
-                else if (string.Equals(param.ObjectType, "IecHdlcSetup", StringComparison.OrdinalIgnoreCase) ||
-                         string.Equals(param.ObjectType, "lecHdlcSetup", StringComparison.OrdinalIgnoreCase))
-                {
-                    try
-                    {
-                        var hdlcVal = new IecHdlcSetup
-                        {
-                            DeviceId = id,
-                            Name = param.Name ?? "",
-                            ObjectType = param.ObjectType,
-                            Value = value,
-                            DateEntered = DateTime.UtcNow
-                        };
-                        db.IecHdlcSetup.Add(hdlcVal);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Failed to save to IecHdlcSetup table in ReadParameter");
-                    }
-                }
-                else if (string.Equals(param.ObjectType, "TcpUdpSetup", StringComparison.OrdinalIgnoreCase))
-                {
-                    try
-                    {
-                        var tcpVal = new TcpUdpSetup
-                        {
-                            DeviceId = id,
-                            Name = param.Name ?? "",
-                            ObjectType = param.ObjectType,
-                            Value = value,
-                            DateEntered = DateTime.UtcNow
-                        };
-                        db.TcpUdpSetup.Add(tcpVal);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Failed to save to TcpUdpSetup table in ReadParameter");
-                    }
-                }
-                else if (string.Equals(param.ObjectType, "Ip4Setup", StringComparison.OrdinalIgnoreCase))
-                {
-                    try
-                    {
-                        var ipVal = new Ip4Setup
-                        {
-                            DeviceId = id,
-                            Name = param.Name ?? "",
-                            ObjectType = param.ObjectType,
-                            Value = value,
-                            DateEntered = DateTime.UtcNow
-                        };
-                        db.Ip4Setup.Add(ipVal);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Failed to save to Ip4Setup table in ReadParameter");
-                    }
-                }
-                else if (string.Equals(param.ObjectType, "MacAddressSetup", StringComparison.OrdinalIgnoreCase))
-                {
-                    try
-                    {
-                        var macVal = new MacAddressSetup
-                        {
-                            DeviceId = id,
-                            Name = param.Name ?? "",
-                            ObjectType = param.ObjectType,
-                            Value = value,
-                            DateEntered = DateTime.UtcNow
-                        };
-                        db.MacAddressSetup.Add(macVal);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Failed to save to MacAddressSetup table in ReadParameter");
-                    }
-                }
-            }
+            SaveTypedReading(db, id, param.Name ?? "", param.ObjectType ?? "", value, 2);
 
             db.SaveChanges();
 
@@ -299,7 +268,6 @@ namespace PQM.Server.Controllers
             return Ok(_apiResponse);
         }
 
-        // -------------------- READ OBJECT --------------------
         [HttpPost("{id}/read-object/{objectId}")]
         public IActionResult ReadObject(int id, int objectId)
         {
@@ -359,148 +327,27 @@ namespace PQM.Server.Controllers
                     {
                         string value = reader.ReadObjectAttribute(obj, param.AttributeId);
 
-                        if (!string.IsNullOrEmpty(value) && !value.StartsWith("Error"))
+                        var pv = new ParameterValue
                         {
-                            var pv = new ParameterValue
-                            {
-                                ParameterId = param.Id,
-                                Value = value,
-                                Timestamp = DateTime.UtcNow
-                            };
-                            db.ParameterValue.Add(pv);
-                            results.Add(new
-                            {
-                                pv.Id,
-                                pv.ParameterId,
-                                AttributeId = param.AttributeId,
-                                pv.Value,
-                                pv.Timestamp
-                            });
+                            ParameterId = param.Id,
+                            Value = value ?? "",
+                            Timestamp = DateTime.UtcNow
+                        };
+                        db.ParameterValue.Add(pv);
+                        results.Add(new
+                        {
+                            pv.Id,
+                            param.ObjectId,
+                            pv.ParameterId,
+                            AttributeId = param.AttributeId,
+                            param.Name,
+                            param.DataType,
+                            param.AccessType,
+                            pv.Value,
+                            pv.Timestamp
+                        });
 
-                            if (dlmsObject.ObjectType == "Register" || 
-                                dlmsObject.ObjectType == "ExtendedRegister" || 
-                                dlmsObject.ObjectType == "DemandRegister")
-                            {
-                                if (param.AttributeId == 2)
-                                {
-                                    try
-                                    {
-                                        var registerData = new Register
-                                        {
-                                            DeviceId = id,
-                                            Name = dlmsObject.Name ?? "",
-                                            ObjectType = dlmsObject.ObjectType,
-                                            Value = value,
-                                            DateEntered = DateTime.UtcNow
-                                        };
-                                        db.Register.Add(registerData);
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        _logger.LogError(ex, "Failed to save to Register table in ReadObject");
-                                    }
-                                }
-                            }
-                            else if (dlmsObject.ObjectType == "Data")
-                            {
-                                if (param.AttributeId == 2)
-                                {
-                                    try
-                                    {
-                                        var dataVal = new PQM.Core.Entities.Data
-                                        {
-                                            DeviceId = id,
-                                            Name = dlmsObject.Name ?? "",
-                                            ObjectType = dlmsObject.ObjectType,
-                                            Value = value,
-                                            DateEntered = DateTime.UtcNow
-                                        };
-                                        db.Data.Add(dataVal);
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        _logger.LogError(ex, "Failed to save to Data table in ReadObject");
-                                    }
-                                }
-                            }
-                            else if (string.Equals(dlmsObject.ObjectType, "IecHdlcSetup", StringComparison.OrdinalIgnoreCase) ||
-                                     string.Equals(dlmsObject.ObjectType, "lecHdlcSetup", StringComparison.OrdinalIgnoreCase))
-                            {
-                                try
-                                {
-                                    var hdlcVal = new IecHdlcSetup
-                                    {
-                                        DeviceId = id,
-                                        Name = dlmsObject.Name ?? "",
-                                        ObjectType = dlmsObject.ObjectType,
-                                        Value = value,
-                                        DateEntered = DateTime.UtcNow
-                                    };
-                                    db.IecHdlcSetup.Add(hdlcVal);
-                                }
-                                catch (Exception ex)
-                                {
-                                    _logger.LogError(ex, "Failed to save to IecHdlcSetup table in ReadObject");
-                                }
-                            }
-                             else if (string.Equals(dlmsObject.ObjectType, "TcpUdpSetup", StringComparison.OrdinalIgnoreCase))
-                            {
-                                try
-                                {
-                                    var tcpVal = new TcpUdpSetup
-                                    {
-                                        DeviceId = id,
-                                        Name = dlmsObject.Name ?? "",
-                                        ObjectType = dlmsObject.ObjectType,
-                                        Value = value,
-                                        DateEntered = DateTime.UtcNow
-                                    };
-                                    db.TcpUdpSetup.Add(tcpVal);
-                                }
-                                catch (Exception ex)
-                                {
-                                    _logger.LogError(ex, "Failed to save to TcpUdpSetup table in ReadObject");
-                                }
-                            }
-                            else if (string.Equals(dlmsObject.ObjectType, "Ip4Setup", StringComparison.OrdinalIgnoreCase))
-                            {
-                                try
-                                {
-                                    var ipVal = new Ip4Setup
-                                    {
-                                        DeviceId = id,
-                                        Name = dlmsObject.Name ?? "",
-                                        ObjectType = dlmsObject.ObjectType,
-                                        Value = value,
-                                        DateEntered = DateTime.UtcNow
-                                    };
-                                    db.Ip4Setup.Add(ipVal);
-                                }
-                                catch (Exception ex)
-                                {
-                                    _logger.LogError(ex, "Failed to save to Ip4Setup table in ReadObject");
-                                }
-                            }
-                            else if (string.Equals(dlmsObject.ObjectType, "MacAddressSetup", StringComparison.OrdinalIgnoreCase))
-                            {
-                                try
-                                {
-                                    var macVal = new MacAddressSetup
-                                    {
-                                        DeviceId = id,
-                                        Name = dlmsObject.Name ?? "",
-                                        ObjectType = dlmsObject.ObjectType,
-                                        Value = value,
-                                        DateEntered = DateTime.UtcNow
-                                    };
-                                    db.MacAddressSetup.Add(macVal);
-                                }
-                                catch (Exception ex)
-                                {
-                                    _logger.LogError(ex, "Failed to save to MacAddressSetup table in ReadObject");
-                                }
-                            }
-                        }
+                        SaveTypedReading(db, id, dlmsObject.Name ?? "", dlmsObject.ObjectType, value ?? "", param.AttributeId);
                     }
 
                     db.SaveChanges();
@@ -543,6 +390,182 @@ namespace PQM.Server.Controllers
                 return false;
             }
             return true;
+        }
+
+        private void SaveTypedReading(DataContext db, int deviceId, string name, string objectType, string value, int attributeId)
+        {
+            if (string.IsNullOrWhiteSpace(value) || value.StartsWith("Error", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            if (!IsPrimaryAttributeRead(objectType, attributeId))
+            {
+                return;
+            }
+
+            try
+            {
+                switch (NormalizeObjectType(objectType))
+                {
+                    case "Register":
+                    case "ExtendedRegister":
+                    case "DemandRegister":
+                        db.Register.Add(new Register
+                        {
+                            DeviceId = deviceId,
+                            Name = name,
+                            ObjectType = objectType,
+                            Value = value,
+                            DateEntered = DateTime.UtcNow
+                        });
+                        break;
+                    case "Data":
+                        db.Data.Add(new PQM.Core.Entities.Data
+                        {
+                            DeviceId = deviceId,
+                            Name = name,
+                            ObjectType = objectType,
+                            Value = value,
+                            DateEntered = DateTime.UtcNow
+                        });
+                        break;
+                    case "IecHdlcSetup":
+                        db.IecHdlcSetup.Add(new IecHdlcSetup
+                        {
+                            DeviceId = deviceId,
+                            Name = name,
+                            ObjectType = objectType,
+                            Value = value,
+                            DateEntered = DateTime.UtcNow
+                        });
+                        break;
+                    case "TcpUdpSetup":
+                        db.TcpUdpSetup.Add(new TcpUdpSetup
+                        {
+                            DeviceId = deviceId,
+                            Name = name,
+                            ObjectType = objectType,
+                            Value = value,
+                            DateEntered = DateTime.UtcNow
+                        });
+                        break;
+                    case "Ip4Setup":
+                        db.Ip4Setup.Add(new Ip4Setup
+                        {
+                            DeviceId = deviceId,
+                            Name = name,
+                            ObjectType = objectType,
+                            Value = value,
+                            DateEntered = DateTime.UtcNow
+                        });
+                        break;
+                    case "MacAddressSetup":
+                        db.MacAddressSetup.Add(new MacAddressSetup
+                        {
+                            DeviceId = deviceId,
+                            Name = name,
+                            ObjectType = objectType,
+                            Value = value,
+                            DateEntered = DateTime.UtcNow
+                        });
+                        break;
+                    case "AssociationLogicalName":
+                        db.AssociationLogicalName.Add(new AssociationLogicalName
+                        {
+                            DeviceId = deviceId,
+                            Name = name,
+                            ObjectType = objectType,
+                            Value = value,
+                            DateEntered = DateTime.UtcNow
+                        });
+                        break;
+                    case "Clock":
+                        db.Clock.Add(new Clock
+                        {
+                            DeviceId = deviceId,
+                            Name = name,
+                            ObjectType = objectType,
+                            Value = value,
+                            DateEntered = DateTime.UtcNow
+                        });
+                        break;
+                    case "ScriptTable":
+                        db.ScriptTable.Add(new ScriptTable
+                        {
+                            DeviceId = deviceId,
+                            Name = name,
+                            ObjectType = objectType,
+                            Value = value,
+                            DateEntered = DateTime.UtcNow
+                        });
+                        break;
+                    case "ProfileGeneric":
+                        db.ProfileGeneric.Add(new ProfileGeneric
+                        {
+                            DeviceId = deviceId,
+                            Name = name,
+                            ObjectType = objectType,
+                            Value = value,
+                            DateEntered = DateTime.UtcNow
+                        });
+                        break;
+                    case "ActionSchedule":
+                        db.ActionSchedule.Add(new ActionSchedule
+                        {
+                            DeviceId = deviceId,
+                            Name = name,
+                            ObjectType = objectType,
+                            Value = value,
+                            DateEntered = DateTime.UtcNow
+                        });
+                        break;
+                    case "ActivityCalendar":
+                        db.ActivityCalendar.Add(new ActivityCalendar
+                        {
+                            DeviceId = deviceId,
+                            Name = name,
+                            ObjectType = objectType,
+                            Value = value,
+                            DateEntered = DateTime.UtcNow
+                        });
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to save typed reading for {ObjectType}", objectType);
+            }
+        }
+
+        private static bool IsPrimaryAttributeRead(string objectType, int attributeId)
+        {
+            var normalized = NormalizeObjectType(objectType);
+            return normalized switch
+            {
+                "Register" => attributeId == 2,
+                "ExtendedRegister" => attributeId == 2,
+                "DemandRegister" => attributeId == 2,
+                "Data" => attributeId == 2,
+                "IecHdlcSetup" => attributeId == 2,
+                "TcpUdpSetup" => attributeId == 2,
+                "Ip4Setup" => attributeId == 2,
+                "MacAddressSetup" => attributeId == 2,
+                "AssociationLogicalName" => attributeId == 2,
+                "Clock" => attributeId == 2,
+                "ScriptTable" => attributeId == 2,
+                "ProfileGeneric" => attributeId == 2,
+                "ActionSchedule" => attributeId == 2,
+                "ActivityCalendar" => attributeId == 2,
+                _ => true
+            };
+        }
+
+        private static string NormalizeObjectType(string objectType)
+        {
+            return objectType.Trim().Equals("lecHdlcSetup", StringComparison.OrdinalIgnoreCase)
+                ? "IecHdlcSetup"
+                : objectType.Trim();
         }
     }
 }

@@ -4,6 +4,10 @@ using PQM.Server.Models;
 using PQM.Core.IRepositories;
 using PQM.Core.Entities;
 using System.Net;
+using Microsoft.Extensions.Configuration;
+using PQM.Infrastructure;
+using PQM.Core.DomainServices;
+using System.IO;
 
 namespace PQM.Server.Controllers
 {
@@ -13,16 +17,21 @@ namespace PQM.Server.Controllers
     {
         private readonly IFTPSettingService _ftpSettingService;
         private readonly ILogger<FTPController> _logger;
+        private readonly IConfiguration _configuration;
+        private readonly string _connectionString;
 
         public FTPController(
             ILogger<FTPController> logger,
-            IFTPSettingService ftpSettingService)
+            IFTPSettingService ftpSettingService,
+            IConfiguration configuration)
         {
             _logger = logger;
             _ftpSettingService = ftpSettingService;
+            _configuration = configuration;
+            _connectionString = _configuration.GetConnectionString("DefaultConnection")
+                ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
         }
 
-        // -------------------- GET FTP SETTINGS --------------------
         [HttpGet]
         public IActionResult Get()
         {
@@ -35,7 +44,6 @@ namespace PQM.Server.Controllers
             return Ok(response);
         }
 
-        // -------------------- ADD / UPDATE FTP --------------------
         [HttpPut]
         public IActionResult Put([FromBody] FTPSetting ftpData)
         {
@@ -63,7 +71,6 @@ namespace PQM.Server.Controllers
             return Ok(response);
         }
 
-        // -------------------- FTP CONNECTION TEST --------------------
         [HttpGet("FTPConnectionTest")]
         public IActionResult FTPConnectionTest([FromQuery] FTPSetting ftpData)
         {
@@ -105,6 +112,84 @@ namespace PQM.Server.Controllers
                 response.Errors.Add(ex.Message);
             }
 
+            return Ok(response);
+        }
+
+        [HttpPost("ImportLocalCSV")]
+        public IActionResult ImportLocalCSVFiles([FromQuery] int deviceId)
+        {
+            var response = new APIResponse();
+            try
+            {
+                // Navigate to PQM.Server/CSVFiles
+                var csvFolder = Path.Combine(Directory.GetCurrentDirectory(), "CSVFiles");
+                if (!Directory.Exists(csvFolder))
+                {
+                    response.Status = false;
+                    response.Errors.Add($"CSVFiles directory not found at: {csvFolder}");
+                    return Ok(response);
+                }
+
+                var files = Directory.GetFiles(csvFolder, "*.csv");
+                if (files.Length == 0)
+                {
+                    response.Status = true;
+                    response.Data = "No CSV files found in CSVFiles folder to import.";
+                    return Ok(response);
+                }
+
+                using var db = new DataContext(_connectionString);
+                var device = db.Device.FirstOrDefault(d => d.Id == deviceId);
+                if (device == null)
+                {
+                    response.Status = false;
+                    response.Errors.Add($"Device with ID {deviceId} not found.");
+                    return Ok(response);
+                }
+
+                // Get string representations of all active parameter IDs for lookup mapping
+                var mappedParams = db.Parameter.Select(p => p.Id.ToString()).ToList();
+
+                var importedLogsCount = 0;
+                var importedEventsCount = 0;
+                var csvService = new CSVService();
+
+                foreach (var file in files)
+                {
+                    var fileName = Path.GetFileName(file);
+                    
+                    if (fileName.Contains("event", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var eventLogs = csvService.ReadEventLog(deviceId, "GeneralEvent", file);
+                        if (eventLogs != null && eventLogs.Any())
+                        {
+                            db.EventLog.AddRange(eventLogs);
+                            importedEventsCount += eventLogs.Count;
+                        }
+                    }
+                    else
+                    {
+                        var deviceLogs = csvService.ReadCSVData(deviceId, file, mappedParams);
+                        if (deviceLogs != null && deviceLogs.Any())
+                        {
+                            db.DeviceLog.AddRange(deviceLogs);
+                            importedLogsCount += deviceLogs.Count;
+                        }
+                    }
+                }
+
+                db.SaveChanges();
+
+                response.Status = true;
+                response.StatusCode = HttpStatusCode.OK;
+                response.Data = $"Successfully imported {importedLogsCount} device readings and {importedEventsCount} event readings from CSVFiles folder.";
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error importing local CSV files");
+                response.Status = false;
+                response.Errors.Add(ex.Message);
+            }
             return Ok(response);
         }
 
