@@ -964,11 +964,14 @@ namespace PQM.Infrastructure.Services
         {
             try
             {
-                var reply = new GXReplyData();
-                byte[] disconnect = _client.DisconnectRequest();
-                if (disconnect != null)
+                if (_client != null && _client.ConnectionState != ConnectionState.None)
                 {
-                    ReadDataBlock(disconnect, reply);
+                    var reply = new GXReplyData();
+                    //byte[] disconnect = _client.DisconnectRequest();
+                    //if (disconnect != null)
+                    //{
+                    //    ReadDataBlock(disconnect, reply);
+                    //}
                 }
             }
             catch { }

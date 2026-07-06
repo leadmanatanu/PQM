@@ -30,6 +30,7 @@ namespace PQM.Infrastructure
         public DbSet<Clock> Clock { get; set; } = null!;
         public DbSet<ScriptTable> ScriptTable { get; set; } = null!;
         public DbSet<ProfileGeneric> ProfileGeneric { get; set; } = null!;
+        public DbSet<ProfileGenericEntry> ProfileGenericEntry { get; set; } = null!;
         public DbSet<ActionSchedule> ActionSchedule { get; set; } = null!;
         public DbSet<ActivityCalendar> ActivityCalendar { get; set; } = null!;
         public DbSet<ConnectedHeader> ConnectedHeader { get; set; } = null!;
@@ -51,7 +52,7 @@ namespace PQM.Infrastructure
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            modelBuilder.Entity<DeviceLogSearch>().HasNoKey();
+            modelBuilder.Entity<DeviceLogSearch>().HasNoKey().ToTable((string?)null);
         }
     }
 }

@@ -114,7 +114,10 @@ export function DeviceRTable({
                   {row.dateStamp ? dayjs(row.dateStamp).format('MMM D, YYYY HH:mm:ss') : '-'}
                 </TableCell>
                 <TableCell>{row.parameterName || paramterString}</TableCell>
-                <TableCell sx={{ fontWeight: 'bold', color: 'primary.main' }}>{row.value}</TableCell>
+                <TableCell sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+                  {row.value}
+                  {row.unit ? ` ${row.unit}` : ''}
+                </TableCell>
               </TableRow>
             );
           })

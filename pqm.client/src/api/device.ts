@@ -271,3 +271,59 @@ export const importLocalCsvFiles = async (deviceId: string | number): Promise<an
     }
 };
 
+// Fetch the latest clock reading for a device
+export const fetchClockLatest = async (deviceId: string | number): Promise<any | null> => {
+    try {
+        const { data } = await axios.get(`${API_URL}/clock/latest`, {
+            params: { deviceId }
+        });
+        return data;
+    } catch (error) {
+        console.error("Error fetching latest clock:", error);
+        return null;
+    }
+};
+
+// Fetch the latest activity calendar for a device
+export const fetchActivityCalendarLatest = async (deviceId: string | number): Promise<any | null> => {
+    try {
+        const { data } = await axios.get(`${API_URL}/activitycalendar/latest`, {
+            params: { deviceId }
+        });
+        return data;
+    } catch (error) {
+        console.error("Error fetching latest activity calendar:", error);
+        return null;
+    }
+};
+
+// Fetch ProfileGenericEntry records
+export const fetchProfileGenericEntries = async (
+    deviceId: string | number,
+    obisCode: string,
+    columnName?: string,
+    startDate?: string,
+    endDate?: string
+): Promise<any | null> => {
+    try {
+        const { data } = await axios.get(`${API_URL}/profilegeneric/entries`, {
+            params: { deviceId, obisCode, columnName, startDate, endDate }
+        });
+        return data;
+    } catch (error) {
+        console.error("Error fetching profile entries:", error);
+        return null;
+    }
+};
+
+// Fetch Device Configuration setup data
+export const fetchDeviceConfiguration = async (id: string | number): Promise<any | null> => {
+    try {
+        const { data } = await axios.get(`${API_URL}/device/${id}/configuration`);
+        return data;
+    } catch (error) {
+        console.error("Error fetching device configuration:", error);
+        return null;
+    }
+};
+

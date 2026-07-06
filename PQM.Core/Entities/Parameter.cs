@@ -11,6 +11,8 @@ namespace PQM.Core.Entities
         public string? ObisCode { get; set; }
         public string? ObjectType { get; set; }
         public string? Attribute3 { get; set; }
+        public int? Scaler { get; set; }
+        public string? Unit { get; set; }
         public bool IsActive { get; set; }
         public bool IsDeleted { get; set; }
         public DateTime CreatedDate { get; set; }
