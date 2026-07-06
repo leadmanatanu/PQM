@@ -163,7 +163,8 @@ import {
     fetchDevices, 
     fetchConnectedHeaders, 
     fetchDLMSObjects, 
-    readDLMSObject 
+    readDLMSObject,
+    readDLMSObjectsBatch
 } from '../../../api/device';
 import { Device } from '../../../components/dashboard/device/devices-table';
 
@@ -637,37 +638,37 @@ export default function Page(): React.JSX.Element {
         if (!selectedDeviceId || discoveredParams.length === 0) return;
         setDiscovering(true);
         try {
-            for (let i = 0; i < discoveredParams.length; i++) {
-                const param = discoveredParams[i];
-                const currentVal = param.value;
-                const hasValidPrevValue = currentVal && currentVal !== 'Waiting...' && currentVal !== 'Scanning...' && !currentVal.startsWith('Error');
-                
-                // Update row value to Scanning...
-                setDiscoveredParams((prev) => {
-                    const next = [...prev];
-                    next[i] = { 
-                        ...next[i], 
-                        valueBeforeScan: hasValidPrevValue ? currentVal : next[i].valueBeforeScan,
-                        allAttributesBeforeScan: (next[i].allAttributes && next[i].allAttributes.length > 0) ? next[i].allAttributes : next[i].allAttributesBeforeScan,
-                        value: 'Scanning...' 
+            // 1. Mark all parameters as Scanning...
+            setDiscoveredParams((prev) => 
+                prev.map(p => {
+                    const currentVal = p.value;
+                    const hasValidPrevValue = currentVal && currentVal !== 'Waiting...' && currentVal !== 'Scanning...' && !currentVal.startsWith('Error');
+                    return {
+                        ...p,
+                        valueBeforeScan: hasValidPrevValue ? currentVal : p.valueBeforeScan,
+                        allAttributesBeforeScan: (p.allAttributes && p.allAttributes.length > 0) ? p.allAttributes : p.allAttributesBeforeScan,
+                        value: 'Scanning...'
                     };
-                    return next;
-                });
+                })
+            );
 
-                // Call backend read-object API
-                const result = await readDLMSObject(selectedDeviceId, param.id);
+            const idsToRead = discoveredParams.map((p: any) => p.id);
 
-                // Update row with returned values
-                setDiscoveredParams((prev) => {
-                    const next = [...prev];
-                    if (result && result.status && Array.isArray(result.data)) {
-                        next[i] = applyReadResultToRow(next[i], result.data);
+            // 2. Call backend read-objects API in batch
+            const result = await readDLMSObjectsBatch(selectedDeviceId, idsToRead);
+
+            // 3. Update all parameters with the returned values
+            setDiscoveredParams((prev) => {
+                return prev.map(p => {
+                    const objResult = result && result.status && result.data ? (result.data[p.id] || result.data[p.id.toString()]) : null;
+                    if (objResult && Array.isArray(objResult)) {
+                        return applyReadResultToRow(p, objResult);
                     } else {
-                        next[i] = { ...next[i], value: 'Error' };
+                        return { ...p, value: 'Error' };
                     }
-                    return next;
                 });
-            }
+            });
+
             const currentHeader = headers.find((h: any) => h.id === selectedHeaderId);
             if (currentHeader?.name === 'AssociationLogicalName') {
                 setDiscoveredParams((currentParams) => {

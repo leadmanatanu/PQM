@@ -364,6 +364,117 @@ namespace PQM.Server.Controllers
             }
         }
 
+        [HttpPost("{id}/read-objects")]
+        public IActionResult ReadObjects(int id, [FromBody] List<int> objectIds)
+        {
+            _apiResponse.Errors.Clear();
+
+            var device = _deviceService.GetDevices().FirstOrDefault(d => d.Id == id);
+            if (device == null)
+                return Error("Device not found", System.Net.HttpStatusCode.NotFound);
+
+            if (objectIds == null || !objectIds.Any())
+                return Error("No object IDs provided", System.Net.HttpStatusCode.BadRequest);
+
+            using var db = new DataContext(_connectionString);
+            
+            // Get all requested DLMS objects
+            var dlmsObjects = db.DLMSObject.Where(o => objectIds.Contains(o.Id)).ToList();
+            if (!dlmsObjects.Any())
+                return Error("No valid DLMS Objects found", System.Net.HttpStatusCode.NotFound);
+
+            // Get parameters for these objects
+            var dbObjectIds = dlmsObjects.Select(o => o.Id).ToList();
+            var parameters = db.ObjectParameter.Where(p => dbObjectIds.Contains(p.ObjectId)).ToList();
+
+            int clientAddress = _configuration.GetValue("DlmsSettings:ClientAddress", 1);
+            int serverAddress = _configuration.GetValue("DlmsSettings:ServerAddress", 1);
+            string authStr = _configuration.GetValue("DlmsSettings:Authentication", "None");
+            string password = _configuration.GetValue("DlmsSettings:Password", "");
+            bool useLogicalNameReferencing = _configuration.GetValue("DlmsSettings:UseLogicalNameReferencing", true);
+            string standardStr = _configuration.GetValue("DlmsSettings:Standard", "DLMS");
+
+            if (!Enum.TryParse(authStr, true, out Authentication authentication))
+                authentication = Authentication.None;
+
+            if (!Enum.TryParse(standardStr, true, out Standard standard))
+                standard = Standard.DLMS;
+
+            // Dictionary to store results grouped by objectId
+            var results = new Dictionary<int, List<object>>();
+
+            try
+            {
+                using (var reader = new DLMSReader(device.IP, device.PORT, clientAddress, serverAddress, authentication, password, useLogicalNameReferencing, standard))
+                {
+                    reader.Connect();
+
+                    foreach (var dlmsObject in dlmsObjects)
+                    {
+                        var objectParameters = parameters.Where(p => p.ObjectId == dlmsObject.Id).ToList();
+                        if (!objectParameters.Any())
+                            continue;
+
+                        Gurux.DLMS.Objects.GXDLMSObject? obj = null;
+                        if (reader.Objects != null)
+                        {
+                            obj = reader.Objects.FirstOrDefault(o => o.LogicalName == dlmsObject.ObisCode);
+                        }
+
+                        if (obj == null)
+                        {
+                            if (!Enum.TryParse<ObjectType>(dlmsObject.ObjectType, out var objectType))
+                            {
+                                objectType = ObjectType.Register;
+                            }
+                            obj = GXDLMSClient.CreateObject(objectType);
+                            obj.LogicalName = dlmsObject.ObisCode;
+                        }
+
+                        var objResults = new List<object>();
+                        foreach (var param in objectParameters)
+                        {
+                            string value = reader.ReadObjectAttribute(obj, param.AttributeId);
+
+                            var pv = new ParameterValue
+                            {
+                                ParameterId = param.Id,
+                                Value = value ?? "",
+                                Timestamp = DateTime.UtcNow
+                            };
+                            db.ParameterValue.Add(pv);
+                            objResults.Add(new
+                            {
+                                pv.Id,
+                                param.ObjectId,
+                                pv.ParameterId,
+                                AttributeId = param.AttributeId,
+                                param.Name,
+                                param.DataType,
+                                param.AccessType,
+                                pv.Value,
+                                pv.Timestamp
+                            });
+
+                            SaveTypedReading(db, id, dlmsObject.Name ?? "", dlmsObject.ObjectType, value ?? "", param.AttributeId);
+                        }
+                        results[dlmsObject.Id] = objResults;
+                    }
+
+                    db.SaveChanges();
+                }
+
+                _apiResponse.Status = true;
+                _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
+                _apiResponse.Data = results;
+                return Ok(_apiResponse);
+            }
+            catch (Exception ex)
+            {
+                return Error($"DLMS Error: {ex.Message}", System.Net.HttpStatusCode.InternalServerError);
+            }
+        }
+
         // -------------------- HELPERS --------------------
         private IActionResult Error(string message, System.Net.HttpStatusCode code)
         {
