@@ -1,0 +1,3 @@
+06-07-2026 15:57:05 Connecting to DLMS meter Test Meter 1 at 192.168.0.3:4059
+06-07-2026 16:10:01 Connecting to DLMS meter Test Meter 1 at 192.168.0.3:4059
+06-07-2026 16:10:16 Error while reading DLMS data of Test Meter 1. Error: Failed to receive reply from the device in given time.

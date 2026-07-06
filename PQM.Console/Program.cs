@@ -315,20 +315,6 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
 
                     foreach (var obj in reader.Objects)
                     {
-                        // Process ONLY Register, ExtendedRegister, DemandRegister, Data, IecHdlcSetup, TcpUdpSetup, Ip4Setup, MacAddressSetup, AssociationLogicalName
-                        if (obj.ObjectType != ObjectType.Register && 
-                            obj.ObjectType != ObjectType.ExtendedRegister && 
-                            obj.ObjectType != ObjectType.DemandRegister &&
-                            obj.ObjectType != ObjectType.Data &&
-                            obj.ObjectType != ObjectType.IecHdlcSetup &&
-                            obj.ObjectType != ObjectType.TcpUdpSetup &&
-                            obj.ObjectType != ObjectType.Ip4Setup &&
-                            obj.ObjectType != ObjectType.MacAddressSetup &&
-                            obj.ObjectType != ObjectType.AssociationLogicalName)
-                        {
-                            continue;
-                        }
-
                         // Resolve description
                         converter.UpdateOBISCodeInformation(obj);
                         string paramName = string.IsNullOrEmpty(obj.Description) ? $"{obj.ObjectType} - {obj.LogicalName}" : obj.Description;
@@ -367,7 +353,16 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                         }
 
                         // Read values
-                        string attr2Val = reader.ReadObjectValue(obj);
+                        string attr2Val;
+                        if (obj.ObjectType == ObjectType.ProfileGeneric)
+                        {
+                            var lastTs = GetLastProfileTimestamp(dbContext, item.Id, obj.LogicalName, out var _);
+                            attr2Val = reader.ReadObjectValue(obj, lastTs);
+                        }
+                        else
+                        {
+                            attr2Val = reader.ReadObjectValue(obj);
+                        }
                         string attr3Val = "";
 
                         if (obj.ObjectType == ObjectType.Register || obj.ObjectType == ObjectType.ExtendedRegister || obj.ObjectType == ObjectType.DemandRegister)
@@ -645,6 +640,121 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                                     Console.WriteLine($"[DLMS Reader] Failed to save changes for AssociationLogicalName: {ex.Message}");
                                 }
                             }
+                            else if (obj.ObjectType == ObjectType.ProfileGeneric)
+                            {
+                                try
+                                {
+                                    var pgRecord = dbContext.ProfileGeneric
+                                        .FirstOrDefault(p => p.DeviceId == item.Id && (p.Name == obj.LogicalName || p.ObjectType == obj.LogicalName));
+                                    
+                                    string mergedJson;
+                                    if (pgRecord != null)
+                                    {
+                                        mergedJson = MergeProfileGenericJson(pgRecord.Value, attr2Val);
+                                        pgRecord.Value = mergedJson;
+                                        pgRecord.DateEntered = dateStamp;
+                                        dbContext.ProfileGeneric.Update(pgRecord);
+                                    }
+                                    else
+                                    {
+                                        mergedJson = attr2Val;
+                                        var newRecord = new PQM.Core.Entities.ProfileGeneric
+                                        {
+                                            DeviceId = item.Id,
+                                            Name = paramName,
+                                            ObjectType = obj.ObjectType.ToString(),
+                                            Value = mergedJson,
+                                            DateEntered = dateStamp
+                                        };
+                                        dbContext.ProfileGeneric.Add(newRecord);
+                                    }
+                                    dbContext.SaveChanges();
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.WriteLine($"[DLMS Reader] Failed to save ProfileGeneric to database: {ex.Message}");
+                                }
+                            }
+                            else if (obj.ObjectType == ObjectType.Clock)
+                            {
+                                try
+                                {
+                                    var clockVal = new PQM.Core.Entities.Clock
+                                    {
+                                        DeviceId = item.Id,
+                                        Name = paramName,
+                                        ObjectType = obj.ObjectType.ToString(),
+                                        Value = attr2Val,
+                                        DateEntered = dateStamp
+                                    };
+                                    dbContext.Clock.Add(clockVal);
+                                    dbContext.SaveChanges();
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.WriteLine($"[DLMS Reader] Failed to save to Clock table: {ex.Message}");
+                                }
+                            }
+                            else if (obj.ObjectType == ObjectType.ScriptTable)
+                            {
+                                try
+                                {
+                                    var scriptVal = new PQM.Core.Entities.ScriptTable
+                                    {
+                                        DeviceId = item.Id,
+                                        Name = paramName,
+                                        ObjectType = obj.ObjectType.ToString(),
+                                        Value = attr2Val,
+                                        DateEntered = dateStamp
+                                    };
+                                    dbContext.ScriptTable.Add(scriptVal);
+                                    dbContext.SaveChanges();
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.WriteLine($"[DLMS Reader] Failed to save to ScriptTable table: {ex.Message}");
+                                }
+                            }
+                            else if (obj.ObjectType == ObjectType.ActionSchedule)
+                            {
+                                try
+                                {
+                                    var actionVal = new PQM.Core.Entities.ActionSchedule
+                                    {
+                                        DeviceId = item.Id,
+                                        Name = paramName,
+                                        ObjectType = obj.ObjectType.ToString(),
+                                        Value = attr2Val,
+                                        DateEntered = dateStamp
+                                    };
+                                    dbContext.ActionSchedule.Add(actionVal);
+                                    dbContext.SaveChanges();
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.WriteLine($"[DLMS Reader] Failed to save to ActionSchedule table: {ex.Message}");
+                                }
+                            }
+                            else if (obj.ObjectType == ObjectType.ActivityCalendar)
+                            {
+                                try
+                                {
+                                    var activityVal = new PQM.Core.Entities.ActivityCalendar
+                                    {
+                                        DeviceId = item.Id,
+                                        Name = paramName,
+                                        ObjectType = obj.ObjectType.ToString(),
+                                        Value = attr2Val,
+                                        DateEntered = dateStamp
+                                    };
+                                    dbContext.ActivityCalendar.Add(activityVal);
+                                    dbContext.SaveChanges();
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.WriteLine($"[DLMS Reader] Failed to save to ActivityCalendar table: {ex.Message}");
+                                }
+                            }
                         }
                     }
                     Console.WriteLine(new string('-', 120));
@@ -681,5 +791,101 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
     Console.WriteLine("\n==================================================");
     Console.WriteLine("Finished reading DLMS smart meters.");
     Console.WriteLine("==================================================");
+}
+
+static DateTime? ParseDlmsClock(string octetString)
+{
+    if (string.IsNullOrWhiteSpace(octetString)) return null;
+    string[] parts = octetString.Split(new[] { ' ', '-' }, StringSplitOptions.RemoveEmptyEntries);
+    if (parts.Length < 7) return null;
+    try
+    {
+        int year = Convert.ToInt32(parts[0] + parts[1], 16);
+        int month = Convert.ToInt32(parts[2], 16);
+        int day = Convert.ToInt32(parts[3], 16);
+        int hour = Convert.ToInt32(parts[5], 16);
+        int minute = Convert.ToInt32(parts[6], 16);
+        int second = parts.Length > 7 && parts[7] != "FF" ? Convert.ToInt32(parts[7], 16) : 0;
+        return new DateTime(year, month, day, hour, minute, second, DateTimeKind.Utc);
+    }
+    catch
+    {
+        return null;
+    }
+}
+
+static DateTime? GetLastProfileTimestamp(PQM.Infrastructure.DataContext dbContext, int deviceId, string obisCode, out string? existingJson)
+{
+    existingJson = null;
+    try
+    {
+        var pgRecord = dbContext.ProfileGeneric
+            .FirstOrDefault(p => p.DeviceId == deviceId && (p.Name == obisCode || p.ObjectType == obisCode));
+        
+        if (pgRecord != null && !string.IsNullOrEmpty(pgRecord.Value))
+        {
+            existingJson = pgRecord.Value;
+            var records = System.Text.Json.JsonSerializer.Deserialize<List<Dictionary<string, string>>>(pgRecord.Value);
+            if (records != null && records.Count > 0)
+            {
+                for (int i = records.Count - 1; i >= 0; i--)
+                {
+                    if (records[i].TryGetValue("Clock", out var clockStr) && !string.IsNullOrEmpty(clockStr))
+                    {
+                        var dt = ParseDlmsClock(clockStr);
+                        if (dt.HasValue) return dt;
+                    }
+                }
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[DLMS Reader] Failed to parse last profile timestamp: {ex.Message}");
+    }
+    return null;
+}
+
+static string MergeProfileGenericJson(string? existingJson, string newJson)
+{
+    if (string.IsNullOrEmpty(existingJson) || existingJson == "[]") return newJson;
+    if (string.IsNullOrEmpty(newJson) || newJson == "[]" || newJson.StartsWith("Error")) return existingJson;
+
+    try
+    {
+        var existingRecords = System.Text.Json.JsonSerializer.Deserialize<List<Dictionary<string, string>>>(existingJson) ?? new List<Dictionary<string, string>>();
+        var newRecords = System.Text.Json.JsonSerializer.Deserialize<List<Dictionary<string, string>>>(newJson) ?? new List<Dictionary<string, string>>();
+
+        var existingClocks = new HashSet<string>();
+        foreach (var rec in existingRecords)
+        {
+            if (rec.TryGetValue("Clock", out var clock))
+            {
+                existingClocks.Add(clock);
+            }
+        }
+
+        foreach (var rec in newRecords)
+        {
+            if (rec.TryGetValue("Clock", out var clock))
+            {
+                if (!existingClocks.Contains(clock))
+                {
+                    existingRecords.Add(rec);
+                }
+            }
+            else
+            {
+                existingRecords.Add(rec);
+            }
+        }
+
+        return System.Text.Json.JsonSerializer.Serialize(existingRecords);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[DLMS Reader] Failed to merge ProfileGeneric JSON: {ex.Message}");
+        return newJson;
+    }
 }
 

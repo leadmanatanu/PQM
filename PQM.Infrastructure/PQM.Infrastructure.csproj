@@ -8,9 +8,9 @@
 
   <ItemGroup>
     <PackageReference Include="EFCore.BulkExtensions" Version="8.0.0" />
-    <PackageReference Include="Gurux.DLMS" Version="9.0.2412.3101" />
-    <PackageReference Include="Gurux.Net" Version="8.4.2206.101" />
-    <PackageReference Include="Gurux.Common" Version="8.4.2206.104" />
+    <PackageReference Include="Gurux.DLMS" Version="9.0.2605.2801" />
+    <PackageReference Include="Gurux.Net" Version="8.4.2604.201" />
+    <PackageReference Include="Gurux.Common" Version="8.4.2503.602" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.0">
       <PrivateAssets>all</PrivateAssets>

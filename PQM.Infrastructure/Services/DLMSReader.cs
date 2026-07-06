@@ -176,7 +176,7 @@ namespace PQM.Infrastructure.Services
             }
         }
 
-        private string ReadProfileGenericBuffer(GXDLMSProfileGeneric profile)
+        private string ReadProfileGenericBuffer(GXDLMSProfileGeneric profile, DateTime? lastTimestamp = null)
         {
             // Must read CaptureObjects (attr 3) before Buffer (attr 2)
             try
@@ -190,15 +190,55 @@ namespace PQM.Infrastructure.Services
 
             try
             {
-                byte[][] bufCmd = _client.Read(profile, 2);
+                byte[][] bufCmd;
+                if (lastTimestamp.HasValue)
+                {
+                    bufCmd = _client.ReadRowsByRange(profile, lastTimestamp.Value, DateTime.UtcNow);
+                }
+                else
+                {
+                    bufCmd = _client.Read(profile, 2);
+                }
+
                 var bufReply = new GXReplyData();
-                if (!ReadDataBlock(bufCmd, bufReply))
+                if (ReadDataBlock(bufCmd, bufReply))
+                {
+                    _client.UpdateValue(profile, 2, bufReply.Value);
+                }
+                else
+                {
+                    if (lastTimestamp.HasValue)
+                        throw new Exception("Selective access read block failed.");
                     return "[]";
-                _client.UpdateValue(profile, 2, bufReply.Value);
+                }
             }
             catch (Exception ex)
             {
-                return $"Error: {ex.Message}";
+                if (lastTimestamp.HasValue)
+                {
+                    Console.WriteLine($"[DLMS Reader] Selective access failed: {ex.Message}. Falling back to full read...");
+                    try
+                    {
+                        byte[][] bufCmd = _client.Read(profile, 2);
+                        var bufReply = new GXReplyData();
+                        if (ReadDataBlock(bufCmd, bufReply))
+                        {
+                            _client.UpdateValue(profile, 2, bufReply.Value);
+                        }
+                        else
+                        {
+                            return "[]";
+                        }
+                    }
+                    catch
+                    {
+                        return "[]";
+                    }
+                }
+                else
+                {
+                    return $"Error: {ex.Message}";
+                }
             }
 
             if (profile.Buffer == null || profile.CaptureObjects == null || profile.CaptureObjects.Count == 0)
@@ -276,7 +316,7 @@ namespace PQM.Infrastructure.Services
             }));
         }
 
-        public string ReadObjectValue(GXDLMSObject obj)
+        public string ReadObjectValue(GXDLMSObject obj, DateTime? lastTimestamp = null)
         {
             try
             {
@@ -304,7 +344,7 @@ namespace PQM.Infrastructure.Services
 
                     if (obj is GXDLMSProfileGeneric pgProfile)
                     {
-                        return ReadProfileGenericBuffer(pgProfile);
+                        return ReadProfileGenericBuffer(pgProfile, lastTimestamp);
                     }
 
                     if (obj is GXDLMSClock clock)
@@ -456,7 +496,7 @@ namespace PQM.Infrastructure.Services
             }
         }
 
-        public string ReadObjectAttribute(GXDLMSObject obj, int attributeId)
+        public string ReadObjectAttribute(GXDLMSObject obj, int attributeId, DateTime? lastTimestamp = null)
         {
             try
             {
@@ -489,7 +529,7 @@ namespace PQM.Infrastructure.Services
                     if (obj is GXDLMSProfileGeneric pgAttr)
                     {
                         if (attributeId == 2)
-                            return ReadProfileGenericBuffer(pgAttr);
+                            return ReadProfileGenericBuffer(pgAttr, lastTimestamp);
                         if (attributeId == 3)
                             return ReadProfileGenericCaptureObjects(pgAttr);
                     }
