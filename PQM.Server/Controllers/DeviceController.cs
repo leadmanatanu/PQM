@@ -46,6 +46,45 @@ namespace PQM.Server.Controllers
             return Ok(_apiResponse);
         }
 
+        // -------------------- GET DEVICE CONFIGURATION --------------------
+        [HttpGet("{id}/configuration")]
+        public IActionResult GetConfiguration(int id)
+        {
+            try
+            {
+                using var dbContext = new DataContext(_connectionString);
+
+                var hdlc = dbContext.IecHdlcSetup.Where(x => x.DeviceId == id).ToList();
+                var tcp = dbContext.TcpUdpSetup.Where(x => x.DeviceId == id).ToList();
+                var ip4 = dbContext.Ip4Setup.Where(x => x.DeviceId == id).ToList();
+                var mac = dbContext.MacAddressSetup.Where(x => x.DeviceId == id).ToList();
+                var scripts = dbContext.ScriptTable.Where(x => x.DeviceId == id).ToList();
+                var schedules = dbContext.ActionSchedule.Where(x => x.DeviceId == id).ToList();
+
+                var configData = new
+                {
+                    Hdlc = hdlc,
+                    Tcp = tcp,
+                    Ip4 = ip4,
+                    Mac = mac,
+                    Scripts = scripts,
+                    Schedules = schedules
+                };
+
+                _apiResponse.Status = true;
+                _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
+                _apiResponse.Data = configData;
+                return Ok(_apiResponse);
+            }
+            catch (Exception ex)
+            {
+                _apiResponse.Status = false;
+                _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
+                _apiResponse.Errors = new List<string> { ex.Message };
+                return Ok(_apiResponse);
+            }
+        }
+
         // -------------------- ADD DEVICE --------------------
         [HttpPost]
         public IActionResult Post([FromBody] Device device)
@@ -325,7 +364,15 @@ namespace PQM.Server.Controllers
 
                     foreach (var param in parameters)
                     {
-                        string value = reader.ReadObjectAttribute(obj, param.AttributeId);
+                        string value;
+                        try
+                        {
+                            value = reader.ReadObjectAttribute(obj, param.AttributeId);
+                        }
+                        catch (Exception ex)
+                        {
+                            value = $"Error: {ex.Message}";
+                        }
 
                         var pv = new ParameterValue
                         {
@@ -434,7 +481,15 @@ namespace PQM.Server.Controllers
                         var objResults = new List<object>();
                         foreach (var param in objectParameters)
                         {
-                            string value = reader.ReadObjectAttribute(obj, param.AttributeId);
+                            string value;
+                            try
+                            {
+                                value = reader.ReadObjectAttribute(obj, param.AttributeId);
+                            }
+                            catch (Exception ex)
+                            {
+                                value = $"Error: {ex.Message}";
+                            }
 
                             var pv = new ParameterValue
                             {

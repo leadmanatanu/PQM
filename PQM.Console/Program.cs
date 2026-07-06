@@ -13,6 +13,7 @@ using PQM.Infrastructure.Repositories;
 using Gurux.DLMS;
 using Gurux.DLMS.Enums;
 using Microsoft.EntityFrameworkCore;
+using Gurux.DLMS.Objects;
 
 
 Console.WriteLine("Start reading ftp files");
@@ -313,6 +314,19 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                     Console.WriteLine($"{"Name / Description",-45} | {"Object Type",-12} | {"OBIS Code",-15} | {"Attribute 2",-18} | {"Attribute 3"}");
                     Console.WriteLine(new string('-', 120));
 
+                    // Ensure ConnectedHeader exists for the device
+                    ConnectedHeader? header = dbContext.ConnectedHeader.FirstOrDefault(h => h.DeviceId == item.Id);
+                    if (header == null)
+                    {
+                        header = new ConnectedHeader
+                        {
+                            DeviceId = item.Id,
+                            Name = $"{item.Name} Header"
+                        };
+                        dbContext.ConnectedHeader.Add(header);
+                        dbContext.SaveChanges();
+                    }
+
                     foreach (var obj in reader.Objects)
                     {
                         // Resolve description
@@ -353,28 +367,67 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                         }
 
                         // Read values
-                        string attr2Val;
-                        if (obj.ObjectType == ObjectType.ProfileGeneric)
+                        string attr2Val = "";
+                        try
                         {
-                            var lastTs = GetLastProfileTimestamp(dbContext, item.Id, obj.LogicalName, out var _);
-                            attr2Val = reader.ReadObjectValue(obj, lastTs);
+                            if (obj.ObjectType == ObjectType.ProfileGeneric)
+                            {
+                                var lastTs = GetLastProfileTimestamp(dbContext, item.Id, obj.LogicalName, out var _);
+                                attr2Val = reader.ReadObjectValue(obj, lastTs);
+                            }
+                            else
+                            {
+                                attr2Val = reader.ReadObjectValue(obj);
+                            }
                         }
-                        else
+                        catch (Exception ex)
                         {
-                            attr2Val = reader.ReadObjectValue(obj);
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.WriteLine($"[DLMS Reader] Read failed for {paramName} ({obj.LogicalName}): {ex.Message}");
+                            Console.ResetColor();
+                            attr2Val = $"Error: {ex.Message}";
+
+                            // Check if the connection is dead/socket lost
+                            bool isDisconnected = ex.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase) ||
+                                                 ex.Message.Contains("connection", StringComparison.OrdinalIgnoreCase) ||
+                                                 ex.Message.Contains("socket", StringComparison.OrdinalIgnoreCase) ||
+                                                 ex.Message.Contains("disconnected", StringComparison.OrdinalIgnoreCase) ||
+                                                 ex.InnerException is System.Net.Sockets.SocketException ||
+                                                 ex.InnerException is System.IO.IOException;
+
+                            if (isDisconnected)
+                            {
+                                Console.ForegroundColor = ConsoleColor.DarkRed;
+                                Console.WriteLine("[DLMS Reader] Connection lost or device offline. Aborting scan loop for this device to disconnect immediately and continue.");
+                                Console.ResetColor();
+                                break; // exit parameter scan loop early
+                            }
                         }
                         string attr3Val = "";
+                        int? scaler = null;
+                        string? unit = null;
+                        double? numericValue = null;
 
-                        if (obj.ObjectType == ObjectType.Register || obj.ObjectType == ObjectType.ExtendedRegister || obj.ObjectType == ObjectType.DemandRegister)
+                        if (obj is GXDLMSRegister reg)
                         {
-                            // Read Scaler & Unit (Attribute 3)
-                            attr3Val = reader.ReadObjectAttribute3(obj);
-                            
-                            // Save Attribute 3 (Scaler & Unit) to Parameter table in DB
-                            if (dbParam.Attribute3 != attr3Val)
+                            scaler = (int)reg.Scaler;
+                            unit = reg.Unit.ToString();
+                            attr3Val = $"{{{scaler}, {unit}}}";
+
+                            if (dbParam.Scaler != scaler || dbParam.Unit != unit || dbParam.Attribute3 != attr3Val)
                             {
+                                dbParam.Scaler = scaler;
+                                dbParam.Unit = unit;
                                 dbParam.Attribute3 = attr3Val;
                                 dbContext.SaveChanges();
+                            }
+
+                            if (!string.IsNullOrEmpty(attr2Val) && !attr2Val.StartsWith("Error"))
+                            {
+                                if (double.TryParse(attr2Val, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double parsedVal))
+                                {
+                                    numericValue = parsedVal * Math.Pow(10, reg.Scaler);
+                                }
                             }
                         }
 
@@ -390,7 +443,9 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                                 DeviceId = item.Id,
                                 ParameterId = dbParam.Id,
                                 Value = attr2Val.Length > 500 ? attr2Val.Substring(0, 500) : attr2Val,
-                                DateStamp = dateStamp
+                                DateStamp = dateStamp,
+                                NumericValue = numericValue,
+                                Unit = unit
                             });
 
                             if (obj.ObjectType == ObjectType.Register || obj.ObjectType == ObjectType.ExtendedRegister || obj.ObjectType == ObjectType.DemandRegister)
@@ -403,6 +458,10 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                                         Name = paramName,
                                         ObjectType = obj.ObjectType.ToString(),
                                         Value = attr2Val,
+                                        NumericValue = numericValue,
+                                        Scaler = scaler,
+                                        Unit = unit,
+                                        ObisCode = obj.LogicalName,
                                         DateEntered = dateStamp
                                     };
                                     dbContext.Register.Add(registerData);
@@ -454,15 +513,26 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                                         string val = reader.ReadObjectAttribute(obj, attr.Value);
                                         if (!string.IsNullOrEmpty(val) && !val.StartsWith("Error"))
                                         {
-                                            var hdlcVal = new PQM.Core.Entities.IecHdlcSetup
+                                            var existing = dbContext.IecHdlcSetup
+                                                .FirstOrDefault(x => x.DeviceId == item.Id && x.Name == attr.Key);
+                                            if (existing != null)
                                             {
-                                                DeviceId = item.Id,
-                                                Name = attr.Key,
-                                                ObjectType = obj.ObjectType.ToString(),
-                                                Value = val,
-                                                DateEntered = dateStamp
-                                            };
-                                            dbContext.IecHdlcSetup.Add(hdlcVal);
+                                                existing.Value = val;
+                                                existing.DateEntered = dateStamp;
+                                                existing.ObjectType = obj.ObjectType.ToString();
+                                            }
+                                            else
+                                            {
+                                                var hdlcVal = new PQM.Core.Entities.IecHdlcSetup
+                                                {
+                                                    DeviceId = item.Id,
+                                                    Name = attr.Key,
+                                                    ObjectType = obj.ObjectType.ToString(),
+                                                    Value = val,
+                                                    DateEntered = dateStamp
+                                                };
+                                                dbContext.IecHdlcSetup.Add(hdlcVal);
+                                            }
                                         }
                                     }
                                     catch (Exception ex)
@@ -497,15 +567,26 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                                         string val = reader.ReadObjectAttribute(obj, attr.Value);
                                         if (!string.IsNullOrEmpty(val) && !val.StartsWith("Error"))
                                         {
-                                            var tcpVal = new PQM.Core.Entities.TcpUdpSetup
+                                            var existing = dbContext.TcpUdpSetup
+                                                .FirstOrDefault(x => x.DeviceId == item.Id && x.Name == attr.Key);
+                                            if (existing != null)
                                             {
-                                                DeviceId = item.Id,
-                                                Name = attr.Key,
-                                                ObjectType = obj.ObjectType.ToString(),
-                                                Value = val,
-                                                DateEntered = dateStamp
-                                            };
-                                            dbContext.TcpUdpSetup.Add(tcpVal);
+                                                existing.Value = val;
+                                                existing.DateEntered = dateStamp;
+                                                existing.ObjectType = obj.ObjectType.ToString();
+                                            }
+                                            else
+                                            {
+                                                var tcpVal = new PQM.Core.Entities.TcpUdpSetup
+                                                {
+                                                    DeviceId = item.Id,
+                                                    Name = attr.Key,
+                                                    ObjectType = obj.ObjectType.ToString(),
+                                                    Value = val,
+                                                    DateEntered = dateStamp
+                                                };
+                                                dbContext.TcpUdpSetup.Add(tcpVal);
+                                            }
                                         }
                                     }
                                     catch (Exception ex)
@@ -544,15 +625,26 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                                         string val = reader.ReadObjectAttribute(obj, attr.Value);
                                         if (!string.IsNullOrEmpty(val) && !val.StartsWith("Error"))
                                         {
-                                            var ipVal = new PQM.Core.Entities.Ip4Setup
+                                            var existing = dbContext.Ip4Setup
+                                                .FirstOrDefault(x => x.DeviceId == item.Id && x.Name == attr.Key);
+                                            if (existing != null)
                                             {
-                                                DeviceId = item.Id,
-                                                Name = attr.Key,
-                                                ObjectType = obj.ObjectType.ToString(),
-                                                Value = val,
-                                                DateEntered = dateStamp
-                                            };
-                                            dbContext.Ip4Setup.Add(ipVal);
+                                                existing.Value = val;
+                                                existing.DateEntered = dateStamp;
+                                                existing.ObjectType = obj.ObjectType.ToString();
+                                            }
+                                            else
+                                            {
+                                                var ipVal = new PQM.Core.Entities.Ip4Setup
+                                                {
+                                                    DeviceId = item.Id,
+                                                    Name = attr.Key,
+                                                    ObjectType = obj.ObjectType.ToString(),
+                                                    Value = val,
+                                                    DateEntered = dateStamp
+                                                };
+                                                dbContext.Ip4Setup.Add(ipVal);
+                                            }
                                         }
                                     }
                                     catch (Exception ex)
@@ -576,15 +668,26 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                                     string val = reader.ReadObjectAttribute(obj, 2);
                                     if (!string.IsNullOrEmpty(val) && !val.StartsWith("Error"))
                                     {
-                                        var macVal = new PQM.Core.Entities.MacAddressSetup
+                                        var existing = dbContext.MacAddressSetup
+                                            .FirstOrDefault(x => x.DeviceId == item.Id && x.Name == "MAC Address");
+                                        if (existing != null)
                                         {
-                                            DeviceId = item.Id,
-                                            Name = "MAC Address",
-                                            ObjectType = obj.ObjectType.ToString(),
-                                            Value = val,
-                                            DateEntered = dateStamp
-                                        };
-                                        dbContext.MacAddressSetup.Add(macVal);
+                                            existing.Value = val;
+                                            existing.DateEntered = dateStamp;
+                                            existing.ObjectType = obj.ObjectType.ToString();
+                                        }
+                                        else
+                                        {
+                                            var macVal = new PQM.Core.Entities.MacAddressSetup
+                                            {
+                                                DeviceId = item.Id,
+                                                Name = "MAC Address",
+                                                ObjectType = obj.ObjectType.ToString(),
+                                                Value = val,
+                                                DateEntered = dateStamp
+                                            };
+                                            dbContext.MacAddressSetup.Add(macVal);
+                                        }
                                         dbContext.SaveChanges();
                                     }
                                 }
@@ -615,15 +718,26 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                                         string val = reader.ReadObjectAttribute(obj, attr.Value);
                                         if (!string.IsNullOrEmpty(val) && !val.StartsWith("Error"))
                                         {
-                                            var assocVal = new PQM.Core.Entities.AssociationLogicalName
+                                            var existing = dbContext.AssociationLogicalName
+                                                .FirstOrDefault(x => x.DeviceId == item.Id && x.Name == attr.Key);
+                                            if (existing != null)
                                             {
-                                                DeviceId = item.Id,
-                                                Name = attr.Key,
-                                                ObjectType = obj.ObjectType.ToString(),
-                                                Value = val,
-                                                DateEntered = dateStamp
-                                            };
-                                            dbContext.AssociationLogicalName.Add(assocVal);
+                                                existing.Value = val;
+                                                existing.DateEntered = dateStamp;
+                                                existing.ObjectType = obj.ObjectType.ToString();
+                                            }
+                                            else
+                                            {
+                                                var assocVal = new PQM.Core.Entities.AssociationLogicalName
+                                                {
+                                                    DeviceId = item.Id,
+                                                    Name = attr.Key,
+                                                    ObjectType = obj.ObjectType.ToString(),
+                                                    Value = val,
+                                                    DateEntered = dateStamp
+                                                };
+                                                dbContext.AssociationLogicalName.Add(assocVal);
+                                            }
                                         }
                                     }
                                     catch (Exception ex)
@@ -669,6 +783,155 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                                         dbContext.ProfileGeneric.Add(newRecord);
                                     }
                                     dbContext.SaveChanges();
+
+                                    // Parse and flatten the profile entries into ProfileGenericEntry
+                                    if (!string.IsNullOrEmpty(attr2Val) && !attr2Val.StartsWith("Error"))
+                                    {
+                                        try
+                                        {
+                                            var records = System.Text.Json.JsonSerializer.Deserialize<List<Dictionary<string, string>>>(attr2Val);
+                                            if (records != null && records.Count > 0)
+                                            {
+                                                int addedCount = 0;
+                                                foreach (var row in records)
+                                                {
+                                                    DateTime? entryTime = null;
+                                                    if (row.TryGetValue("Clock", out var clockStr) && !string.IsNullOrEmpty(clockStr))
+                                                    {
+                                                        entryTime = ParseDlmsClock(clockStr);
+                                                    }
+
+                                                    if (!entryTime.HasValue)
+                                                    {
+                                                        entryTime = dateStamp;
+                                                    }
+
+                                                    foreach (var kvp in row)
+                                                    {
+                                                        if (kvp.Key == "Clock") continue;
+
+                                                        string columnName = kvp.Key;
+                                                        string columnValue = kvp.Value;
+
+                                                        var obis = obj.LogicalName;
+                                                        var existingEntry = dbContext.ProfileGenericEntry
+                                                            .FirstOrDefault(e => e.DeviceId == item.Id 
+                                                                && e.ObisCode == obis 
+                                                                && e.EntryTime == entryTime.Value 
+                                                                && e.ColumnName == columnName);
+
+                                                        if (existingEntry == null)
+                                                        {
+                                                            double? numVal = null;
+                                                            string? textVal = null;
+                                                            if (double.TryParse(columnValue, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double parsedDouble))
+                                                            {
+                                                                numVal = parsedDouble;
+                                                            }
+                                                            else
+                                                            {
+                                                                textVal = columnValue;
+                                                            }
+
+                                                            string? unitName = dbContext.Parameter
+                                                                .FirstOrDefault(p => p.Name == columnName)?.Unit;
+
+                                                            var newEntry = new ProfileGenericEntry
+                                                            {
+                                                                DeviceId = item.Id,
+                                                                ObisCode = obis,
+                                                                ProfileName = paramName,
+                                                                EntryTime = entryTime.Value,
+                                                                ColumnName = columnName,
+                                                                NumericValue = numVal,
+                                                                TextValue = textVal,
+                                                                Unit = unitName
+                                                            };
+                                                            dbContext.ProfileGenericEntry.Add(newEntry);
+                                                            addedCount++;
+                                                        }
+                                                    }
+                                                }
+                                                if (addedCount > 0)
+                                                {
+                                                    dbContext.SaveChanges();
+                                                    Console.WriteLine($"[DLMS Reader] Flattened and saved {addedCount} new ProfileGeneric entries for {paramName}.");
+                                                }
+                                            }
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            Console.WriteLine($"[DLMS Reader] Failed to flatten ProfileGeneric: {ex.Message}");
+                                        }
+                                    }
+
+                                    // Parse event profiles and write them to the EventLog table if applicable
+                                    bool isEventProfile = obj.LogicalName.StartsWith("0.0.99.98") || paramName.ToLower().Contains("event");
+                                    if (isEventProfile && !string.IsNullOrEmpty(attr2Val) && !attr2Val.StartsWith("Error"))
+                                    {
+                                        try
+                                        {
+                                            var records = System.Text.Json.JsonSerializer.Deserialize<List<Dictionary<string, string>>>(attr2Val);
+                                            if (records != null && records.Count > 0)
+                                            {
+                                                int eventAdded = 0;
+                                                foreach (var row in records)
+                                                {
+                                                    DateTime? eventTime = null;
+                                                    if (row.TryGetValue("Clock", out var clockStr) && !string.IsNullOrEmpty(clockStr))
+                                                    {
+                                                        eventTime = ParseDlmsClock(clockStr);
+                                                    }
+
+                                                    if (!eventTime.HasValue)
+                                                    {
+                                                        eventTime = dateStamp;
+                                                    }
+
+                                                    string eventTypeStr = "DLMS Event";
+                                                    if (row.TryGetValue("Event Code", out var code)) eventTypeStr = $"Event {code}";
+                                                    else if (row.TryGetValue("Event ID", out var idVal)) eventTypeStr = $"Event {idVal}";
+                                                    else if (row.TryGetValue("Event", out var ev)) eventTypeStr = ev;
+
+                                                    var existingEvent = dbContext.EventLog
+                                                        .FirstOrDefault(e => e.DeviceId == item.Id 
+                                                            && e.Start_Time == eventTime.Value 
+                                                            && e.EventType == eventTypeStr);
+
+                                                    if (existingEvent == null)
+                                                    {
+                                                        string? phase = null;
+                                                        if (row.TryGetValue("Phase", out var ph)) phase = ph;
+
+                                                        double? duration = null;
+                                                        if (row.TryGetValue("Duration", out var durStr) && double.TryParse(durStr, out double dur)) duration = dur;
+
+                                                        var newEvent = new EventLog
+                                                        {
+                                                            DeviceId = item.Id,
+                                                            EventType = eventTypeStr,
+                                                            Start_Time = eventTime.Value,
+                                                            CreatedDate = dateStamp,
+                                                            Phase = phase,
+                                                            Duration = duration,
+                                                            Date = eventTime.Value
+                                                        };
+                                                        dbContext.EventLog.Add(newEvent);
+                                                        eventAdded++;
+                                                    }
+                                                }
+                                                if (eventAdded > 0)
+                                                {
+                                                    dbContext.SaveChanges();
+                                                    Console.WriteLine($"[DLMS Reader] Extracted and saved {eventAdded} event logs from {paramName} profile.");
+                                                }
+                                            }
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            Console.WriteLine($"[DLMS Reader] Failed to extract events from profile: {ex.Message}");
+                                        }
+                                    }
                                 }
                                 catch (Exception ex)
                                 {
@@ -679,15 +942,26 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                             {
                                 try
                                 {
-                                    var clockVal = new PQM.Core.Entities.Clock
+                                    var existing = dbContext.Clock
+                                        .FirstOrDefault(c => c.DeviceId == item.Id && c.Name == paramName);
+                                    if (existing != null)
                                     {
-                                        DeviceId = item.Id,
-                                        Name = paramName,
-                                        ObjectType = obj.ObjectType.ToString(),
-                                        Value = attr2Val,
-                                        DateEntered = dateStamp
-                                    };
-                                    dbContext.Clock.Add(clockVal);
+                                        existing.Value = attr2Val;
+                                        existing.DateEntered = dateStamp;
+                                        existing.ObjectType = obj.ObjectType.ToString();
+                                    }
+                                    else
+                                    {
+                                        var clockVal = new PQM.Core.Entities.Clock
+                                        {
+                                            DeviceId = item.Id,
+                                            Name = paramName,
+                                            ObjectType = obj.ObjectType.ToString(),
+                                            Value = attr2Val,
+                                            DateEntered = dateStamp
+                                        };
+                                        dbContext.Clock.Add(clockVal);
+                                    }
                                     dbContext.SaveChanges();
                                 }
                                 catch (Exception ex)
@@ -699,15 +973,26 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                             {
                                 try
                                 {
-                                    var scriptVal = new PQM.Core.Entities.ScriptTable
+                                    var existing = dbContext.ScriptTable
+                                        .FirstOrDefault(s => s.DeviceId == item.Id && s.Name == paramName);
+                                    if (existing != null)
                                     {
-                                        DeviceId = item.Id,
-                                        Name = paramName,
-                                        ObjectType = obj.ObjectType.ToString(),
-                                        Value = attr2Val,
-                                        DateEntered = dateStamp
-                                    };
-                                    dbContext.ScriptTable.Add(scriptVal);
+                                        existing.Value = attr2Val;
+                                        existing.DateEntered = dateStamp;
+                                        existing.ObjectType = obj.ObjectType.ToString();
+                                    }
+                                    else
+                                    {
+                                        var scriptVal = new PQM.Core.Entities.ScriptTable
+                                        {
+                                            DeviceId = item.Id,
+                                            Name = paramName,
+                                            ObjectType = obj.ObjectType.ToString(),
+                                            Value = attr2Val,
+                                            DateEntered = dateStamp
+                                        };
+                                        dbContext.ScriptTable.Add(scriptVal);
+                                    }
                                     dbContext.SaveChanges();
                                 }
                                 catch (Exception ex)
@@ -719,15 +1004,26 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                             {
                                 try
                                 {
-                                    var actionVal = new PQM.Core.Entities.ActionSchedule
+                                    var existing = dbContext.ActionSchedule
+                                        .FirstOrDefault(a => a.DeviceId == item.Id && a.Name == paramName);
+                                    if (existing != null)
                                     {
-                                        DeviceId = item.Id,
-                                        Name = paramName,
-                                        ObjectType = obj.ObjectType.ToString(),
-                                        Value = attr2Val,
-                                        DateEntered = dateStamp
-                                    };
-                                    dbContext.ActionSchedule.Add(actionVal);
+                                        existing.Value = attr2Val;
+                                        existing.DateEntered = dateStamp;
+                                        existing.ObjectType = obj.ObjectType.ToString();
+                                    }
+                                    else
+                                    {
+                                        var actionVal = new PQM.Core.Entities.ActionSchedule
+                                        {
+                                            DeviceId = item.Id,
+                                            Name = paramName,
+                                            ObjectType = obj.ObjectType.ToString(),
+                                            Value = attr2Val,
+                                            DateEntered = dateStamp
+                                        };
+                                        dbContext.ActionSchedule.Add(actionVal);
+                                    }
                                     dbContext.SaveChanges();
                                 }
                                 catch (Exception ex)
@@ -739,21 +1035,107 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                             {
                                 try
                                 {
-                                    var activityVal = new PQM.Core.Entities.ActivityCalendar
+                                    var existing = dbContext.ActivityCalendar
+                                        .FirstOrDefault(a => a.DeviceId == item.Id && a.Name == paramName);
+                                    if (existing != null)
                                     {
-                                        DeviceId = item.Id,
-                                        Name = paramName,
-                                        ObjectType = obj.ObjectType.ToString(),
-                                        Value = attr2Val,
-                                        DateEntered = dateStamp
-                                    };
-                                    dbContext.ActivityCalendar.Add(activityVal);
+                                        existing.Value = attr2Val;
+                                        existing.DateEntered = dateStamp;
+                                        existing.ObjectType = obj.ObjectType.ToString();
+                                    }
+                                    else
+                                    {
+                                        var activityVal = new PQM.Core.Entities.ActivityCalendar
+                                        {
+                                            DeviceId = item.Id,
+                                            Name = paramName,
+                                            ObjectType = obj.ObjectType.ToString(),
+                                            Value = attr2Val,
+                                            DateEntered = dateStamp
+                                        };
+                                        dbContext.ActivityCalendar.Add(activityVal);
+                                    }
                                     dbContext.SaveChanges();
                                 }
                                 catch (Exception ex)
                                 {
                                     Console.WriteLine($"[DLMS Reader] Failed to save to ActivityCalendar table: {ex.Message}");
                                 }
+                            }
+
+                            // Sync with DLMSObject / ObjectParameter / ParameterValue chain
+                            try
+                            {
+                                var dlmsObj = dbContext.DLMSObject.FirstOrDefault(o => o.HeaderId == header.Id && o.ObisCode == obj.LogicalName);
+                                if (dlmsObj == null)
+                                {
+                                    dlmsObj = new DLMSObject
+                                    {
+                                        HeaderId = header.Id,
+                                        Name = paramName,
+                                        ObisCode = obj.LogicalName,
+                                        ObjectType = obj.ObjectType.ToString()
+                                    };
+                                    dbContext.DLMSObject.Add(dlmsObj);
+                                    dbContext.SaveChanges();
+                                }
+
+                                var param2 = dbContext.ObjectParameter.FirstOrDefault(p => p.ObjectId == dlmsObj.Id && p.AttributeId == 2);
+                                if (param2 == null)
+                                {
+                                    param2 = new ObjectParameter
+                                    {
+                                        ObjectId = dlmsObj.Id,
+                                        AttributeId = 2,
+                                        Name = "Value",
+                                        DataType = "String",
+                                        AccessType = "Read"
+                                    };
+                                    dbContext.ObjectParameter.Add(param2);
+                                    dbContext.SaveChanges();
+                                }
+
+                                var val2 = new ParameterValue
+                                {
+                                    ParameterId = param2.Id,
+                                    Value = attr2Val,
+                                    Timestamp = dateStamp
+                                };
+                                dbContext.ParameterValue.Add(val2);
+
+                                if (obj is GXDLMSRegister)
+                                {
+                                    var param3 = dbContext.ObjectParameter.FirstOrDefault(p => p.ObjectId == dlmsObj.Id && p.AttributeId == 3);
+                                    if (param3 == null)
+                                    {
+                                        param3 = new ObjectParameter
+                                        {
+                                            ObjectId = dlmsObj.Id,
+                                            AttributeId = 3,
+                                            Name = "Scaler/Unit",
+                                            DataType = "String",
+                                            AccessType = "Read"
+                                        };
+                                        dbContext.ObjectParameter.Add(param3);
+                                        dbContext.SaveChanges();
+                                    }
+
+                                    if (!string.IsNullOrEmpty(attr3Val))
+                                    {
+                                        var val3 = new ParameterValue
+                                        {
+                                            ParameterId = param3.Id,
+                                            Value = attr3Val,
+                                            Timestamp = dateStamp
+                                        };
+                                        dbContext.ParameterValue.Add(val3);
+                                    }
+                                }
+                                dbContext.SaveChanges();
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"[DLMS Reader] Failed to save to DLMSObject/ParameterValue chain: {ex.Message}");
                             }
                         }
                     }

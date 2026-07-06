@@ -12,6 +12,10 @@ namespace PQM.Core.Entities
         public required string Name { get; set; }
         public string? ObjectType { get; set; }
         public string? Value { get; set; }
+        public double? NumericValue { get; set; }
+        public int? Scaler { get; set; }
+        public string? Unit { get; set; }
+        public string? ObisCode { get; set; }
         public DateTime DateEntered { get; set; }
     }
 }
