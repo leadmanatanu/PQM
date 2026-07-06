@@ -246,6 +246,18 @@ export const readDLMSObject = async (deviceId: string | number, objectId: string
     }
 };
 
+// Read multiple DLMS objects in batch (single connection)
+export const readDLMSObjectsBatch = async (deviceId: string | number, objectIds: number[]): Promise<any | null> => {
+    try {
+        const { data } = await axios.post(`${API_URL}/device/${deviceId}/read-objects`, objectIds);
+        return data;
+    } catch (error) {
+        console.error("Error reading DLMS objects in batch:", error);
+        return null;
+    }
+};
+
+
 // Import local CSV files from PQM.Server/CSVFiles directory
 export const importLocalCsvFiles = async (deviceId: string | number): Promise<any | undefined> => {
     try {

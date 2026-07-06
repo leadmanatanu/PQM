@@ -1,4 +1,4 @@
-// File: C:\Users\lenevo\Desktop\PQM\PQM\pqm.client\src\app\dashboard\mapping\page.tsx
+// File: C:\Users\rijul\OneDrive\Desktop\PQM\pqm.client\src\app\dashboard\mapping\page.tsx
 import * as entry from '../../../../../src/app/dashboard/mapping/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
