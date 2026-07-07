@@ -675,6 +675,16 @@ namespace PQM.Infrastructure.Services
                         return System.Text.Json.JsonSerializer.Serialize(decodedList);
                     }
 
+                    if (obj is GXDLMSAssociationLogicalName assoc3 && attributeId == 3)
+                    {
+                        var data = new
+                        {
+                            ClientSAP = assoc3.ClientSAP,
+                            ServerSAP = assoc3.ServerSAP
+                        };
+                        return System.Text.Json.JsonSerializer.Serialize(data);
+                    }
+
                     if (obj is GXDLMSAssociationLogicalName assoc4 && attributeId == 4)
                     {
                         var contextName = assoc4.ApplicationContextName;
@@ -695,6 +705,22 @@ namespace PQM.Infrastructure.Services
                         }
                     }
 
+                    if (obj is GXDLMSAssociationLogicalName assoc5 && attributeId == 5)
+                    {
+                        var contextInfo = assoc5.XDLMSContextInfo;
+                        if (contextInfo != null)
+                        {
+                            var data = new
+                            {
+                                Conformance = contextInfo.Conformance.ToString(),
+                                MaxReceivePduSize = contextInfo.MaxReceivePduSize,
+                                MaxSendPduSize = contextInfo.MaxSendPduSize,
+                                DlmsVersionNumber = contextInfo.DlmsVersionNumber
+                            };
+                            return System.Text.Json.JsonSerializer.Serialize(data);
+                        }
+                    }
+
                     if (obj is GXDLMSAssociationLogicalName assoc6 && attributeId == 6)
                     {
                         var authName = assoc6.AuthenticationMechanismName;
@@ -708,11 +734,44 @@ namespace PQM.Infrastructure.Services
                                 CountryName = authName.CountryName,
                                 IdentifiedOrganization = authName.IdentifiedOrganization,
                                 DlmsUA = authName.DlmsUA,
-                                AuthenticationName = authName.AuthenticationMechanismName,
+                                AuthenticationMechanismName = authName.AuthenticationMechanismName,
                                 MechanismId = authName.MechanismId.ToString()
                             };
                             return System.Text.Json.JsonSerializer.Serialize(data);
                         }
+                    }
+
+                    if (obj is GXDLMSAssociationLogicalName assoc7 && attributeId == 7)
+                    {
+                        if (assoc7.Secret != null)
+                        {
+                            return System.Text.Encoding.ASCII.GetString(assoc7.Secret);
+                        }
+                        return "";
+                    }
+
+                    if (obj is GXDLMSAssociationLogicalName assoc8 && attributeId == 8)
+                    {
+                        return assoc8.AssociationStatus.ToString();
+                    }
+
+                    if (obj is GXDLMSAssociationLogicalName assoc9 && attributeId == 9)
+                    {
+                        return assoc9.SecuritySetupReference ?? "";
+                    }
+
+                    if (obj is GXDLMSAssociationLogicalName assoc10 && attributeId == 10)
+                    {
+                        if (assoc10.UserList != null)
+                        {
+                            var dict = new Dictionary<string, string>();
+                            foreach (var u in assoc10.UserList)
+                            {
+                                dict[$"User {u.Key}"] = u.Value;
+                            }
+                            return System.Text.Json.JsonSerializer.Serialize(dict);
+                        }
+                        return "{}";
                     }
                     
                     var valProp = obj.GetType().GetProperty("Value");
@@ -734,9 +793,9 @@ namespace PQM.Infrastructure.Services
             }
         }
 
-        public List<Parameter> GetAssociationView()
+        public List<PQM.Core.Entities.Parameter> GetAssociationView()
         {
-            var list = new List<Parameter>();
+            var list = new List<PQM.Core.Entities.Parameter>();
             var reply = new GXReplyData();
             
             byte[][] request = _client.GetObjectsRequest();
@@ -769,7 +828,7 @@ namespace PQM.Infrastructure.Services
                     string obis = obj.LogicalName;
                     string name = string.IsNullOrEmpty(obj.Description) ? $"{obj.ObjectType} - {obis}" : obj.Description;
                     
-                    list.Add(new Parameter
+                    list.Add(new PQM.Core.Entities.Parameter
                     {
                         Name = name,
                         ObisCode = obis,

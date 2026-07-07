@@ -14,6 +14,7 @@ using Gurux.DLMS;
 using Gurux.DLMS.Enums;
 using Microsoft.EntityFrameworkCore;
 using Gurux.DLMS.Objects;
+using Parameter = PQM.Core.Entities.Parameter;
 
 
 Console.WriteLine("Start reading ftp files");

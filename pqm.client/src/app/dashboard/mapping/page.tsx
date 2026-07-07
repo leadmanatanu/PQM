@@ -609,7 +609,11 @@ export default function Page(): React.JSX.Element {
                         'object list',
                         'associated partners id',
                         'application context name',
-                        'authentication mechanism name'
+                        'authentication mechanism name',
+                        'xdlms context info',
+                        'lls secret',
+                        'security setup reference',
+                        'user list'
                     ];
                     mapped = mapped.filter((p: any) => {
                         const nameLower = p.name?.toLowerCase() || '';
@@ -809,10 +813,7 @@ export default function Page(): React.JSX.Element {
         const name = row.name;
         
         const isJsonObjectList = name?.toLowerCase().includes('object list') && value?.startsWith('[') && value?.endsWith(']');
-        const isContextOrAuthJson = value?.startsWith('{') && value?.endsWith('}') && (
-            name?.toLowerCase().includes('context name') || 
-            name?.toLowerCase().includes('mechanism name')
-        );
+        const isContextOrAuthJson = value?.startsWith('{') && value?.endsWith('}');
         const isProfileGenericBuffer = row.objectType?.toLowerCase() === 'profilegeneric' && value?.startsWith('[') && value?.endsWith(']');
         const isActivityCalendar = row.objectType?.toLowerCase() === 'activitycalendar';
 
@@ -1111,10 +1112,7 @@ export default function Page(): React.JSX.Element {
                                 <TableBody>
                                     {discoveredParams.map((row, idx) => {
                                         const isJsonObjectList = row.name?.toLowerCase().includes('object list') && row.value?.startsWith('[') && row.value?.endsWith(']');
-                                        const isContextOrAuthJson = row.value?.startsWith('{') && row.value?.endsWith('}') && (
-                                            row.name?.toLowerCase().includes('context name') || 
-                                            row.name?.toLowerCase().includes('mechanism name')
-                                        );
+                                        const isContextOrAuthJson = row.value?.startsWith('{') && row.value?.endsWith('}');
                                         const isProfileGenericBuffer = row.objectType?.toLowerCase() === 'profilegeneric' && row.value?.startsWith('[') && row.value?.endsWith(']');
                                         const isActivityCalendar = row.objectType?.toLowerCase() === 'activitycalendar';
                                         return (
