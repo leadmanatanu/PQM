@@ -99,8 +99,50 @@ string standardStr = config.GetValue<string>("DlmsSettings:Standard", "DLMS");
 Enum.TryParse<Authentication>(authStr, true, out var authentication);
 Enum.TryParse<Standard>(standardStr, true, out var standard);
 
-// Only execute DLMS Reading, as requested
-ReadDLMSData(deviceService, deviceParamService, deviceLogService, errorLogPath, logEnabled, lstDevices, clientAddress, serverAddress, authentication, dlmsPassword, useLogicalNameReferencing, standard);
+// Execute DLMS Reading in a continuous loop until stopped by the user
+Console.WriteLine("\nStarting continuous DLMS reading loop.");
+Console.WriteLine("Press ESC or 'q' to stop reading and exit...");
+
+bool keepRunning = true;
+while (keepRunning)
+{
+    ReadDLMSData(deviceService, deviceParamService, deviceLogService, errorLogPath, logEnabled, lstDevices, clientAddress, serverAddress, authentication, dlmsPassword, useLogicalNameReferencing, standard);
+
+    Console.WriteLine("\n==================================================");
+    Console.WriteLine("Cycle completed. Waiting 30 seconds before next run...");
+    Console.WriteLine("Press ESC or 'q' to disconnect and exit.");
+    Console.WriteLine("==================================================");
+
+    // Sleep for 30 seconds, checking for exit key press periodically
+    int sleepIntervalMs = 30000;
+    int checkIntervalMs = 100;
+    int slept = 0;
+    while (slept < sleepIntervalMs)
+    {
+        try
+        {
+            if (Console.KeyAvailable)
+            {
+                var key = Console.ReadKey(true);
+                if (key.Key == ConsoleKey.Escape || key.KeyChar == 'q' || key.KeyChar == 'Q')
+                {
+                    keepRunning = false;
+                    break;
+                }
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            // Standard input is redirected, fall back to simple sleep
+            Thread.Sleep(sleepIntervalMs - slept);
+            break;
+        }
+        Thread.Sleep(checkIntervalMs);
+        slept += checkIntervalMs;
+    }
+}
+
+Console.WriteLine("Disconnected successfully. Exiting program.");
 
 
 
@@ -269,6 +311,170 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                     Console.WriteLine($"[DLMS Reader] Warning: Could not ensure AssociationLogicalName table exists: {ex.Message}");
                 }
 
+                // Ensure ConnectedHeader table exists
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ConnectedHeader' AND xtype='U')
+                        CREATE TABLE [ConnectedHeader] (
+                            [Id] INT IDENTITY(1,1) PRIMARY KEY,
+                            [DeviceId] INT NOT NULL,
+                            [Name] NVARCHAR(MAX) NULL
+                        )
+                    ");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DLMS Reader] Warning: Could not ensure ConnectedHeader table exists: {ex.Message}");
+                }
+
+                // Ensure DLMSObject table exists
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='DLMSObject' AND xtype='U')
+                        CREATE TABLE [DLMSObject] (
+                            [Id] INT IDENTITY(1,1) PRIMARY KEY,
+                            [HeaderId] INT NOT NULL,
+                            [Name] NVARCHAR(MAX) NOT NULL,
+                            [ObisCode] NVARCHAR(MAX) NOT NULL,
+                            [ObjectType] NVARCHAR(MAX) NOT NULL
+                        )
+                    ");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DLMS Reader] Warning: Could not ensure DLMSObject table exists: {ex.Message}");
+                }
+
+                // Ensure ObjectParameter table exists
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ObjectParameter' AND xtype='U')
+                        CREATE TABLE [ObjectParameter] (
+                            [Id] INT IDENTITY(1,1) PRIMARY KEY,
+                            [ObjectId] INT NOT NULL,
+                            [AttributeId] INT NOT NULL,
+                            [Name] NVARCHAR(MAX) NOT NULL,
+                            [DataType] NVARCHAR(MAX) NULL,
+                            [AccessType] NVARCHAR(MAX) NULL
+                        )
+                    ");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DLMS Reader] Warning: Could not ensure ObjectParameter table exists: {ex.Message}");
+                }
+
+                // Ensure ParameterValue table exists
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ParameterValue' AND xtype='U')
+                        CREATE TABLE [ParameterValue] (
+                            [Id] BIGINT IDENTITY(1,1) PRIMARY KEY,
+                            [ParameterId] INT NOT NULL,
+                            [Value] NVARCHAR(MAX) NULL,
+                            [Timestamp] DATETIME2 NOT NULL
+                        )
+                    ");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DLMS Reader] Warning: Could not ensure ParameterValue table exists: {ex.Message}");
+                }
+
+                // Ensure ProfileGenericEntry table exists
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ProfileGenericEntry' AND xtype='U')
+                        CREATE TABLE [ProfileGenericEntry] (
+                            [Id] BIGINT IDENTITY(1,1) PRIMARY KEY,
+                            [DeviceId] INT NOT NULL,
+                            [ObisCode] NVARCHAR(MAX) NOT NULL,
+                            [ProfileName] NVARCHAR(MAX) NOT NULL,
+                            [EntryTime] DATETIME2 NOT NULL,
+                            [ColumnName] NVARCHAR(MAX) NOT NULL,
+                            [NumericValue] FLOAT NULL,
+                            [TextValue] NVARCHAR(MAX) NULL,
+                            [Unit] NVARCHAR(MAX) NULL
+                        )
+                    ");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DLMS Reader] Warning: Could not ensure ProfileGenericEntry table exists: {ex.Message}");
+                }
+
+                // Ensure columns exist on Parameter table
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'Parameter') AND name = N'Scaler')
+                            ALTER TABLE [Parameter] ADD [Scaler] INT NULL;
+
+                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'Parameter') AND name = N'Unit')
+                            ALTER TABLE [Parameter] ADD [Unit] NVARCHAR(MAX) NULL;
+                    ");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DLMS Reader] Warning: Could not ensure columns on Parameter exist: {ex.Message}");
+                }
+
+                // Ensure columns exist on Register table
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'Register') AND name = N'NumericValue')
+                            ALTER TABLE [Register] ADD [NumericValue] FLOAT NULL;
+
+                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'Register') AND name = N'ObisCode')
+                            ALTER TABLE [Register] ADD [ObisCode] NVARCHAR(MAX) NULL;
+
+                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'Register') AND name = N'Scaler')
+                            ALTER TABLE [Register] ADD [Scaler] INT NULL;
+
+                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'Register') AND name = N'Unit')
+                            ALTER TABLE [Register] ADD [Unit] NVARCHAR(MAX) NULL;
+                    ");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DLMS Reader] Warning: Could not ensure columns on Register exist: {ex.Message}");
+                }
+
+                // Ensure columns exist on DeviceLog table
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'DeviceLog') AND name = N'NumericValue')
+                            ALTER TABLE [DeviceLog] ADD [NumericValue] FLOAT NULL;
+
+                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'DeviceLog') AND name = N'Unit')
+                            ALTER TABLE [DeviceLog] ADD [Unit] NVARCHAR(MAX) NULL;
+                    ");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DLMS Reader] Warning: Could not ensure columns on DeviceLog exist: {ex.Message}");
+                }
+
+                // Ensure columns exist on ParameterValue table
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        IF EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'ParameterValue') AND name = N'Value' AND is_nullable = 0)
+                            ALTER TABLE [ParameterValue] ALTER COLUMN [Value] NVARCHAR(MAX) NULL;
+                    ");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DLMS Reader] Warning: Could not alter column on ParameterValue: {ex.Message}");
+                }
+
                 using (var reader = new DLMSReader(item.IP, item.PORT, clientAddress, serverAddress, authentication, password, useLogicalNameReferencing, standard))
                 {
                     reader.Connect();
@@ -327,16 +533,16 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                         dbContext.SaveChanges();
                     }
 
+                    // Ensure all parameters exist in database in one batch
+                    bool parametersAdded = false;
                     foreach (var obj in reader.Objects)
                     {
-                        // Resolve description
-                        converter.UpdateOBISCodeInformation(obj);
-                        string paramName = string.IsNullOrEmpty(obj.Description) ? $"{obj.ObjectType} - {obj.LogicalName}" : obj.Description;
-
-                        // Check if Parameter exists in database, if not insert it (Equalise parameter)
                         var dbParam = existingParams.FirstOrDefault(p => p.ObisCode == obj.LogicalName);
                         if (dbParam == null)
                         {
+                            converter.UpdateOBISCodeInformation(obj);
+                            string paramName = string.IsNullOrEmpty(obj.Description) ? $"{obj.ObjectType} - {obj.LogicalName}" : obj.Description;
+                            
                             dbParam = new PQM.Core.Entities.Parameter
                             {
                                 Name = paramName,
@@ -347,24 +553,48 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                                 CreatedDate = DateTime.UtcNow
                             };
                             dbContext.Parameter.Add(dbParam);
-                            dbContext.SaveChanges();
                             existingParams.Add(dbParam); // Add to cache list
+                            parametersAdded = true;
                         }
+                    }
+                    if (parametersAdded)
+                    {
+                        dbContext.SaveChanges();
+                    }
 
-                        // Map parameter to device if not mapped
-                        var mapping = existingMappings.FirstOrDefault(m => m.ParameterId == dbParam.Id);
-                        if (mapping == null)
+                    // Map parameters to device in one batch
+                    bool mappingsAdded = false;
+                    foreach (var obj in reader.Objects)
+                    {
+                        var dbParam = existingParams.FirstOrDefault(p => p.ObisCode == obj.LogicalName);
+                        if (dbParam != null)
                         {
-                            mapping = new DeviceParameterMapping
+                            var mapping = existingMappings.FirstOrDefault(m => m.ParameterId == dbParam.Id);
+                            if (mapping == null)
                             {
-                                DeviceId = item.Id,
-                                ParameterId = dbParam.Id,
-                                DateStamp = DateTime.UtcNow
-                            };
-                            dbContext.DeviceParameterMapping.Add(mapping);
-                            dbContext.SaveChanges();
-                            existingMappings.Add(mapping);
+                                mapping = new DeviceParameterMapping
+                                {
+                                    DeviceId = item.Id,
+                                    ParameterId = dbParam.Id,
+                                    DateStamp = DateTime.UtcNow
+                                };
+                                dbContext.DeviceParameterMapping.Add(mapping);
+                                existingMappings.Add(mapping);
+                                mappingsAdded = true;
+                            }
                         }
+                    }
+                    if (mappingsAdded)
+                    {
+                        dbContext.SaveChanges();
+                    }
+
+                    foreach (var obj in reader.Objects)
+                    {
+                        // Resolve description
+                        converter.UpdateOBISCodeInformation(obj);
+                        string paramName = string.IsNullOrEmpty(obj.Description) ? $"{obj.ObjectType} - {obj.LogicalName}" : obj.Description;
+                        var dbParam = existingParams.FirstOrDefault(p => p.ObisCode == obj.LogicalName);
 
                         // Read values
                         string attr2Val = "";

@@ -1,4 +1,4 @@
-﻿using PQM.Core.DomainServices;
+using PQM.Core.DomainServices;
 using PQM.Core.IRepositories;
 using PQM.Infrastructure.Repositories;
 
@@ -15,6 +15,8 @@ var connectionString =
 
 builder.Services.AddTransient<IDeviceService>(_ =>
     new DeviceService(connectionString));
+
+builder.Services.AddSingleton<PQM.Infrastructure.Services.DLMSSessionManager>();
 
 builder.Services.AddTransient<IDeviceLogService>(_ =>
     new DeviceLogService(connectionString));

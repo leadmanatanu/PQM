@@ -825,7 +825,14 @@ namespace PQM.Infrastructure.Services
                         obj.ObjectType == ObjectType.ActionSchedule ||
                         obj.ObjectType == ObjectType.ActivityCalendar)
                     {
-                        val = ReadObjectValue(obj);
+                        try
+                        {
+                            val = ReadObjectValue(obj);
+                        }
+                        catch (Exception ex)
+                        {
+                            val = $"Error: {ex.Message}";
+                        }
                     }
 
                     list.Add(new DiscoveredParameter
@@ -967,11 +974,11 @@ namespace PQM.Infrastructure.Services
                 if (_client != null && _client.ConnectionState != ConnectionState.None)
                 {
                     var reply = new GXReplyData();
-                    //byte[] disconnect = _client.DisconnectRequest();
-                    //if (disconnect != null)
-                    //{
-                    //    ReadDataBlock(disconnect, reply);
-                    //}
+                    byte[] disconnect = _client.DisconnectRequest();
+                    if (disconnect != null)
+                    {
+                        ReadDataBlock(disconnect, reply);
+                    }
                 }
             }
             catch { }

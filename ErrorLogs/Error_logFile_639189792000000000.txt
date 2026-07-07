@@ -1,0 +1,3 @@
+7/7/2026 12:16:03 PM Connecting to DLMS meter Test at 192.168.0.3:4059
+7/7/2026 12:16:27 PM Error while reading DLMS data of Test. Error: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond.
+7/7/2026 12:43:42 PM Connecting to DLMS meter Test at 192.168.0.3:4059
