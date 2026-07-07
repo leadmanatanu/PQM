@@ -132,6 +132,17 @@ namespace PQM.Infrastructure.Services
             {
                 return BitConverter.ToString(bytes).Replace("-", " ");
             }
+            // Handle nested arrays (e.g. sub-structures in billing/load profiles)
+            if (val is object[] objArr)
+            {
+                return string.Join(", ", objArr.Select(v => FormatValue(v)));
+            }
+            if (val is System.Collections.IEnumerable enumerable && val is not string)
+            {
+                var parts = new List<string>();
+                foreach (var item in enumerable) parts.Add(FormatValue(item));
+                return string.Join(", ", parts);
+            }
             return val.ToString() ?? "";
         }
 
@@ -143,9 +154,18 @@ namespace PQM.Infrastructure.Services
             foreach (var co in profile.CaptureObjects)
             {
                 try { converter.UpdateOBISCodeInformation(co.Key); } catch { }
-                string name = string.IsNullOrEmpty(co.Key.Description)
-                    ? $"{co.Key.ObjectType} {co.Key.LogicalName}"
-                    : co.Key.Description;
+                string name;
+                if (!string.IsNullOrEmpty(co.Key.Description))
+                {
+                    name = co.Key.Description;
+                }
+                else
+                {
+                    // Fall back to a meaningful name: OBIS code + attribute index
+                    string logicalName = co.Key.LogicalName ?? "Unknown";
+                    int attrIndex = co.Value?.AttributeIndex ?? 2;
+                    name = $"{logicalName} (Attr {attrIndex})";
+                }
                 cols.Add(name);
             }
             // Make column names unique
@@ -984,8 +1004,16 @@ namespace PQM.Infrastructure.Services
             catch { }
             finally
             {
-                _media.Close();
+                try { _media.Close(); } catch { }
             }
+        }
+
+        public void Reconnect()
+        {
+            // Fully close existing TCP session before reconnecting
+            try { _media.Close(); } catch { }
+            Thread.Sleep(2000); // Give meter time to release the session
+            Connect();
         }
 
         public void Dispose()

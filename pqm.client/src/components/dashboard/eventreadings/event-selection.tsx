@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
     FormControl,
     TextField,
@@ -18,6 +18,7 @@ import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import type { Device } from "@/components/dashboard/device/devices-table";
+import { fetchConnectedHeaders, fetchDLMSObjects } from "../../../api/device";
 
 interface DeviceFiltersProps {
     rows: Device[];
@@ -48,21 +49,61 @@ export function EventFilters({
         end: false,
     });
 
-    const eventTypes = [
-        { key: "dip", value: "Dip" },
-        { key: "interrupt", value: "Interrupt" },
-        { key: "rvc", value: "RVC" },
-        { key: "swell", value: "Swell" },
-        { key: "shortflicker", value: "Short flicker" },
-        { key: "longflicker", value: "Long flicker" },
-    ];
+    const [eventTypes, setEventTypes] = useState<any[]>([]);
+
+    useEffect(() => {
+        if (!selectedDevice) {
+            setEventTypes([]);
+            setSelectedEvent(null);
+            return;
+        }
+
+        const loadDeviceEventParams = async () => {
+            try {
+                const headerRes = await fetchConnectedHeaders(selectedDevice.id);
+                if (headerRes && headerRes.status && headerRes.data.length > 0) {
+                    const allEventParams: any[] = [];
+                    for (const header of headerRes.data) {
+                        const objectsRes = await fetchDLMSObjects(header.id);
+                        if (objectsRes && objectsRes.status && Array.isArray(objectsRes.data)) {
+                            const eventParams = objectsRes.data.filter((obj: any) => 
+                                obj.name && obj.name.toLowerCase().includes("event")
+                            );
+                            allEventParams.push(...eventParams);
+                        }
+                    }
+
+                    // Map status parameters to dropdown options
+                    const statusOptions = allEventParams.map((obj: any) => ({
+                        key: `status_${obj.obisCode}`,
+                        value: obj.name,
+                        isStatusParam: true,
+                        obisCode: obj.obisCode,
+                        objectType: obj.objectType,
+                        dlmsObject: obj,
+                    }));
+
+                    setEventTypes(statusOptions);
+                } else {
+                    setEventTypes([]);
+                }
+            } catch (error) {
+                console.error("Failed to load device event parameters:", error);
+                setEventTypes([]);
+            }
+        };
+
+        loadDeviceEventParams();
+        setSelectedEvent(null);
+    }, [selectedDevice]);
 
     const handleSearch = () => {
+        const isStatus = selectedEvent?.key?.startsWith("status_");
         const newErrors = {
             device: !selectedDevice,
             event: !selectedEvent,
-            start: !startValue,
-            end: !endValue,
+            start: !isStatus && !startValue,
+            end: !isStatus && !endValue,
         };
         setErrors(newErrors);
 
@@ -70,8 +111,8 @@ export function EventFilters({
 
         onSearch({
             deviceId: selectedDevice?.id ?? null,
-            startTime: startValue,
-            endTime: endValue,
+            startTime: isStatus ? null : startValue,
+            endTime: isStatus ? null : endValue,
             eventType: selectedEvent?.key ?? null,
         });
     };
@@ -126,36 +167,38 @@ export function EventFilters({
                     </FormControl>
 
                     {/* Dates */}
-                    <FormControl fullWidth>
-                        <LocalizationProvider dateAdapter={AdapterDayjs}>
-                            <DemoContainer components={["DatePicker ", "DatePicker "]}>
-                                <DatePicker
-                                    label="Start Date"
-                                    value={startValue}
-                                    onChange={(newValue) => setStartValue(newValue)}
-                                    slotProps={{
-                                        textField: {
-                                            error: errors.start,
-                                            helperText: errors.start
-                                                ? "Start date is required"
-                                                : "",
-                                        },
-                                    }}
-                                />
-                                <DatePicker
-                                    label="End Date"
-                                    value={endValue}
-                                    onChange={(newValue) => setEndValue(newValue)}
-                                    slotProps={{
-                                        textField: {
-                                            error: errors.end,
-                                            helperText: errors.end ? "End date is required" : "",
-                                        },
-                                    }}
-                                />
-                            </DemoContainer>
-                        </LocalizationProvider>
-                    </FormControl>
+                    {!(selectedEvent?.key?.startsWith("status_")) && (
+                        <FormControl fullWidth>
+                            <LocalizationProvider dateAdapter={AdapterDayjs}>
+                                <DemoContainer components={["DatePicker ", "DatePicker "]}>
+                                    <DatePicker
+                                        label="Start Date"
+                                        value={startValue}
+                                        onChange={(newValue) => setStartValue(newValue)}
+                                        slotProps={{
+                                            textField: {
+                                                error: errors.start,
+                                                helperText: errors.start
+                                                    ? "Start date is required"
+                                                    : "",
+                                            },
+                                        }}
+                                    />
+                                    <DatePicker
+                                        label="End Date"
+                                        value={endValue}
+                                        onChange={(newValue) => setEndValue(newValue)}
+                                        slotProps={{
+                                            textField: {
+                                                error: errors.end,
+                                                helperText: errors.end ? "End date is required" : "",
+                                            },
+                                        }}
+                                    />
+                                </DemoContainer>
+                            </LocalizationProvider>
+                        </FormControl>
+                    )}
                 </Stack>
             </CardContent>
             <Divider />

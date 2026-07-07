@@ -56,14 +56,18 @@ const EVENT_STATUS_SECTIONS: EventStatusSection[] = [
         title: 'Voltage Related',
         obisCode: '0.0.96.11.0.255',
         items: [
-            { code: 1, label: 'Missing potential - Occurrence' },
-            { code: 2, label: 'Missing potential - Restoration' },
-            { code: 3, label: 'Low voltage - Occurrence' },
-            { code: 4, label: 'Low voltage - Restoration' },
-            { code: 5, label: 'Voltage unbalance - Occurrence' },
-            { code: 6, label: 'Voltage unbalance - Restoration' },
-            { code: 7, label: 'Over voltage - Occurrence' },
-            { code: 8, label: 'Over voltage - Restoration' },
+            { code: 1, label: 'R-Phase - Voltage Missing - Occurrence' },
+            { code: 2, label: 'R-Phase - Voltage Missing - Restoration' },
+            { code: 3, label: 'Y-Phase - Voltage Missing - Occurrence' },
+            { code: 4, label: 'Y-Phase - Voltage Missing - Restoration' },
+            { code: 5, label: 'B-Phase - Voltage Missing - Occurrence' },
+            { code: 6, label: 'B-Phase - Voltage Missing - Restoration' },
+            { code: 7, label: 'Over Voltage in any Phase - Occurrence' },
+            { code: 8, label: 'Over Voltage in any Phase - Restoration' },
+            { code: 9, label: 'Low Voltage in any Phase - Occurrence' },
+            { code: 10, label: 'Low Voltage in any Phase - Restoration' },
+            { code: 11, label: 'Voltage Unbalance - Occurrence' },
+            { code: 12, label: 'Voltage Unbalance - Restoration' },
         ],
     },
     {
@@ -1100,7 +1104,6 @@ export default function Page(): React.JSX.Element {
                                         <TableCell sx={{ fontWeight: 'bold' }}>Object Type</TableCell>
                                         <TableCell sx={{ fontWeight: 'bold' }}>Attribute 2</TableCell>
                                         <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>Details</TableCell>
-                                        {!isDataObjectType && <TableCell sx={{ fontWeight: 'bold' }}>Attribute 3</TableCell>}
                                         {isExtendedRegisterType && <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>}
                                         {isExtendedRegisterType && <TableCell sx={{ fontWeight: 'bold' }}>Capture Time</TableCell>}
                                     </TableRow>
@@ -1212,11 +1215,6 @@ export default function Page(): React.JSX.Element {
                                                         View Details
                                                     </Button>
                                                 </TableCell>
-                                                {!isDataObjectType && (
-                                                    <TableCell sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
-                                                        {row.attribute3 || 'N/A'}
-                                                    </TableCell>
-                                                )}
                                                 {isExtendedRegisterType && (
                                                     <TableCell sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
                                                         {row.attribute4 || 'N/A'}

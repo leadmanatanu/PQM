@@ -478,7 +478,7 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                 using (var reader = new DLMSReader(item.IP, item.PORT, clientAddress, serverAddress, authentication, password, useLogicalNameReferencing, standard))
                 {
                     reader.Connect();
-                    
+
                     Console.ForegroundColor = ConsoleColor.Green;
                     Console.WriteLine($"[DLMS Reader] Connected successfully to {item.Name}!");
                     Console.ResetColor();
@@ -617,13 +617,13 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                             Console.ResetColor();
                             attr2Val = $"Error: {ex.Message}";
 
-                            // Check if the connection is dead/socket lost
-                            bool isDisconnected = ex.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase) ||
-                                                 ex.Message.Contains("connection", StringComparison.OrdinalIgnoreCase) ||
-                                                 ex.Message.Contains("socket", StringComparison.OrdinalIgnoreCase) ||
-                                                 ex.Message.Contains("disconnected", StringComparison.OrdinalIgnoreCase) ||
-                                                 ex.InnerException is System.Net.Sockets.SocketException ||
-                                                 ex.InnerException is System.IO.IOException;
+                             // Check if the connection is dead/socket lost
+                             bool isDisconnected = ex.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase) ||
+                                                  ex.Message.Contains("connection", StringComparison.OrdinalIgnoreCase) ||
+                                                  ex.Message.Contains("socket", StringComparison.OrdinalIgnoreCase) ||
+                                                  ex.Message.Contains("disconnected", StringComparison.OrdinalIgnoreCase) ||
+                                                  ex.InnerException is System.Net.Sockets.SocketException ||
+                                                  ex.InnerException is System.IO.IOException;
 
                             if (isDisconnected)
                             {
