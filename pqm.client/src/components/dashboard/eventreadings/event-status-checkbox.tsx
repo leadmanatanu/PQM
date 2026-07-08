@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { HubConnectionBuilder } from "@microsoft/signalr";
 import { 
     Card, 
     CardHeader, 
@@ -22,10 +23,10 @@ import {
     Paper
 } from "@mui/material";
 import dayjs from "dayjs";
-import { fetchConnectedHeaders, fetchDLMSObjects, fetchProfileGenericEntries } from "../../../api/device";
+import { fetchConnectedHeaders, fetchDLMSObjects, fetchProfileGenericEntries, fetchEventStatusMappings } from "../../../api/device";
 
 // Definition of standard event status sections matching Gurux
-const EVENT_STATUS_SECTIONS = [
+const DEFAULT_EVENT_STATUS_SECTIONS = [
     {
         key: 'voltage',
         title: 'Voltage Related Events',
@@ -118,11 +119,38 @@ export function EventStatusCheckboxCard({ deviceId, obisCode }: { deviceId: stri
     const [dlmsObject, setDlmsObject] = useState<any>(null);
     const [value, setValue] = useState<string>("");
     const [profileEntries, setProfileEntries] = useState<any[]>([]);
+    const [sections, setSections] = useState<any[]>(DEFAULT_EVENT_STATUS_SECTIONS);
 
     const loadData = async () => {
         setLoading(true);
         setEntriesLoading(true);
         try {
+            // Fetch dynamic mappings from the database
+            const mappingsRes = await fetchEventStatusMappings();
+            let activeSections = DEFAULT_EVENT_STATUS_SECTIONS;
+            if (mappingsRes && mappingsRes.status && Array.isArray(mappingsRes.data) && mappingsRes.data.length > 0) {
+                const grouped = mappingsRes.data.reduce((acc: any, item: any) => {
+                    const obis = item.obisCode;
+                    if (!acc[obis]) {
+                        acc[obis] = {
+                            key: item.category,
+                            title: `${item.category.charAt(0).toUpperCase() + item.category.slice(1)} Related Events`,
+                            obisCode: obis,
+                            items: []
+                        };
+                    }
+                    acc[obis].items.push({
+                        code: item.eventCode,
+                        label: item.label
+                    });
+                    return acc;
+                }, {});
+                activeSections = Object.values(grouped);
+                setSections(activeSections);
+            } else {
+                setSections(DEFAULT_EVENT_STATUS_SECTIONS);
+            }
+
             // 1. Fetch DLMS status parameter object value
             const headerRes = await fetchConnectedHeaders(deviceId);
             let foundObj = null;
@@ -158,6 +186,29 @@ export function EventStatusCheckboxCard({ deviceId, obisCode }: { deviceId: stri
 
     useEffect(() => {
         loadData();
+    }, [deviceId, obisCode]);
+
+    useEffect(() => {
+        const connection = new HubConnectionBuilder()
+            .withUrl("http://localhost:5135/hubs/meter")
+            .withAutomaticReconnect()
+            .build();
+
+        connection.start()
+            .then(() => {
+                console.log("[SignalR] Connected to MeterHub successfully.");
+                connection.on("MeterUpdated", (updatedDeviceId: any) => {
+                    console.log(`[SignalR] Received MeterUpdated message for device: ${updatedDeviceId}`);
+                    if (String(updatedDeviceId) === String(deviceId)) {
+                        loadData();
+                    }
+                });
+            })
+            .catch(err => console.error("[SignalR] Connection to MeterHub failed: ", err));
+
+        return () => {
+            connection.stop();
+        };
     }, [deviceId, obisCode]);
 
     const parseEventStatusValue = (val: string, section: any): Set<number> => {
@@ -198,7 +249,7 @@ export function EventStatusCheckboxCard({ deviceId, obisCode }: { deviceId: stri
         return activeCodes;
     };
 
-    const section = EVENT_STATUS_SECTIONS.find(s => s.obisCode === obisCode);
+    const section = sections.find(s => s.obisCode === obisCode);
 
     // Group profile entries by timestamp
     const getGroupedEntries = () => {
@@ -217,7 +268,7 @@ export function EventStatusCheckboxCard({ deviceId, obisCode }: { deviceId: stri
             if (entry.columnName.toLowerCase().includes("code") || entry.columnName.toLowerCase() === "event") {
                 const codeNum = Number(displayVal);
                 if (!isNaN(codeNum) && section) {
-                    const item = section.items.find(i => i.code === codeNum);
+                    const item = section.items.find((i: any) => i.code === codeNum);
                     if (item) {
                         displayVal = `${item.label} (${codeNum})`;
                     }
@@ -269,7 +320,7 @@ export function EventStatusCheckboxCard({ deviceId, obisCode }: { deviceId: stri
                 <Divider />
                 <CardContent>
                     <Stack spacing={1}>
-                        {section.items.map((item) => (
+                        {section.items.map((item: any) => (
                             <FormControlLabel
                                 key={item.code}
                                 control={

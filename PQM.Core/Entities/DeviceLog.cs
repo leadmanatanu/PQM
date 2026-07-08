@@ -9,14 +9,14 @@ namespace PQM.Core.Entities
         public long Id { get; set; }
         public int DeviceId { get; set; }
         public int ParameterId { get; set; }
+        public double? NumericValue { get; set; }
+        public string? Unit { get; set; }
     }
 
     public class DeviceLogValue
     {
         public required string Value { get; set; }
         public DateTime DateStamp { get; set; }
-        public double? NumericValue { get; set; }
-        public string? Unit { get; set; }
     }
 
     public class DeviceLogSearch : DeviceLogValue

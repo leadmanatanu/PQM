@@ -74,31 +74,31 @@ export function DeviceFilters({
                             value={selectedHeaderId}
                             label="Select Object Type"
                             onChange={(e) => onHeaderSelect(e.target.value as string | number)}
-                        >
+                        >https://github.com/Gurux/Gurux.Service.git
                             {headers.map((h) => (
                                 <MenuItem key={h.id} value={h.id}>{h.name}</MenuItem>
                             ))}
                         </Select>
                     </FormControl>
                 )}
-                {selectedDevice && selectedHeaderId && objects.length > 0 && (
-                    <FormControl fullWidth>
-                        <InputLabel id="object-select-label">Select Object</InputLabel>
-                        <Select
-                            labelId="object-select-label"
-                            id="object-select"
-                            value={selectedObjectId}
-                            label="Select Object"
-                            onChange={(e) => onObjectSelect(e.target.value as string | number)}
-                        >
-                            {objects.map((obj) => (
-                                <MenuItem key={obj.id} value={obj.id}>
-                                    {obj.obisCode} {obj.name}
-                                </MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-                )}
+                {/*{selectedDevice && selectedHeaderId && objects.length > 0 && (*/}
+                {/*    <FormControl fullWidth>*/}
+                {/*        <InputLabel id="object-select-label">Select Object</InputLabel>*/}
+                {/*        <Select*/}
+                {/*            labelId="object-select-label"*/}
+                {/*            id="object-select"*/}
+                {/*            value={selectedObjectId}*/}
+                {/*            label="Select Object"*/}
+                {/*            onChange={(e) => onObjectSelect(e.target.value as string | number)}*/}
+                {/*        >*/}
+                {/*            {objects.map((obj) => (*/}
+                {/*                <MenuItem key={obj.id} value={obj.id}>*/}
+                {/*                    {obj.obisCode} {obj.name}*/}
+                {/*                </MenuItem>*/}
+                {/*            ))}*/}
+                {/*        </Select>*/}
+                {/*    </FormControl>*/}
+                {/*)}*/}
             </Stack>
         </Card>
     );

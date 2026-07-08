@@ -125,11 +125,102 @@ namespace PQM.Infrastructure.Services
             }
         }
 
+        public void WriteRegister(string obisCode, string stringValue, int attributeIndex = 2)
+        {
+            if (_client.Objects == null)
+            {
+                throw new InvalidOperationException("Association view is not loaded. Call Connect() first.");
+            }
+
+            GXDLMSObject? obj = null;
+            foreach (var o in _client.Objects)
+            {
+                if (o.LogicalName == obisCode)
+                {
+                    obj = o;
+                    break;
+                }
+            }
+
+            if (obj == null)
+            {
+                throw new Exception($"Object with OBIS code {obisCode} not found in the meter.");
+            }
+
+            // Parse the string value to the correct type
+            object newValue = stringValue;
+            if (int.TryParse(stringValue, out int intVal))
+            {
+                newValue = intVal;
+            }
+            else if (double.TryParse(stringValue, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double doubleVal))
+            {
+                newValue = doubleVal;
+            }
+            else if (bool.TryParse(stringValue, out bool boolVal))
+            {
+                newValue = boolVal;
+            }
+            else if (DateTime.TryParse(stringValue, out DateTime dtVal))
+            {
+                newValue = dtVal;
+            }
+
+            // Set the value on the object
+            if (obj is GXDLMSRegister reg)
+            {
+                reg.Value = newValue;
+            }
+            else if (obj is GXDLMSData data)
+            {
+                data.Value = newValue;
+            }
+            else
+            {
+                _client.UpdateValue(obj, attributeIndex, newValue);
+            }
+
+            // Generate write request packets
+            byte[][] writeReq = _client.Write(obj, attributeIndex);
+            var reply = new GXReplyData();
+            if (writeReq != null)
+            {
+                if (!ReadDataBlock(writeReq, reply))
+                {
+                    throw new Exception($"Write failed. DLMS Error code: {reply.Error}");
+                }
+            }
+        }
+
         private string FormatValue(object? val)
         {
             if (val == null) return "";
             if (val is byte[] bytes)
             {
+                // DLMS DateTime is always exactly 12 bytes: year(2)+month+day+dow+hour+min+sec+hundredths+deviation(2)+status
+                // Try to parse it into a readable date before falling back to hex.
+                if (bytes.Length == 12)
+                {
+                    try
+                    {
+                        // DLMS Clock format: Year(2) Month Day DoW Hour Min Sec Hundredths Deviation(2) Status
+                        int year   = (bytes[0] << 8) | bytes[1];  // big-endian
+                        int month  = bytes[2];
+                        int day    = bytes[3];
+                        // bytes[4] = day-of-week (skip)
+                        int hour   = bytes[5];
+                        int minute = bytes[6];
+                        int second = bytes[7];
+                        // 0xFF means wildcard / not specified
+                        if (year >= 1 && year <= 9999 && month >= 1 && month <= 12 && day >= 1 && day <= 31
+                            && hour <= 23 && minute <= 59 && second <= 59)
+                        {
+                            int sec = (second == 0xFF) ? 0 : second;
+                            return $"{year:D4}-{month:D2}-{day:D2} {hour:D2}:{minute:D2}:{sec:D2}";
+                        }
+                    }
+                    catch { /* not a valid DateTime — fall through to hex */ }
+                }
                 return BitConverter.ToString(bytes).Replace("-", " ");
             }
             // Handle nested arrays (e.g. sub-structures in billing/load profiles)
@@ -142,6 +233,16 @@ namespace PQM.Infrastructure.Services
                 var parts = new List<string>();
                 foreach (var item in enumerable) parts.Add(FormatValue(item));
                 return string.Join(", ", parts);
+            }
+            // GXDateTime returned directly (not as byte[])
+            if (val is Gurux.DLMS.GXDateTime gxdtDirect)
+            {
+                try
+                {
+                    var d = gxdtDirect.Value.DateTime;
+                    return $"{d.Year:D4}-{d.Month:D2}-{d.Day:D2} {d.Hour:D2}:{d.Minute:D2}:{d.Second:D2}";
+                }
+                catch { }
             }
             return val.ToString() ?? "";
         }

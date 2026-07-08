@@ -409,7 +409,95 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                     Console.WriteLine($"[DLMS Reader] Warning: Could not ensure ProfileGenericEntry table exists: {ex.Message}");
                 }
 
-                // Ensure columns exist on Parameter table
+                // Ensure EventStatusMapping table exists
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='EventStatusMapping' AND xtype='U')
+                        CREATE TABLE [EventStatusMapping] (
+                            [Id] INT IDENTITY(1,1) PRIMARY KEY,
+                            [Category] NVARCHAR(MAX) NOT NULL,
+                            [ObisCode] NVARCHAR(MAX) NOT NULL,
+                            [BitIndex] INT NOT NULL,
+                            [EventCode] INT NOT NULL,
+                            [Label] NVARCHAR(MAX) NOT NULL
+                        )
+                    ");
+
+                    if (dbContext.EventStatusMapping.Count() == 0)
+                    {
+                         var list = new List<EventStatusMapping>
+                         {
+                             // Voltage Related Events
+                             new EventStatusMapping { Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 0, EventCode = 1, Label = "R-Phase - Voltage Missing - Occurrence" },
+                             new EventStatusMapping { Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 1, EventCode = 2, Label = "R-Phase - Voltage Missing - Restoration" },
+                             new EventStatusMapping { Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 2, EventCode = 3, Label = "Y-Phase - Voltage Missing - Occurrence" },
+                             new EventStatusMapping { Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 3, EventCode = 4, Label = "Y-Phase - Voltage Missing - Restoration" },
+                             new EventStatusMapping { Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 4, EventCode = 5, Label = "B-Phase - Voltage Missing - Occurrence" },
+                             new EventStatusMapping { Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 5, EventCode = 6, Label = "B-Phase - Voltage Missing - Restoration" },
+                             new EventStatusMapping { Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 6, EventCode = 7, Label = "Over Voltage in any Phase - Occurrence" },
+                             new EventStatusMapping { Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 7, EventCode = 8, Label = "Over Voltage in any Phase - Restoration" },
+                             new EventStatusMapping { Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 8, EventCode = 9, Label = "Low Voltage in any Phase - Occurrence" },
+                             new EventStatusMapping { Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 9, EventCode = 10, Label = "Low Voltage in any Phase - Restoration" },
+                             new EventStatusMapping { Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 10, EventCode = 11, Label = "Voltage Unbalance - Occurrence" },
+                             new EventStatusMapping { Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 11, EventCode = 12, Label = "Voltage Unbalance - Restoration" },
+
+                             // Current Related Events
+                             new EventStatusMapping { Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 0, EventCode = 51, Label = "R Phase - Current reverse - Occurrence" },
+                             new EventStatusMapping { Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 1, EventCode = 52, Label = "R Phase - Current reverse - Restoration" },
+                             new EventStatusMapping { Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 2, EventCode = 53, Label = "Y Phase - Current reverse - Occurrence" },
+                             new EventStatusMapping { Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 3, EventCode = 54, Label = "Y Phase - Current reverse - Restoration" },
+                             new EventStatusMapping { Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 4, EventCode = 55, Label = "B Phase - Current reverse - Occurrence" },
+                             new EventStatusMapping { Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 5, EventCode = 56, Label = "B Phase - Current reverse - Restoration" },
+                             new EventStatusMapping { Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 6, EventCode = 63, Label = "Current Unbalance - Occurrence" },
+                             new EventStatusMapping { Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 7, EventCode = 64, Label = "Current Unbalance - Restoration" },
+                             new EventStatusMapping { Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 8, EventCode = 65, Label = "Current bypass - Occurrence" },
+                             new EventStatusMapping { Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 9, EventCode = 66, Label = "Current bypass - Restoration" },
+                             new EventStatusMapping { Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 10, EventCode = 67, Label = "Over current in any phase - Occurrence" },
+                             new EventStatusMapping { Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 11, EventCode = 68, Label = "Over current in any phase - Restoration" },
+
+                             // Power Related Events
+                             new EventStatusMapping { Category = "power", ObisCode = "0.0.96.11.2.255", BitIndex = 0, EventCode = 101, Label = "Power failure - Occurrence" },
+                             new EventStatusMapping { Category = "power", ObisCode = "0.0.96.11.2.255", BitIndex = 1, EventCode = 102, Label = "Power failure - Restoration" },
+
+                             // Transaction Related Events
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 0, EventCode = 151, Label = "Real Time Clock - Date and Time" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 1, EventCode = 152, Label = "Demand Integration Period" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 2, EventCode = 153, Label = "Profile Capture Period" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 3, EventCode = 154, Label = "Single-action Schedule for Billing Dates" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 4, EventCode = 155, Label = "Activity Calendar Time Zones" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 5, EventCode = 157, Label = "New Firmware Activated" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 6, EventCode = 158, Label = "Load limit (kW) set" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 7, EventCode = 159, Label = "Enabled - load limit function" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 8, EventCode = 160, Label = "Disabled - load limit function" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 9, EventCode = 161, Label = "LLS secret (MR) change" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 10, EventCode = 162, Label = "HLS key (US) change" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 11, EventCode = 163, Label = "HLS key (FW) change" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 12, EventCode = 164, Label = "Global key change(encryption and authentication)" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 13, EventCode = 165, Label = "ESWF change" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 14, EventCode = 166, Label = "MD reset" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 15, EventCode = 169, Label = "Single Action Schedule for Image Activation" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 16, EventCode = 182, Label = "Passive Relay time." },
+
+                             // Others Events
+                             new EventStatusMapping { Category = "others", ObisCode = "0.0.96.11.4.255", BitIndex = 0, EventCode = 201, Label = "Influence of permanent magnet - Occurrence" },
+                             new EventStatusMapping { Category = "others", ObisCode = "0.0.96.11.4.255", BitIndex = 1, EventCode = 202, Label = "Influence of permanent magnet - Restoration" },
+                             new EventStatusMapping { Category = "others", ObisCode = "0.0.96.11.4.255", BitIndex = 2, EventCode = 203, Label = "Neutral disturbance - Occurrence" },
+                             new EventStatusMapping { Category = "others", ObisCode = "0.0.96.11.4.255", BitIndex = 3, EventCode = 204, Label = "Neutral disturbance - Restoration" },
+                             new EventStatusMapping { Category = "others", ObisCode = "0.0.96.11.4.255", BitIndex = 4, EventCode = 205, Label = "Meter cover opened" },
+                             new EventStatusMapping { Category = "others", ObisCode = "0.0.96.11.4.255", BitIndex = 5, EventCode = 206, Label = "Terminal cover opened" }
+                         };
+                         dbContext.EventStatusMapping.AddRange(list);
+                         dbContext.SaveChanges();
+                         Console.WriteLine("[DLMS Reader] Seeded 49 EventStatusMapping values successfully.");
+                     }
+                 }
+                 catch (Exception ex)
+                 {
+                     Console.WriteLine($"[DLMS Reader] Warning: Could not ensure or seed EventStatusMapping table: {ex.Message}");
+                 }
+
+                 // Ensure columns exist on Parameter table
                 try
                 {
                     dbContext.Database.ExecuteSqlRaw(@"
@@ -1389,6 +1477,28 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                             Console.WriteLine("\n[DLMS Reader] Failed to save values to database.");
                             Console.ResetColor();
                         }
+                    }
+
+                    // Trigger real-time SignalR UI update notification
+                    try
+                    {
+                        using (var httpClient = new System.Net.Http.HttpClient())
+                        {
+                            var url = $"http://localhost:5135/api/device/{item.Id}/notify-update";
+                            var response = httpClient.PostAsync(url, null).GetAwaiter().GetResult();
+                            if (response.IsSuccessStatusCode)
+                            {
+                                Console.WriteLine($"[DLMS Reader] Sent live update notification to backend UI for device {item.Name} (ID: {item.Id}).");
+                            }
+                            else
+                            {
+                                Console.WriteLine($"[DLMS Reader] Live update notification returned code {response.StatusCode} for device {item.Name}.");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[DLMS Reader] Warning: Could not send real-time SignalR update notification: {ex.Message}");
                     }
                 }
             }
