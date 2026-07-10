@@ -1160,20 +1160,24 @@ export default function Page(): React.JSX.Element {
             )}
 
             {isTableObjectType && discoveredParams.length > 0 && (
-                <Card>
-                    <CardHeader title="Discovered Meter Parameters (Current Values)" />
+                <Card sx={{ borderRadius: '8px' }}>
+                    <CardHeader 
+                        title="Discovered Meter Parameters (Current Values)" 
+                        titleTypographyProps={{ variant: 'subtitle1', fontWeight: 600 }}
+                        sx={{ py: 1.5, px: 2 }}
+                    />
                     <Divider />
-                    <CardContent>
-                        <TableContainer component={Paper} sx={{ maxHeight: 400 }}>
-                            <Table stickyHeader aria-label="discovered parameters table">
-                                <TableHead>
+                    <CardContent sx={{ p: 1, '&:last-child': { pb: 1 } }}>
+                        <TableContainer component={Paper} sx={{ maxHeight: 220, borderRadius: '6px' }}>
+                            <Table size="small" stickyHeader aria-label="discovered parameters table">
+                                <TableHead sx={{ bgcolor: 'var(--mui-palette-neutral-50)' }}>
                                     <TableRow>
-                                        <TableCell sx={{ fontWeight: 'bold' }}>Name</TableCell>
-                                        <TableCell sx={{ fontWeight: 'bold' }}>Object Type</TableCell>
-                                        <TableCell sx={{ fontWeight: 'bold' }}>Attribute 2</TableCell>
-                                        <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>Details</TableCell>
-                                        {isExtendedRegisterType && <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>}
-                                        {isExtendedRegisterType && <TableCell sx={{ fontWeight: 'bold' }}>Capture Time</TableCell>}
+                                        <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
+                                        <TableCell sx={{ fontWeight: 600 }}>Object Type</TableCell>
+                                        <TableCell sx={{ fontWeight: 600 }}>Attribute 2</TableCell>
+                                        <TableCell sx={{ fontWeight: 600, textAlign: 'center' }}>Details</TableCell>
+                                        {isExtendedRegisterType && <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>}
+                                        {isExtendedRegisterType && <TableCell sx={{ fontWeight: 600 }}>Capture Time</TableCell>}
                                     </TableRow>
                                 </TableHead>
                                 <TableBody>

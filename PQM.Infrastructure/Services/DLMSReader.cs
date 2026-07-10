@@ -23,6 +23,7 @@ namespace PQM.Infrastructure.Services
     {
         private readonly GXNet _media;
         private readonly GXDLMSClient _client;
+        private bool _isConnected = false;
 
         public int WaitTime { get; set; } = 5000; // ms
         public int RetryCount { get; set; } = 3;
@@ -63,6 +64,7 @@ namespace PQM.Infrastructure.Services
                     if (reply.Data != null)
                     {
                         _client.ParseAAREResponse(reply.Data);
+                        _isConnected = true;
                     }
                 }
                 else
@@ -195,6 +197,12 @@ namespace PQM.Infrastructure.Services
         private string FormatValue(object? val)
         {
             if (val == null) return "";
+            if (val is Array arr && val is not byte[])
+            {
+                var parts = new List<string>();
+                foreach (var item in arr) parts.Add(FormatValue(item));
+                return string.Join(", ", parts);
+            }
             if (val is byte[] bytes)
             {
                 // DLMS DateTime is always exactly 12 bytes: year(2)+month+day+dow+hour+min+sec+hundredths+deviation(2)+status
@@ -1090,7 +1098,7 @@ namespace PQM.Infrastructure.Services
             };
             lock (_media.Synchronous)
             {
-                while (!succeeded && pos != 3)
+                while (!succeeded && pos < RetryCount)
                 {
                     if (!reply.IsStreaming())
                     {
@@ -1151,19 +1159,34 @@ namespace PQM.Infrastructure.Services
         {
             try
             {
-                if (_client != null && _client.ConnectionState != ConnectionState.None)
+                if (_isConnected && _client != null && _client.ConnectionState != ConnectionState.None)
                 {
                     var reply = new GXReplyData();
-                    byte[] disconnect = _client.DisconnectRequest();
-                    if (disconnect != null)
+                    byte[][] closeCmd = null;
+
+                    if (_client.InterfaceType == InterfaceType.WRAPPER)
                     {
-                        ReadDataBlock(disconnect, reply);
+                        closeCmd = _client.ReleaseRequest();
+                    }
+                    else
+                    {
+                        var disconnectFrame = _client.DisconnectRequest();
+                        if (disconnectFrame != null)
+                        {
+                            closeCmd = new[] { disconnectFrame };
+                        }
+                    }
+
+                    if (closeCmd != null)
+                    {
+                        ReadDataBlock(closeCmd, reply);
                     }
                 }
             }
             catch { }
             finally
             {
+                _isConnected = false;
                 try { _media.Close(); } catch { }
             }
         }
@@ -1171,6 +1194,7 @@ namespace PQM.Infrastructure.Services
         public void Reconnect()
         {
             // Fully close existing TCP session before reconnecting
+            _isConnected = false;
             try { _media.Close(); } catch { }
             Thread.Sleep(2000); // Give meter time to release the session
             Connect();

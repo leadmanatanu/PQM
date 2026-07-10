@@ -722,6 +722,13 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                                 break; // exit parameter scan loop early
                             }
                         }
+                        if (!string.IsNullOrEmpty(attr2Val) && !attr2Val.StartsWith("Error"))
+                        {
+                            if (obj.LogicalName.StartsWith("0.0.96.11."))
+                            {
+                                attr2Val = DecodeEventStatusBitmask(dbContext, obj.LogicalName, attr2Val);
+                            }
+                        }
                         string attr3Val = "";
                         int? scaler = null;
                         string? unit = null;
@@ -1611,4 +1618,38 @@ static string MergeProfileGenericJson(string? existingJson, string newJson)
         return newJson;
     }
 }
+
+static string DecodeEventStatusBitmask(PQM.Infrastructure.DataContext db, string obisCode, string rawValue)
+{
+    if (string.IsNullOrEmpty(rawValue) || !int.TryParse(rawValue.Trim(), out int numericValue))
+    {
+        return rawValue;
+    }
+
+    var mappings = db.EventStatusMapping
+        .Where(m => m.ObisCode == obisCode)
+        .ToList();
+
+    if (!mappings.Any())
+    {
+        return rawValue;
+    }
+
+    var activeEvents = new List<string>();
+    foreach (var mapping in mappings)
+    {
+        if ((numericValue & (1 << mapping.BitIndex)) != 0)
+        {
+            activeEvents.Add(mapping.EventCode.ToString());
+        }
+    }
+
+    if (activeEvents.Any())
+    {
+        return string.Join(",", activeEvents);
+    }
+
+    return "0";
+}
+
 

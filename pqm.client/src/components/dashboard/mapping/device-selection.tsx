@@ -45,12 +45,13 @@ export function DeviceFilters({
     };
  
     return (
-        <Card sx={{ p: 2 }}>
+        <Card sx={{ p: 2, maxWidth: '500px', width: '100%', borderRadius: '8px' }}>
             <Stack direction="column" spacing={2}>
-                <FormControl fullWidth>
+                <FormControl fullWidth size="small">
                     <Autocomplete
                         id="device-filter-autocomplete"
                         options={rows}
+                        size="small"
                         getOptionLabel={(device) => device.name}
                         value={selectedDevice}
                         onChange={handleChange}
@@ -60,21 +61,23 @@ export function DeviceFilters({
                                 {...params}
                                 label="Select or type to search device"
                                 variant="outlined"
+                                size="small"
                             />
                         )}
                         openOnFocus
                     />
                 </FormControl>
                 {selectedDevice && headers.length > 0 && (
-                    <FormControl fullWidth>
+                    <FormControl fullWidth size="small">
                         <InputLabel id="header-select-label">Select Object Type</InputLabel>
                         <Select
                             labelId="header-select-label"
                             id="header-select"
                             value={selectedHeaderId}
                             label="Select Object Type"
+                            size="small"
                             onChange={(e) => onHeaderSelect(e.target.value as string | number)}
-                        >https://github.com/Gurux/Gurux.Service.git
+                        >
                             {headers.map((h) => (
                                 <MenuItem key={h.id} value={h.id}>{h.name}</MenuItem>
                             ))}

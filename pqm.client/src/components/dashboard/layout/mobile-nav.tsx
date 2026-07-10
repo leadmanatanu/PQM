@@ -3,14 +3,20 @@
 import * as React from 'react';
 import RouterLink from 'next/link';
 import { usePathname } from 'next/navigation';
+import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
 import Drawer from '@mui/material/Drawer';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import { ArrowSquareUpRightIcon } from '@phosphor-icons/react/dist/ssr/ArrowSquareUpRight';
-import { CaretUpDownIcon } from '@phosphor-icons/react/dist/ssr/CaretUpDown';
+import { useRouter } from 'next/navigation';
+import { useUser } from '@/hooks/use-user';
+import { authClient } from '@/lib/auth/client';
+import { logger } from '@/lib/default-logger';
+import { GearSix as GearSixIcon } from '@phosphor-icons/react/dist/ssr/GearSix';
+import { User as UserIcon } from '@phosphor-icons/react/dist/ssr/User';
+import { SignOut as SignOutIcon } from '@phosphor-icons/react/dist/ssr/SignOut';
 
 import type { NavItemConfig } from '@/types/nav';
 import { paths } from '@/paths';
@@ -28,6 +34,28 @@ export interface MobileNavProps {
 
 export function MobileNav({ open, onClose }: MobileNavProps): React.JSX.Element {
   const pathname = usePathname();
+  const router = useRouter();
+  const { user, checkSession } = useUser();
+
+  const displayName = user ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.name : 'Tarlok Singh';
+  const emailAddress = user?.email || 'tarlokthakur@gmail.com';
+  const avatarSrc = user?.avatar || '/assets/avatar-1.png';
+
+  const handleSignOut = React.useCallback(async (): Promise<void> => {
+    try {
+      const { error } = await authClient.signOut();
+
+      if (error) {
+        logger.error('Sign out error', error);
+        return;
+      }
+
+      await checkSession?.();
+      router.refresh();
+    } catch (error) {
+      logger.error('Sign out error', error);
+    }
+  }, [checkSession, router]);
 
   return (
     <Drawer
@@ -61,62 +89,94 @@ export function MobileNav({ open, onClose }: MobileNavProps): React.JSX.Element 
         <Box component={RouterLink} href={paths.home} sx={{ display: 'inline-flex' }}>
           <Logo color="light" height={32} width={122} />
         </Box>
-        {/*<Box*/}
-        {/*  sx={{*/}
-        {/*    alignItems: 'center',*/}
-        {/*    backgroundColor: 'var(--mui-palette-neutral-950)',*/}
-        {/*    border: '1px solid var(--mui-palette-neutral-700)',*/}
-        {/*    borderRadius: '12px',*/}
-        {/*    cursor: 'pointer',*/}
-        {/*    display: 'flex',*/}
-        {/*    p: '4px 12px',*/}
-        {/*  }}*/}
-        {/*>*/}
-        {/*  <Box sx={{ flex: '1 1 auto' }}>*/}
-        {/*    <Typography color="var(--mui-palette-neutral-400)" variant="body2">*/}
-        {/*      Workspace*/}
-        {/*    </Typography>*/}
-        {/*    <Typography color="inherit" variant="subtitle1">*/}
-        {/*      Devias*/}
-        {/*    </Typography>*/}
-        {/*  </Box>*/}
-        {/*  <CaretUpDownIcon />*/}
-        {/*</Box>*/}
       </Stack>
       <Divider sx={{ borderColor: 'var(--mui-palette-neutral-700)' }} />
       <Box component="nav" sx={{ flex: '1 1 auto', p: '12px' }}>
         {renderNavItems({ pathname, items: navItems })}
       </Box>
       <Divider sx={{ borderColor: 'var(--mui-palette-neutral-700)' }} />
-      <Stack spacing={2} sx={{ p: '12px' }}>
-        <div>
-          <Typography color="var(--mui-palette-neutral-100)" variant="subtitle2">
-            Need more features?
-          </Typography>
-          <Typography color="var(--mui-palette-neutral-400)" variant="body2">
-            Check out our Pro solution template.
-          </Typography>
-        </div>
-        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-          <Box
-            component="img"
-            alt="Pro version"
-            src="/assets/devias-kit-pro.png"
-            sx={{ height: 'auto', width: '160px' }}
-          />
+      <Box sx={{ p: '16px 20px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Avatar src={avatarSrc} />
+          <Box sx={{ flex: '1 1 auto' }}>
+            <Typography color="inherit" variant="subtitle2" sx={{ fontSize: '0.875rem', fontWeight: 600 }}>
+              {displayName}
+            </Typography>
+            <Typography color="var(--mui-palette-neutral-400)" variant="body2" sx={{ fontSize: '0.75rem' }}>
+              {emailAddress}
+            </Typography>
+          </Box>
         </Box>
-        <Button
-          component="a"
-          endIcon={<ArrowSquareUpRightIcon fontSize="var(--icon-fontSize-md)" />}
-          fullWidth
-          href="https://material-kit-pro-react.devias.io/"
-          sx={{ mt: 2 }}
-          target="_blank"
-          variant="contained"
-        >
-          Pro version
-        </Button>
-      </Stack>
+        <Stack spacing={0.5}>
+          <Button 
+            component={RouterLink} 
+            href={paths.dashboard.settings}
+            variant="text" 
+            size="small" 
+            onClick={onClose}
+            startIcon={<GearSixIcon fontSize="18" />}
+            sx={{ 
+              color: 'var(--NavItem-color)', 
+              justifyContent: 'flex-start', 
+              p: '4px 8px', 
+              borderRadius: '4px',
+              textTransform: 'none',
+              fontSize: '0.8125rem',
+              '&:hover': { 
+                bgcolor: 'rgba(255, 255, 255, 0.04)',
+                color: 'white' 
+              } 
+            }}
+          >
+            Settings
+          </Button>
+          <Button 
+            component={RouterLink} 
+            href={paths.dashboard.account}
+            variant="text" 
+            size="small" 
+            onClick={onClose}
+            startIcon={<UserIcon fontSize="18" />}
+            sx={{ 
+              color: 'var(--NavItem-color)', 
+              justifyContent: 'flex-start', 
+              p: '4px 8px', 
+              borderRadius: '4px',
+              textTransform: 'none',
+              fontSize: '0.8125rem',
+              '&:hover': { 
+                bgcolor: 'rgba(255, 255, 255, 0.04)',
+                color: 'white' 
+              } 
+            }}
+          >
+            Profile
+          </Button>
+          <Button 
+            onClick={() => {
+              onClose?.();
+              handleSignOut();
+            }}
+            variant="text" 
+            size="small" 
+            startIcon={<SignOutIcon fontSize="18" />}
+            sx={{ 
+              color: 'var(--NavItem-color)', 
+              justifyContent: 'flex-start', 
+              p: '4px 8px', 
+              borderRadius: '4px',
+              textTransform: 'none',
+              fontSize: '0.8125rem',
+              '&:hover': { 
+                bgcolor: 'rgba(255, 255, 255, 0.04)',
+                color: 'white' 
+              } 
+            }}
+          >
+            Sign out
+          </Button>
+        </Stack>
+      </Box>
     </Drawer>
   );
 }

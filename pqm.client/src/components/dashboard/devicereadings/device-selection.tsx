@@ -110,59 +110,64 @@ export function DeviceFilters({
 
     // <Card sx={{ p: 2, maxWidth: '700px' }}>
     return (
-        <Card>
+        <Card sx={{ maxWidth: '600px', width: '100%', borderRadius: '8px' }}>
             <Divider />
-            <CardContent>
-                <Stack spacing={3} sx={{ maxWidth: 'sm' }}>
-                    <FormControl fullWidth>
+            <CardContent sx={{ p: 2 }}>
+                <Stack spacing={2} sx={{ maxWidth: '100%' }}>
+                    <FormControl fullWidth size="small">
                         <Autocomplete
-                            id="device-filter-autocomplete" // Unique ID for accessibility
-                            options={rows} // Provide the full array of Device objects
-                            getOptionLabel={(device) => device.name} // Tell Autocomplete how to get the display string from a Device object
-                            value={selectedDevice} // The currently selected Device object (from state)
-                            onChange={handleChange} // Our handler for selection/clearing
+                            id="device-filter-autocomplete"
+                            options={rows}
+                            size="small"
+                            getOptionLabel={(device) => device.name}
+                            value={selectedDevice}
+                            onChange={handleChange}
                             isOptionEqualToValue={(option, value) => option.id === value.id}
                             renderInput={(params) => (
                                 <TextField
                                     {...params}
                                     label="Select or type to search device"
                                     variant="outlined"
-                                    error={errors.device} // Pass the error state
-                                    helperText={errors.device ? "Device is required" : ""} // Pass helper text
+                                    size="small"
+                                    error={errors.device}
+                                    helperText={errors.device ? "Device is required" : ""}
                                 />
                             )}
                             openOnFocus
                         />
                     </FormControl>
-                    {<FormControl fullWidth>
+                    <FormControl fullWidth size="small">
                         <Autocomplete
-                            id="parameter-filter-autocomplete" // Unique ID for accessibility
-                            options={paramArray} // Provide the full array of Device objects
-                            getOptionLabel={(param) => param.name} // Tell Autocomplete how to get the display string from a Device object
-                            value={selectedParam} // The currently selected Device object (from state)
-                            onChange={handleParameterChange} // Our handler for selection/clearing
+                            id="parameter-filter-autocomplete"
+                            options={paramArray}
+                            size="small"
+                            getOptionLabel={(param) => param.name}
+                            value={selectedParam}
+                            onChange={handleParameterChange}
                             isOptionEqualToValue={(option, value) => option.id === value.id}
                             renderInput={(params) => (
                                 <TextField
                                     {...params}
                                     label="Select or type to parameter"
                                     variant="outlined"
-                                    error={errors.paramId} // Pass the error state
-                                    helperText={errors.paramId ? "Parameter is required" : ""} // Pass helper text
+                                    size="small"
+                                    error={errors.paramId}
+                                    helperText={errors.paramId ? "Parameter is required" : ""}
                                 />
                             )}
                             openOnFocus
                         />
-                    </FormControl>}
+                    </FormControl>
                     <FormControl fullWidth>
                         <LocalizationProvider dateAdapter={AdapterDayjs}>
-                            <DemoContainer components={['DatePicker ', 'DatePicker ']}>
+                            <DemoContainer components={['DatePicker', 'DatePicker']}>
                                 <DatePicker
                                     label="Start Date"
                                     value={startValue}
                                     onChange={(newValue) => setStartValue(newValue)}
                                     slotProps={{
                                         textField: {
+                                            size: 'small',
                                             error: errors.start,
                                             helperText: errors.start
                                                 ? "Start date is required"
@@ -176,6 +181,7 @@ export function DeviceFilters({
                                     onChange={(newValue) => setEndValue(newValue)}
                                     slotProps={{
                                         textField: {
+                                            size: 'small',
                                             error: errors.end,
                                             helperText: errors.end ? "End date is required" : "",
                                         },
@@ -187,8 +193,8 @@ export function DeviceFilters({
                 </Stack>
             </CardContent>
             <Divider />
-            <CardActions sx={{ justifyContent: 'flex-end' }}>
-                <Button variant="contained" onClick={handleSearch}>
+            <CardActions sx={{ justifyContent: 'flex-end', py: 1, px: 2 }}>
+                <Button variant="contained" size="small" onClick={handleSearch}>
                     Search
                 </Button>
             </CardActions>

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { HubConnectionBuilder } from "@microsoft/signalr";
 import { 
     Card, 
@@ -51,18 +51,18 @@ const DEFAULT_EVENT_STATUS_SECTIONS = [
         title: 'Current Related Events',
         obisCode: '0.0.96.11.1.255',
         items: [
-            { code: 51, label: 'R Phase - Current reverse - Occurrence' },
-            { code: 52, label: 'R Phase - Current reverse - Restoration' },
-            { code: 53, label: 'Y Phase - Current reverse - Occurrence' },
-            { code: 54, label: 'Y Phase - Current reverse - Restoration' },
-            { code: 55, label: 'B Phase - Current reverse - Occurrence' },
-            { code: 56, label: 'B Phase - Current reverse - Restoration' },
-            { code: 63, label: 'Current Unbalance - Occurrence' },
-            { code: 64, label: 'Current Unbalance - Restoration' },
-            { code: 65, label: 'Current bypass - Occurrence' },
-            { code: 66, label: 'Current bypass - Restoration' },
-            { code: 67, label: 'Over current in any phase - Occurrence' },
-            { code: 68, label: 'Over current in any phase - Restoration' },
+            { code: 51, label: 'R Phase - Current reverse - Occurrence', bitIndex: 4 },
+            { code: 52, label: 'R Phase - Current reverse - Restoration', bitIndex: 5 },
+            { code: 53, label: 'Y Phase - Current reverse - Occurrence', bitIndex: 8 },
+            { code: 54, label: 'Y Phase - Current reverse - Restoration', bitIndex: 9 },
+            { code: 55, label: 'B Phase - Current reverse - Occurrence', bitIndex: 10 },
+            { code: 56, label: 'B Phase - Current reverse - Restoration', bitIndex: 11 },
+            { code: 63, label: 'Current Unbalance - Occurrence', bitIndex: 7 },
+            { code: 64, label: 'Current Unbalance - Restoration', bitIndex: 6 },
+            { code: 65, label: 'Current bypass - Occurrence', bitIndex: 0 },
+            { code: 66, label: 'Current bypass - Restoration', bitIndex: 1 },
+            { code: 67, label: 'Over current in any phase - Occurrence', bitIndex: 2 },
+            { code: 68, label: 'Over current in any phase - Restoration', bitIndex: 3 },
         ],
     },
     {
@@ -113,13 +113,24 @@ const DEFAULT_EVENT_STATUS_SECTIONS = [
     },
 ];
 
-export function EventStatusCheckboxCard({ deviceId, obisCode }: { deviceId: string | number, obisCode: string }) {
+export function EventStatusCheckboxCard({ 
+    deviceId, 
+    obisCode,
+    startDate,
+    endDate
+}: { 
+    deviceId: string | number; 
+    obisCode: string;
+    startDate?: string;
+    endDate?: string;
+}) {
     const [loading, setLoading] = useState(true);
     const [entriesLoading, setEntriesLoading] = useState(false);
     const [dlmsObject, setDlmsObject] = useState<any>(null);
     const [value, setValue] = useState<string>("");
     const [profileEntries, setProfileEntries] = useState<any[]>([]);
     const [sections, setSections] = useState<any[]>(DEFAULT_EVENT_STATUS_SECTIONS);
+    const [scalers, setScalers] = useState<{[key: string]: number}>({});
 
     const loadData = async () => {
         setLoading(true);
@@ -141,7 +152,8 @@ export function EventStatusCheckboxCard({ deviceId, obisCode }: { deviceId: stri
                     }
                     acc[obis].items.push({
                         code: item.eventCode,
-                        label: item.label
+                        label: item.label,
+                        bitIndex: item.bitIndex
                     });
                     return acc;
                 }, {});
@@ -154,23 +166,46 @@ export function EventStatusCheckboxCard({ deviceId, obisCode }: { deviceId: stri
             // 1. Fetch DLMS status parameter object value
             const headerRes = await fetchConnectedHeaders(deviceId);
             let foundObj = null;
+            let scalerMap: {[key: string]: number} = {};
             if (headerRes && headerRes.status && headerRes.data.length > 0) {
                 for (const header of headerRes.data) {
                     const objectsRes = await fetchDLMSObjects(header.id);
                     if (objectsRes && objectsRes.status && Array.isArray(objectsRes.data)) {
-                        foundObj = objectsRes.data.find((o: any) => o.obisCode === obisCode);
-                        if (foundObj) {
-                            setDlmsObject(foundObj);
-                            setValue(foundObj.attribute2 || "");
-                            break;
+                        // Find the scaler profile
+                        const sObj = objectsRes.data.find((o: any) => o.obisCode === "1.0.94.91.7.255" || o.name?.toLowerCase().includes("scaler"));
+                        if (sObj && sObj.attribute2) {
+                            try {
+                                const parsed = JSON.parse(sObj.attribute2);
+                                const firstRow = Array.isArray(parsed) ? parsed[0] : parsed;
+                                if (firstRow) {
+                                    Object.keys(firstRow).forEach(key => {
+                                        const valStr = String(firstRow[key]);
+                                        const parts = valStr.split(",");
+                                        const scalerVal = Number(parts[0].trim());
+                                        if (!isNaN(scalerVal)) {
+                                            scalerMap[key] = scalerVal;
+                                        }
+                                    });
+                                }
+                            } catch (e) {
+                                console.error("Failed to parse scaler attribute:", e);
+                            }
+                        }
+
+                        const targetObj = objectsRes.data.find((o: any) => o.obisCode === obisCode);
+                        if (targetObj) {
+                            foundObj = targetObj;
+                            setDlmsObject(targetObj);
+                            setValue(targetObj.attribute2 || "");
                         }
                     }
                 }
             }
+            setScalers(scalerMap);
 
             // 2. Fetch corresponding Event Profile Generic logged entries
-            const profileObis = obisCode.replace("0.0.96.11.", "0.0.99.98.");
-            const entriesRes = await fetchProfileGenericEntries(deviceId, profileObis);
+            const profileObis = obisCode.startsWith("0.0.99.98.") ? obisCode : obisCode.replace("0.0.96.11.", "0.0.99.98.");
+            const entriesRes = await fetchProfileGenericEntries(deviceId, profileObis, undefined, startDate, endDate);
             if (entriesRes && entriesRes.status) {
                 setProfileEntries(entriesRes.data || []);
             } else {
@@ -184,9 +219,14 @@ export function EventStatusCheckboxCard({ deviceId, obisCode }: { deviceId: stri
         }
     };
 
+    const loadDataRef = useRef(loadData);
+    useEffect(() => {
+        loadDataRef.current = loadData;
+    });
+
     useEffect(() => {
         loadData();
-    }, [deviceId, obisCode]);
+    }, [deviceId, obisCode, startDate, endDate]);
 
     useEffect(() => {
         const connection = new HubConnectionBuilder()
@@ -200,7 +240,7 @@ export function EventStatusCheckboxCard({ deviceId, obisCode }: { deviceId: stri
                 connection.on("MeterUpdated", (updatedDeviceId: any) => {
                     console.log(`[SignalR] Received MeterUpdated message for device: ${updatedDeviceId}`);
                     if (String(updatedDeviceId) === String(deviceId)) {
-                        loadData();
+                        loadDataRef.current();
                     }
                 });
             })
@@ -221,7 +261,8 @@ export function EventStatusCheckboxCard({ deviceId, obisCode }: { deviceId: stri
         const numericValue = Number(normalized);
         if (!Number.isNaN(numericValue)) {
             section.items.forEach((item: any, index: number) => {
-                if ((numericValue & (1 << index)) !== 0) {
+                const bit = item.bitIndex !== undefined ? item.bitIndex : index;
+                if ((numericValue & (1 << bit)) !== 0) {
                     activeCodes.add(item.code);
                 }
             });
@@ -232,7 +273,8 @@ export function EventStatusCheckboxCard({ deviceId, obisCode }: { deviceId: stri
         if (/^[01]+$/.test(bitString)) {
             const reversedBits = bitString.split("").reverse();
             section.items.forEach((item: any, index: number) => {
-                const bitIndex = index % bitString.length;
+                const bit = item.bitIndex !== undefined ? item.bitIndex : index;
+                const bitIndex = bit % bitString.length;
                 if (reversedBits[bitIndex] === "1") {
                     activeCodes.add(item.code);
                 }
@@ -249,7 +291,8 @@ export function EventStatusCheckboxCard({ deviceId, obisCode }: { deviceId: stri
         return activeCodes;
     };
 
-    const section = sections.find(s => s.obisCode === obisCode);
+    const queryObis = obisCode.startsWith("0.0.99.98.") ? obisCode.replace("0.0.99.98.", "0.0.96.11.") : obisCode;
+    const section = sections.find(s => s.obisCode === queryObis);
 
     // Group profile entries by timestamp
     const getGroupedEntries = () => {
@@ -262,10 +305,23 @@ export function EventStatusCheckboxCard({ deviceId, obisCode }: { deviceId: stri
                 rowsMap[timeStr] = { Timestamp: timeStr };
             }
             
-            let displayVal = entry.numericValue !== null ? String(entry.numericValue) : (entry.textValue ?? '-');
+            let rawNum = entry.numericValue;
+            let displayVal = "-";
+
+            if (rawNum !== null) {
+                const scaler = scalers[entry.columnName];
+                if (scaler !== undefined) {
+                    const scaled = rawNum * Math.pow(10, scaler);
+                    displayVal = String(Number(scaled.toFixed(4)));
+                } else {
+                    displayVal = String(rawNum);
+                }
+            } else {
+                displayVal = entry.textValue ?? '-';
+            }
             
             // Map Event Code to friendly event name
-            if (entry.columnName.toLowerCase().includes("code") || entry.columnName.toLowerCase() === "event") {
+            if (entry.columnName.toLowerCase().includes("code") || entry.columnName.toLowerCase().includes("event")) {
                 const codeNum = Number(displayVal);
                 if (!isNaN(codeNum) && section) {
                     const item = section.items.find((i: any) => i.code === codeNum);
@@ -296,54 +352,18 @@ export function EventStatusCheckboxCard({ deviceId, obisCode }: { deviceId: stri
         );
     }
 
-    if (!dlmsObject || !section) {
+    if (!dlmsObject) {
         return (
             <Card>
                 <CardContent>
-                    <Alert severity="warning">Event status parameters were not found for OBIS Code {obisCode}. Ensure the device is connected and parameter scan has run.</Alert>
+                    <Alert severity="warning">Event parameters were not found for OBIS Code {obisCode}. Ensure the device is connected and parameter scan has run.</Alert>
                 </CardContent>
             </Card>
         );
     }
 
-    const activeCodes = parseEventStatusValue(value, section);
-
     return (
         <Stack spacing={4}>
-            {/* Status Checkbox Card */}
-            <Card sx={{ maxWidth: 'sm' }}>
-                <CardHeader 
-                    title={dlmsObject.name} 
-                    subheader={`OBIS Code: ${obisCode} | Value: ${value || '0'}`}
-                    titleTypographyProps={{ variant: 'h6', fontWeight: 'bold' }}
-                />
-                <Divider />
-                <CardContent>
-                    <Stack spacing={1}>
-                        {section.items.map((item: any) => (
-                            <FormControlLabel
-                                key={item.code}
-                                control={
-                                    <Checkbox 
-                                        checked={activeCodes.has(item.code)} 
-                                        disabled 
-                                        size="small" 
-                                    />
-                                }
-                                label={`${item.label} (${item.code})`}
-                                sx={{
-                                    m: 0,
-                                    '& .MuiFormControlLabel-label': {
-                                        fontSize: '0.9rem',
-                                        color: activeCodes.has(item.code) ? 'text.primary' : 'text.secondary'
-                                    }
-                                }}
-                            />
-                        ))}
-                    </Stack>
-                </CardContent>
-            </Card>
-
             {/* Historical Table */}
             <Card>
                 <CardHeader 

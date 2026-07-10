@@ -98,12 +98,11 @@ export function EventFilters({
     }, [selectedDevice]);
 
     const handleSearch = () => {
-        const isStatus = selectedEvent?.key?.startsWith("status_");
         const newErrors = {
             device: !selectedDevice,
             event: !selectedEvent,
-            start: !isStatus && !startValue,
-            end: !isStatus && !endValue,
+            start: !startValue,
+            end: !endValue,
         };
         setErrors(newErrors);
 
@@ -111,8 +110,8 @@ export function EventFilters({
 
         onSearch({
             deviceId: selectedDevice?.id ?? null,
-            startTime: isStatus ? null : startValue,
-            endTime: isStatus ? null : endValue,
+            startTime: startValue,
+            endTime: endValue,
             eventType: selectedEvent?.key ?? null,
         });
     };
@@ -167,38 +166,36 @@ export function EventFilters({
                     </FormControl>
 
                     {/* Dates */}
-                    {!(selectedEvent?.key?.startsWith("status_")) && (
-                        <FormControl fullWidth>
-                            <LocalizationProvider dateAdapter={AdapterDayjs}>
-                                <DemoContainer components={["DatePicker ", "DatePicker "]}>
-                                    <DatePicker
-                                        label="Start Date"
-                                        value={startValue}
-                                        onChange={(newValue) => setStartValue(newValue)}
-                                        slotProps={{
-                                            textField: {
-                                                error: errors.start,
-                                                helperText: errors.start
-                                                    ? "Start date is required"
-                                                    : "",
-                                            },
-                                        }}
-                                    />
-                                    <DatePicker
-                                        label="End Date"
-                                        value={endValue}
-                                        onChange={(newValue) => setEndValue(newValue)}
-                                        slotProps={{
-                                            textField: {
-                                                error: errors.end,
-                                                helperText: errors.end ? "End date is required" : "",
-                                            },
-                                        }}
-                                    />
-                                </DemoContainer>
-                            </LocalizationProvider>
-                        </FormControl>
-                    )}
+                    <FormControl fullWidth>
+                        <LocalizationProvider dateAdapter={AdapterDayjs}>
+                            <DemoContainer components={["DatePicker ", "DatePicker "]}>
+                                <DatePicker
+                                    label="Start Date"
+                                    value={startValue}
+                                    onChange={(newValue) => setStartValue(newValue)}
+                                    slotProps={{
+                                        textField: {
+                                            error: errors.start,
+                                            helperText: errors.start
+                                                ? "Start date is required"
+                                                : "",
+                                        },
+                                    }}
+                                />
+                                <DatePicker
+                                    label="End Date"
+                                    value={endValue}
+                                    onChange={(newValue) => setEndValue(newValue)}
+                                    slotProps={{
+                                        textField: {
+                                            error: errors.end,
+                                            helperText: errors.end ? "End date is required" : "",
+                                        },
+                                    }}
+                                />
+                            </DemoContainer>
+                        </LocalizationProvider>
+                    </FormControl>
                 </Stack>
             </CardContent>
             <Divider />

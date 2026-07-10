@@ -367,6 +367,11 @@ namespace PQM.Server.Controllers
                     throw new System.IO.IOException(value);
                 }
 
+                if (param.ObisCode.StartsWith("0.0.96.11."))
+                {
+                    value = DecodeEventStatusBitmask(db, param.ObisCode, value);
+                }
+
                 db.DeviceLog.Add(new DeviceLog
                 {
                     DeviceId = id,
@@ -430,6 +435,11 @@ namespace PQM.Server.Controllers
                     if (value.StartsWith("Error:", StringComparison.OrdinalIgnoreCase) && IsConnectionLostError(value))
                     {
                         throw new System.IO.IOException(value);
+                    }
+
+                    if (dlmsObject.ObisCode.StartsWith("0.0.96.11.") && param.AttributeId == 2)
+                    {
+                        value = DecodeEventStatusBitmask(db, dlmsObject.ObisCode, value);
                     }
 
                     var pv = new ParameterValue
@@ -570,6 +580,11 @@ namespace PQM.Server.Controllers
                             throw new System.IO.IOException(value);
                         }
 
+                        if (dlmsObject.ObisCode.StartsWith("0.0.96.11.") && param.AttributeId == 2)
+                        {
+                            value = DecodeEventStatusBitmask(db, dlmsObject.ObisCode, value);
+                        }
+
                         var pv = new ParameterValue
                         {
                             ParameterId = param.Id,
@@ -680,6 +695,39 @@ namespace PQM.Server.Controllers
             // No session — create a fresh one
             _logger.LogInformation("[Session] Connecting to device {DeviceId} at {IP}:{Port}", deviceId, device.IP, device.PORT);
             return _sessionManager.Connect(deviceId, device.IP, device.PORT, clientAddress, serverAddress, authentication, password, useLogicalNameReferencing, standard);
+        }
+
+        private string DecodeEventStatusBitmask(DataContext db, string obisCode, string rawValue)
+        {
+            if (string.IsNullOrEmpty(rawValue) || !int.TryParse(rawValue.Trim(), out int numericValue))
+            {
+                return rawValue;
+            }
+
+            var mappings = db.EventStatusMapping
+                .Where(m => m.ObisCode == obisCode)
+                .ToList();
+
+            if (!mappings.Any())
+            {
+                return rawValue;
+            }
+
+            var activeEvents = new List<string>();
+            foreach (var mapping in mappings)
+            {
+                if ((numericValue & (1 << mapping.BitIndex)) != 0)
+                {
+                    activeEvents.Add(mapping.EventCode.ToString());
+                }
+            }
+
+            if (activeEvents.Any())
+            {
+                return string.Join(",", activeEvents);
+            }
+
+            return "0";
         }
 
         /// <summary>

@@ -98,8 +98,7 @@ export default function Page(): React.JSX.Element {
     eventType: string | number | null;
   }) => {
     const { deviceId, startTime, endTime, eventType } = params;
-    const isStatus = eventType?.toString().startsWith("status_");
-    if (!deviceId || !eventType || (!isStatus && (!startTime || !endTime))) return;
+    if (!deviceId || !eventType || !startTime || !endTime) return;
 
     setFilters({ deviceId, eventType, startTime, endTime });
     setPage(0); // reset to first page
@@ -158,6 +157,8 @@ export default function Page(): React.JSX.Element {
             <EventStatusCheckboxCard
               deviceId={filters.deviceId!}
               obisCode={filters.eventType.toString().substring(7)}
+              startDate={filters.startTime?.toISOString()}
+              endDate={filters.endTime?.toISOString()}
             />
           ) : (
             <EventRTable
