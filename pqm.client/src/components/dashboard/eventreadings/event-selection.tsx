@@ -117,15 +117,16 @@ export function EventFilters({
     };
 
     return (
-        <Card>
+        <Card sx={{ maxWidth: '600px', width: '100%', borderRadius: '8px' }}>
             <Divider />
-            <CardContent>
-                <Stack spacing={3} sx={{ maxWidth: "sm" }}>
+            <CardContent sx={{ p: 2 }}>
+                <Stack spacing={2} sx={{ maxWidth: "100%" }}>
                     {/* Device */}
-                    <FormControl fullWidth>
+                    <FormControl fullWidth size="small">
                         <Autocomplete
                             id="device-filter-autocomplete"
                             options={rows}
+                            size="small"
                             getOptionLabel={(device) => device.name}
                             value={selectedDevice}
                             onChange={(e, v) => setSelectedDevice(v)}
@@ -135,6 +136,7 @@ export function EventFilters({
                                     {...params}
                                     label="Select or type to search device"
                                     variant="outlined"
+                                    size="small"
                                     error={errors.device}
                                     helperText={errors.device ? "Device is required" : ""}
                                 />
@@ -144,10 +146,11 @@ export function EventFilters({
                     </FormControl>
 
                     {/* Event */}
-                    <FormControl fullWidth>
+                    <FormControl fullWidth size="small">
                         <Autocomplete
                             id="event-filter-autocomplete"
                             options={eventTypes}
+                            size="small"
                             getOptionLabel={(event) => event.value}
                             value={selectedEvent}
                             onChange={(e, v) => setSelectedEvent(v)}
@@ -157,6 +160,7 @@ export function EventFilters({
                                     {...params}
                                     label="Select or type to search event"
                                     variant="outlined"
+                                    size="small"
                                     error={errors.event}
                                     helperText={errors.event ? "Event is required" : ""}
                                 />
@@ -168,13 +172,14 @@ export function EventFilters({
                     {/* Dates */}
                     <FormControl fullWidth>
                         <LocalizationProvider dateAdapter={AdapterDayjs}>
-                            <DemoContainer components={["DatePicker ", "DatePicker "]}>
+                            <DemoContainer components={["DatePicker", "DatePicker"]}>
                                 <DatePicker
                                     label="Start Date"
                                     value={startValue}
                                     onChange={(newValue) => setStartValue(newValue)}
                                     slotProps={{
                                         textField: {
+                                            size: 'small',
                                             error: errors.start,
                                             helperText: errors.start
                                                 ? "Start date is required"
@@ -188,6 +193,7 @@ export function EventFilters({
                                     onChange={(newValue) => setEndValue(newValue)}
                                     slotProps={{
                                         textField: {
+                                            size: 'small',
                                             error: errors.end,
                                             helperText: errors.end ? "End date is required" : "",
                                         },
@@ -199,8 +205,8 @@ export function EventFilters({
                 </Stack>
             </CardContent>
             <Divider />
-            <CardActions sx={{ justifyContent: "flex-end" }}>
-                <Button variant="contained" onClick={handleSearch}>
+            <CardActions sx={{ justifyContent: "flex-end", py: 1, px: 2 }}>
+                <Button variant="contained" size="small" onClick={handleSearch}>
                     Search
                 </Button>
             </CardActions>
