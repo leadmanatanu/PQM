@@ -23,6 +23,7 @@ namespace PQM.Infrastructure.Services
     {
         private readonly GXNet _media;
         private readonly GXDLMSClient _client;
+        private bool _isConnected = false;
 
         public int WaitTime { get; set; } = 5000; // ms
         public int RetryCount { get; set; } = 3;
@@ -63,6 +64,7 @@ namespace PQM.Infrastructure.Services
                     if (reply.Data != null)
                     {
                         _client.ParseAAREResponse(reply.Data);
+                        _isConnected = true;
                     }
                 }
                 else
@@ -125,12 +127,130 @@ namespace PQM.Infrastructure.Services
             }
         }
 
+        public void WriteRegister(string obisCode, string stringValue, int attributeIndex = 2)
+        {
+            if (_client.Objects == null)
+            {
+                throw new InvalidOperationException("Association view is not loaded. Call Connect() first.");
+            }
+
+            GXDLMSObject? obj = null;
+            foreach (var o in _client.Objects)
+            {
+                if (o.LogicalName == obisCode)
+                {
+                    obj = o;
+                    break;
+                }
+            }
+
+            if (obj == null)
+            {
+                throw new Exception($"Object with OBIS code {obisCode} not found in the meter.");
+            }
+
+            // Parse the string value to the correct type
+            object newValue = stringValue;
+            if (int.TryParse(stringValue, out int intVal))
+            {
+                newValue = intVal;
+            }
+            else if (double.TryParse(stringValue, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double doubleVal))
+            {
+                newValue = doubleVal;
+            }
+            else if (bool.TryParse(stringValue, out bool boolVal))
+            {
+                newValue = boolVal;
+            }
+            else if (DateTime.TryParse(stringValue, out DateTime dtVal))
+            {
+                newValue = dtVal;
+            }
+
+            // Set the value on the object
+            if (obj is GXDLMSRegister reg)
+            {
+                reg.Value = newValue;
+            }
+            else if (obj is GXDLMSData data)
+            {
+                data.Value = newValue;
+            }
+            else
+            {
+                _client.UpdateValue(obj, attributeIndex, newValue);
+            }
+
+            // Generate write request packets
+            byte[][] writeReq = _client.Write(obj, attributeIndex);
+            var reply = new GXReplyData();
+            if (writeReq != null)
+            {
+                if (!ReadDataBlock(writeReq, reply))
+                {
+                    throw new Exception($"Write failed. DLMS Error code: {reply.Error}");
+                }
+            }
+        }
+
         private string FormatValue(object? val)
         {
             if (val == null) return "";
+            if (val is Array arr && val is not byte[])
+            {
+                var parts = new List<string>();
+                foreach (var item in arr) parts.Add(FormatValue(item));
+                return string.Join(", ", parts);
+            }
             if (val is byte[] bytes)
             {
+                // DLMS DateTime is always exactly 12 bytes: year(2)+month+day+dow+hour+min+sec+hundredths+deviation(2)+status
+                // Try to parse it into a readable date before falling back to hex.
+                if (bytes.Length == 12)
+                {
+                    try
+                    {
+                        // DLMS Clock format: Year(2) Month Day DoW Hour Min Sec Hundredths Deviation(2) Status
+                        int year   = (bytes[0] << 8) | bytes[1];  // big-endian
+                        int month  = bytes[2];
+                        int day    = bytes[3];
+                        // bytes[4] = day-of-week (skip)
+                        int hour   = bytes[5];
+                        int minute = bytes[6];
+                        int second = bytes[7];
+                        // 0xFF means wildcard / not specified
+                        if (year >= 1 && year <= 9999 && month >= 1 && month <= 12 && day >= 1 && day <= 31
+                            && hour <= 23 && minute <= 59 && second <= 59)
+                        {
+                            int sec = (second == 0xFF) ? 0 : second;
+                            return $"{year:D4}-{month:D2}-{day:D2} {hour:D2}:{minute:D2}:{sec:D2}";
+                        }
+                    }
+                    catch { /* not a valid DateTime — fall through to hex */ }
+                }
                 return BitConverter.ToString(bytes).Replace("-", " ");
+            }
+            // Handle nested arrays (e.g. sub-structures in billing/load profiles)
+            if (val is object[] objArr)
+            {
+                return string.Join(", ", objArr.Select(v => FormatValue(v)));
+            }
+            if (val is System.Collections.IEnumerable enumerable && val is not string)
+            {
+                var parts = new List<string>();
+                foreach (var item in enumerable) parts.Add(FormatValue(item));
+                return string.Join(", ", parts);
+            }
+            // GXDateTime returned directly (not as byte[])
+            if (val is Gurux.DLMS.GXDateTime gxdtDirect)
+            {
+                try
+                {
+                    var d = gxdtDirect.Value.DateTime;
+                    return $"{d.Year:D4}-{d.Month:D2}-{d.Day:D2} {d.Hour:D2}:{d.Minute:D2}:{d.Second:D2}";
+                }
+                catch { }
             }
             return val.ToString() ?? "";
         }
@@ -143,9 +263,18 @@ namespace PQM.Infrastructure.Services
             foreach (var co in profile.CaptureObjects)
             {
                 try { converter.UpdateOBISCodeInformation(co.Key); } catch { }
-                string name = string.IsNullOrEmpty(co.Key.Description)
-                    ? $"{co.Key.ObjectType} {co.Key.LogicalName}"
-                    : co.Key.Description;
+                string name;
+                if (!string.IsNullOrEmpty(co.Key.Description))
+                {
+                    name = co.Key.Description;
+                }
+                else
+                {
+                    // Fall back to a meaningful name: OBIS code + attribute index
+                    string logicalName = co.Key.LogicalName ?? "Unknown";
+                    int attrIndex = co.Value?.AttributeIndex ?? 2;
+                    name = $"{logicalName} (Attr {attrIndex})";
+                }
                 cols.Add(name);
             }
             // Make column names unique
@@ -655,6 +784,16 @@ namespace PQM.Infrastructure.Services
                         return System.Text.Json.JsonSerializer.Serialize(decodedList);
                     }
 
+                    if (obj is GXDLMSAssociationLogicalName assoc3 && attributeId == 3)
+                    {
+                        var data = new
+                        {
+                            ClientSAP = assoc3.ClientSAP,
+                            ServerSAP = assoc3.ServerSAP
+                        };
+                        return System.Text.Json.JsonSerializer.Serialize(data);
+                    }
+
                     if (obj is GXDLMSAssociationLogicalName assoc4 && attributeId == 4)
                     {
                         var contextName = assoc4.ApplicationContextName;
@@ -675,6 +814,22 @@ namespace PQM.Infrastructure.Services
                         }
                     }
 
+                    if (obj is GXDLMSAssociationLogicalName assoc5 && attributeId == 5)
+                    {
+                        var contextInfo = assoc5.XDLMSContextInfo;
+                        if (contextInfo != null)
+                        {
+                            var data = new
+                            {
+                                Conformance = contextInfo.Conformance.ToString(),
+                                MaxReceivePduSize = contextInfo.MaxReceivePduSize,
+                                MaxSendPduSize = contextInfo.MaxSendPduSize,
+                                DlmsVersionNumber = contextInfo.DlmsVersionNumber
+                            };
+                            return System.Text.Json.JsonSerializer.Serialize(data);
+                        }
+                    }
+
                     if (obj is GXDLMSAssociationLogicalName assoc6 && attributeId == 6)
                     {
                         var authName = assoc6.AuthenticationMechanismName;
@@ -688,11 +843,44 @@ namespace PQM.Infrastructure.Services
                                 CountryName = authName.CountryName,
                                 IdentifiedOrganization = authName.IdentifiedOrganization,
                                 DlmsUA = authName.DlmsUA,
-                                AuthenticationName = authName.AuthenticationMechanismName,
+                                AuthenticationMechanismName = authName.AuthenticationMechanismName,
                                 MechanismId = authName.MechanismId.ToString()
                             };
                             return System.Text.Json.JsonSerializer.Serialize(data);
                         }
+                    }
+
+                    if (obj is GXDLMSAssociationLogicalName assoc7 && attributeId == 7)
+                    {
+                        if (assoc7.Secret != null)
+                        {
+                            return System.Text.Encoding.ASCII.GetString(assoc7.Secret);
+                        }
+                        return "";
+                    }
+
+                    if (obj is GXDLMSAssociationLogicalName assoc8 && attributeId == 8)
+                    {
+                        return assoc8.AssociationStatus.ToString();
+                    }
+
+                    if (obj is GXDLMSAssociationLogicalName assoc9 && attributeId == 9)
+                    {
+                        return assoc9.SecuritySetupReference ?? "";
+                    }
+
+                    if (obj is GXDLMSAssociationLogicalName assoc10 && attributeId == 10)
+                    {
+                        if (assoc10.UserList != null)
+                        {
+                            var dict = new Dictionary<string, string>();
+                            foreach (var u in assoc10.UserList)
+                            {
+                                dict[$"User {u.Key}"] = u.Value;
+                            }
+                            return System.Text.Json.JsonSerializer.Serialize(dict);
+                        }
+                        return "{}";
                     }
                     
                     var valProp = obj.GetType().GetProperty("Value");
@@ -714,9 +902,9 @@ namespace PQM.Infrastructure.Services
             }
         }
 
-        public List<Parameter> GetAssociationView()
+        public List<PQM.Core.Entities.Parameter> GetAssociationView()
         {
-            var list = new List<Parameter>();
+            var list = new List<PQM.Core.Entities.Parameter>();
             var reply = new GXReplyData();
             
             byte[][] request = _client.GetObjectsRequest();
@@ -749,7 +937,7 @@ namespace PQM.Infrastructure.Services
                     string obis = obj.LogicalName;
                     string name = string.IsNullOrEmpty(obj.Description) ? $"{obj.ObjectType} - {obis}" : obj.Description;
                     
-                    list.Add(new Parameter
+                    list.Add(new PQM.Core.Entities.Parameter
                     {
                         Name = name,
                         ObisCode = obis,
@@ -825,7 +1013,14 @@ namespace PQM.Infrastructure.Services
                         obj.ObjectType == ObjectType.ActionSchedule ||
                         obj.ObjectType == ObjectType.ActivityCalendar)
                     {
-                        val = ReadObjectValue(obj);
+                        try
+                        {
+                            val = ReadObjectValue(obj);
+                        }
+                        catch (Exception ex)
+                        {
+                            val = $"Error: {ex.Message}";
+                        }
                     }
 
                     list.Add(new DiscoveredParameter
@@ -903,7 +1098,7 @@ namespace PQM.Infrastructure.Services
             };
             lock (_media.Synchronous)
             {
-                while (!succeeded && pos != 3)
+                while (!succeeded && pos < RetryCount)
                 {
                     if (!reply.IsStreaming())
                     {
@@ -964,21 +1159,45 @@ namespace PQM.Infrastructure.Services
         {
             try
             {
-                if (_client != null && _client.ConnectionState != ConnectionState.None)
+                if (_isConnected && _client != null && _client.ConnectionState != ConnectionState.None)
                 {
                     var reply = new GXReplyData();
-                    //byte[] disconnect = _client.DisconnectRequest();
-                    //if (disconnect != null)
-                    //{
-                    //    ReadDataBlock(disconnect, reply);
-                    //}
+                    byte[][] closeCmd = null;
+
+                    if (_client.InterfaceType == InterfaceType.WRAPPER)
+                    {
+                        closeCmd = _client.ReleaseRequest();
+                    }
+                    else
+                    {
+                        var disconnectFrame = _client.DisconnectRequest();
+                        if (disconnectFrame != null)
+                        {
+                            closeCmd = new[] { disconnectFrame };
+                        }
+                    }
+
+                    if (closeCmd != null)
+                    {
+                        ReadDataBlock(closeCmd, reply);
+                    }
                 }
             }
             catch { }
             finally
             {
-                _media.Close();
+                _isConnected = false;
+                try { _media.Close(); } catch { }
             }
+        }
+
+        public void Reconnect()
+        {
+            // Fully close existing TCP session before reconnecting
+            _isConnected = false;
+            try { _media.Close(); } catch { }
+            Thread.Sleep(2000); // Give meter time to release the session
+            Connect();
         }
 
         public void Dispose()

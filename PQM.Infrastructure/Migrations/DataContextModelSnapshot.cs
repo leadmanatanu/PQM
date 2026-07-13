@@ -309,14 +309,8 @@ namespace PQM.Infrastructure.Migrations
                     b.Property<long>("Id")
                         .HasColumnType("bigint");
 
-                    b.Property<double?>("NumericValue")
-                        .HasColumnType("float");
-
                     b.Property<string>("ParameterName")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Unit")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Value")
@@ -405,6 +399,480 @@ namespace PQM.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("EventLog");
+                });
+
+            modelBuilder.Entity("PQM.Core.Entities.EventStatusMapping", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BitIndex")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("EventCode")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ObisCode")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("EventStatusMapping");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            BitIndex = 0,
+                            Category = "voltage",
+                            EventCode = 1,
+                            Label = "R-Phase - Voltage Missing - Occurrence",
+                            ObisCode = "0.0.96.11.0.255"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            BitIndex = 1,
+                            Category = "voltage",
+                            EventCode = 2,
+                            Label = "R-Phase - Voltage Missing - Restoration",
+                            ObisCode = "0.0.96.11.0.255"
+                        },
+                        new
+                        {
+                            Id = 3,
+                            BitIndex = 2,
+                            Category = "voltage",
+                            EventCode = 3,
+                            Label = "Y-Phase - Voltage Missing - Occurrence",
+                            ObisCode = "0.0.96.11.0.255"
+                        },
+                        new
+                        {
+                            Id = 4,
+                            BitIndex = 3,
+                            Category = "voltage",
+                            EventCode = 4,
+                            Label = "Y-Phase - Voltage Missing - Restoration",
+                            ObisCode = "0.0.96.11.0.255"
+                        },
+                        new
+                        {
+                            Id = 5,
+                            BitIndex = 4,
+                            Category = "voltage",
+                            EventCode = 5,
+                            Label = "B-Phase - Voltage Missing - Occurrence",
+                            ObisCode = "0.0.96.11.0.255"
+                        },
+                        new
+                        {
+                            Id = 6,
+                            BitIndex = 5,
+                            Category = "voltage",
+                            EventCode = 6,
+                            Label = "B-Phase - Voltage Missing - Restoration",
+                            ObisCode = "0.0.96.11.0.255"
+                        },
+                        new
+                        {
+                            Id = 7,
+                            BitIndex = 6,
+                            Category = "voltage",
+                            EventCode = 7,
+                            Label = "Over Voltage in any Phase - Occurrence",
+                            ObisCode = "0.0.96.11.0.255"
+                        },
+                        new
+                        {
+                            Id = 8,
+                            BitIndex = 7,
+                            Category = "voltage",
+                            EventCode = 8,
+                            Label = "Over Voltage in any Phase - Restoration",
+                            ObisCode = "0.0.96.11.0.255"
+                        },
+                        new
+                        {
+                            Id = 9,
+                            BitIndex = 8,
+                            Category = "voltage",
+                            EventCode = 9,
+                            Label = "Low Voltage in any Phase - Occurrence",
+                            ObisCode = "0.0.96.11.0.255"
+                        },
+                        new
+                        {
+                            Id = 10,
+                            BitIndex = 9,
+                            Category = "voltage",
+                            EventCode = 10,
+                            Label = "Low Voltage in any Phase - Restoration",
+                            ObisCode = "0.0.96.11.0.255"
+                        },
+                        new
+                        {
+                            Id = 11,
+                            BitIndex = 10,
+                            Category = "voltage",
+                            EventCode = 11,
+                            Label = "Voltage Unbalance - Occurrence",
+                            ObisCode = "0.0.96.11.0.255"
+                        },
+                        new
+                        {
+                            Id = 12,
+                            BitIndex = 11,
+                            Category = "voltage",
+                            EventCode = 12,
+                            Label = "Voltage Unbalance - Restoration",
+                            ObisCode = "0.0.96.11.0.255"
+                        },
+                        new
+                        {
+                            Id = 13,
+                            BitIndex = 4,
+                            Category = "current",
+                            EventCode = 51,
+                            Label = "R Phase - Current reverse - Occurrence",
+                            ObisCode = "0.0.96.11.1.255"
+                        },
+                        new
+                        {
+                            Id = 14,
+                            BitIndex = 5,
+                            Category = "current",
+                            EventCode = 52,
+                            Label = "R Phase - Current reverse - Restoration",
+                            ObisCode = "0.0.96.11.1.255"
+                        },
+                        new
+                        {
+                            Id = 15,
+                            BitIndex = 8,
+                            Category = "current",
+                            EventCode = 53,
+                            Label = "Y Phase - Current reverse - Occurrence",
+                            ObisCode = "0.0.96.11.1.255"
+                        },
+                        new
+                        {
+                            Id = 16,
+                            BitIndex = 9,
+                            Category = "current",
+                            EventCode = 54,
+                            Label = "Y Phase - Current reverse - Restoration",
+                            ObisCode = "0.0.96.11.1.255"
+                        },
+                        new
+                        {
+                            Id = 17,
+                            BitIndex = 10,
+                            Category = "current",
+                            EventCode = 55,
+                            Label = "B Phase - Current reverse - Occurrence",
+                            ObisCode = "0.0.96.11.1.255"
+                        },
+                        new
+                        {
+                            Id = 18,
+                            BitIndex = 11,
+                            Category = "current",
+                            EventCode = 56,
+                            Label = "B Phase - Current reverse - Restoration",
+                            ObisCode = "0.0.96.11.1.255"
+                        },
+                        new
+                        {
+                            Id = 19,
+                            BitIndex = 7,
+                            Category = "current",
+                            EventCode = 63,
+                            Label = "Current Unbalance - Occurrence",
+                            ObisCode = "0.0.96.11.1.255"
+                        },
+                        new
+                        {
+                            Id = 20,
+                            BitIndex = 6,
+                            Category = "current",
+                            EventCode = 64,
+                            Label = "Current Unbalance - Restoration",
+                            ObisCode = "0.0.96.11.1.255"
+                        },
+                        new
+                        {
+                            Id = 21,
+                            BitIndex = 0,
+                            Category = "current",
+                            EventCode = 65,
+                            Label = "Current bypass - Occurrence",
+                            ObisCode = "0.0.96.11.1.255"
+                        },
+                        new
+                        {
+                            Id = 22,
+                            BitIndex = 1,
+                            Category = "current",
+                            EventCode = 66,
+                            Label = "Current bypass - Restoration",
+                            ObisCode = "0.0.96.11.1.255"
+                        },
+                        new
+                        {
+                            Id = 23,
+                            BitIndex = 2,
+                            Category = "current",
+                            EventCode = 67,
+                            Label = "Over current in any phase - Occurrence",
+                            ObisCode = "0.0.96.11.1.255"
+                        },
+                        new
+                        {
+                            Id = 24,
+                            BitIndex = 3,
+                            Category = "current",
+                            EventCode = 68,
+                            Label = "Over current in any phase - Restoration",
+                            ObisCode = "0.0.96.11.1.255"
+                        },
+                        new
+                        {
+                            Id = 25,
+                            BitIndex = 0,
+                            Category = "power",
+                            EventCode = 101,
+                            Label = "Power failure - Occurrence",
+                            ObisCode = "0.0.96.11.2.255"
+                        },
+                        new
+                        {
+                            Id = 26,
+                            BitIndex = 1,
+                            Category = "power",
+                            EventCode = 102,
+                            Label = "Power failure - Restoration",
+                            ObisCode = "0.0.96.11.2.255"
+                        },
+                        new
+                        {
+                            Id = 27,
+                            BitIndex = 0,
+                            Category = "transaction",
+                            EventCode = 151,
+                            Label = "Real Time Clock - Date and Time",
+                            ObisCode = "0.0.96.11.3.255"
+                        },
+                        new
+                        {
+                            Id = 28,
+                            BitIndex = 1,
+                            Category = "transaction",
+                            EventCode = 152,
+                            Label = "Demand Integration Period",
+                            ObisCode = "0.0.96.11.3.255"
+                        },
+                        new
+                        {
+                            Id = 29,
+                            BitIndex = 2,
+                            Category = "transaction",
+                            EventCode = 153,
+                            Label = "Profile Capture Period",
+                            ObisCode = "0.0.96.11.3.255"
+                        },
+                        new
+                        {
+                            Id = 30,
+                            BitIndex = 3,
+                            Category = "transaction",
+                            EventCode = 154,
+                            Label = "Single-action Schedule for Billing Dates",
+                            ObisCode = "0.0.96.11.3.255"
+                        },
+                        new
+                        {
+                            Id = 31,
+                            BitIndex = 4,
+                            Category = "transaction",
+                            EventCode = 155,
+                            Label = "Activity Calendar Time Zones",
+                            ObisCode = "0.0.96.11.3.255"
+                        },
+                        new
+                        {
+                            Id = 32,
+                            BitIndex = 5,
+                            Category = "transaction",
+                            EventCode = 157,
+                            Label = "New Firmware Activated",
+                            ObisCode = "0.0.96.11.3.255"
+                        },
+                        new
+                        {
+                            Id = 33,
+                            BitIndex = 6,
+                            Category = "transaction",
+                            EventCode = 158,
+                            Label = "Load limit (kW) set",
+                            ObisCode = "0.0.96.11.3.255"
+                        },
+                        new
+                        {
+                            Id = 34,
+                            BitIndex = 7,
+                            Category = "transaction",
+                            EventCode = 159,
+                            Label = "Enabled - load limit function",
+                            ObisCode = "0.0.96.11.3.255"
+                        },
+                        new
+                        {
+                            Id = 35,
+                            BitIndex = 8,
+                            Category = "transaction",
+                            EventCode = 160,
+                            Label = "Disabled - load limit function",
+                            ObisCode = "0.0.96.11.3.255"
+                        },
+                        new
+                        {
+                            Id = 36,
+                            BitIndex = 9,
+                            Category = "transaction",
+                            EventCode = 161,
+                            Label = "LLS secret (MR) change",
+                            ObisCode = "0.0.96.11.3.255"
+                        },
+                        new
+                        {
+                            Id = 37,
+                            BitIndex = 10,
+                            Category = "transaction",
+                            EventCode = 162,
+                            Label = "HLS key (US) change",
+                            ObisCode = "0.0.96.11.3.255"
+                        },
+                        new
+                        {
+                            Id = 38,
+                            BitIndex = 11,
+                            Category = "transaction",
+                            EventCode = 163,
+                            Label = "HLS key (FW) change",
+                            ObisCode = "0.0.96.11.3.255"
+                        },
+                        new
+                        {
+                            Id = 39,
+                            BitIndex = 12,
+                            Category = "transaction",
+                            EventCode = 164,
+                            Label = "Global key change(encryption and authentication)",
+                            ObisCode = "0.0.96.11.3.255"
+                        },
+                        new
+                        {
+                            Id = 40,
+                            BitIndex = 13,
+                            Category = "transaction",
+                            EventCode = 165,
+                            Label = "ESWF change",
+                            ObisCode = "0.0.96.11.3.255"
+                        },
+                        new
+                        {
+                            Id = 41,
+                            BitIndex = 14,
+                            Category = "transaction",
+                            EventCode = 166,
+                            Label = "MD reset",
+                            ObisCode = "0.0.96.11.3.255"
+                        },
+                        new
+                        {
+                            Id = 42,
+                            BitIndex = 15,
+                            Category = "transaction",
+                            EventCode = 169,
+                            Label = "Single Action Schedule for Image Activation",
+                            ObisCode = "0.0.96.11.3.255"
+                        },
+                        new
+                        {
+                            Id = 43,
+                            BitIndex = 16,
+                            Category = "transaction",
+                            EventCode = 182,
+                            Label = "Passive Relay time.",
+                            ObisCode = "0.0.96.11.3.255"
+                        },
+                        new
+                        {
+                            Id = 44,
+                            BitIndex = 0,
+                            Category = "others",
+                            EventCode = 201,
+                            Label = "Influence of permanent magnet - Occurrence",
+                            ObisCode = "0.0.96.11.4.255"
+                        },
+                        new
+                        {
+                            Id = 45,
+                            BitIndex = 1,
+                            Category = "others",
+                            EventCode = 202,
+                            Label = "Influence of permanent magnet - Restoration",
+                            ObisCode = "0.0.96.11.4.255"
+                        },
+                        new
+                        {
+                            Id = 46,
+                            BitIndex = 2,
+                            Category = "others",
+                            EventCode = 203,
+                            Label = "Neutral disturbance - Occurrence",
+                            ObisCode = "0.0.96.11.4.255"
+                        },
+                        new
+                        {
+                            Id = 47,
+                            BitIndex = 3,
+                            Category = "others",
+                            EventCode = 204,
+                            Label = "Neutral disturbance - Restoration",
+                            ObisCode = "0.0.96.11.4.255"
+                        },
+                        new
+                        {
+                            Id = 48,
+                            BitIndex = 4,
+                            Category = "others",
+                            EventCode = 205,
+                            Label = "Meter cover opened",
+                            ObisCode = "0.0.96.11.4.255"
+                        },
+                        new
+                        {
+                            Id = 50,
+                            BitIndex = 5,
+                            Category = "others",
+                            EventCode = 206,
+                            Label = "Terminal cover opened",
+                            ObisCode = "0.0.96.11.4.255"
+                        });
                 });
 
             modelBuilder.Entity("PQM.Core.Entities.FTPSetting", b =>

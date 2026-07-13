@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import { useState, useEffect } from "react";
@@ -9,6 +9,7 @@ import Box from "@mui/material/Box";
 
 import { EventRTable } from "@/components/dashboard/eventreadings/events-table";
 import { EventFilters } from "@/components/dashboard/eventreadings/event-selection";
+import { EventStatusCheckboxCard } from "@/components/dashboard/eventreadings/event-status-checkbox";
 import { fetchDevices, fetchEventReading } from "../../../api/device";
 import type { Device } from "@/components/dashboard/device/devices-table";
 import type { Dayjs } from "dayjs";
@@ -50,15 +51,20 @@ export default function Page(): React.JSX.Element {
   const fetchData = async (
     deviceId: string | number,
     eventType: string | number,
-    startTime: Dayjs,
-    endTime: Dayjs,
+    startTime: Dayjs | null,
+    endTime: Dayjs | null,
     page: number,
     rowsPerPage: number
   ) => {
+    if (eventType.toString().startsWith("status_")) {
+      setEventLogArr([]);
+      setTotalCount(0);
+      return;
+    }
     setTableLoading(true);
     try {
-      const startDate = startTime.format("MM/DD/YYYY");
-      const endDate = endTime.format("MM/DD/YYYY");
+      const startDate = startTime ? startTime.format("MM/DD/YYYY") : "";
+      const endDate = endTime ? endTime.format("MM/DD/YYYY") : "";
 
       const data = await fetchEventReading(
         deviceId,
@@ -67,7 +73,7 @@ export default function Page(): React.JSX.Element {
         rowsPerPage,
         startDate,
         endDate
-        );
+      );
 
         //console.log(data);
 
@@ -112,8 +118,8 @@ export default function Page(): React.JSX.Element {
       fetchData(
         filters.deviceId!,
         filters.eventType!,
-        filters.startTime!,
-        filters.endTime!,
+        filters.startTime,
+        filters.endTime,
         effectivePage,
         newRowsPerPage
       );
@@ -147,14 +153,23 @@ export default function Page(): React.JSX.Element {
         </div>
         <EventFilters rows={devices} onSearch={handleSearch} />
         {filters && (
-          <EventRTable
-            rows={eventLogArr}
-            totalCount={totalCount}
-            page={page}
-            rowsPerPage={rowsPerPage}
-            onPageChange={handlePageChange}
-            eventType={filters.eventType?.toString() ?? null} 
-          />
+          filters.eventType?.toString().startsWith("status_") ? (
+            <EventStatusCheckboxCard
+              deviceId={filters.deviceId!}
+              obisCode={filters.eventType.toString().substring(7)}
+              startDate={filters.startTime?.toISOString()}
+              endDate={filters.endTime?.toISOString()}
+            />
+          ) : (
+            <EventRTable
+              rows={eventLogArr}
+              totalCount={totalCount}
+              page={page}
+              rowsPerPage={rowsPerPage}
+              onPageChange={handlePageChange}
+              eventType={filters.eventType?.toString() ?? null} 
+            />
+          )
         )}
       </Stack>
     </div>

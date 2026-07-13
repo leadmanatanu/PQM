@@ -34,7 +34,11 @@ import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
 import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
+import IconButton from '@mui/material/IconButton';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import EditIcon from '@mui/icons-material/Edit';
+import CheckIcon from '@mui/icons-material/Check';
+import CloseIcon from '@mui/icons-material/Close';
 
 // Dynamically obtained from the device
 
@@ -50,20 +54,24 @@ type EventStatusSection = {
     items: EventStatusItem[];
 };
 
-const EVENT_STATUS_SECTIONS: EventStatusSection[] = [
+const DEFAULT_EVENT_STATUS_SECTIONS: EventStatusSection[] = [
     {
         key: 'voltage',
         title: 'Voltage Related',
         obisCode: '0.0.96.11.0.255',
         items: [
-            { code: 1, label: 'Missing potential - Occurrence' },
-            { code: 2, label: 'Missing potential - Restoration' },
-            { code: 3, label: 'Low voltage - Occurrence' },
-            { code: 4, label: 'Low voltage - Restoration' },
-            { code: 5, label: 'Voltage unbalance - Occurrence' },
-            { code: 6, label: 'Voltage unbalance - Restoration' },
-            { code: 7, label: 'Over voltage - Occurrence' },
-            { code: 8, label: 'Over voltage - Restoration' },
+            { code: 1, label: 'R-Phase - Voltage Missing - Occurrence' },
+            { code: 2, label: 'R-Phase - Voltage Missing - Restoration' },
+            { code: 3, label: 'Y-Phase - Voltage Missing - Occurrence' },
+            { code: 4, label: 'Y-Phase - Voltage Missing - Restoration' },
+            { code: 5, label: 'B-Phase - Voltage Missing - Occurrence' },
+            { code: 6, label: 'B-Phase - Voltage Missing - Restoration' },
+            { code: 7, label: 'Over Voltage in any Phase - Occurrence' },
+            { code: 8, label: 'Over Voltage in any Phase - Restoration' },
+            { code: 9, label: 'Low Voltage in any Phase - Occurrence' },
+            { code: 10, label: 'Low Voltage in any Phase - Restoration' },
+            { code: 11, label: 'Voltage Unbalance - Occurrence' },
+            { code: 12, label: 'Voltage Unbalance - Restoration' },
         ],
     },
     {
@@ -71,18 +79,18 @@ const EVENT_STATUS_SECTIONS: EventStatusSection[] = [
         title: 'Current Related',
         obisCode: '0.0.96.11.1.255',
         items: [
-            { code: 51, label: 'R Phase - Current reverse - Occurrence' },
-            { code: 52, label: 'R Phase - Current reverse - Restoration' },
-            { code: 53, label: 'Y Phase - Current reverse - Occurrence' },
-            { code: 54, label: 'Y Phase - Current reverse - Restoration' },
-            { code: 55, label: 'B Phase - Current reverse - Occurrence' },
-            { code: 56, label: 'B Phase - Current reverse - Restoration' },
-            { code: 63, label: 'Current Unbalance - Occurrence' },
-            { code: 64, label: 'Current Unbalance - Restoration' },
-            { code: 65, label: 'Current bypass - Occurrence' },
-            { code: 66, label: 'Current bypass - Restoration' },
-            { code: 67, label: 'Over current in any phase - Occurrence' },
-            { code: 68, label: 'Over current in any phase - Restoration' },
+            { code: 65, label: 'Current bypass - Occurrence' },              // BitIndex 0
+            { code: 66, label: 'Current bypass - Restoration' },             // BitIndex 1
+            { code: 67, label: 'Over current in any phase - Occurrence' },   // BitIndex 2
+            { code: 68, label: 'Over current in any phase - Restoration' },  // BitIndex 3
+            { code: 51, label: 'R Phase - Current reverse - Occurrence' },   // BitIndex 4
+            { code: 52, label: 'R Phase - Current reverse - Restoration' },  // BitIndex 5
+            { code: 64, label: 'Current Unbalance - Restoration' },          // BitIndex 6
+            { code: 63, label: 'Current Unbalance - Occurrence' },           // BitIndex 7
+            { code: 53, label: 'Y Phase - Current reverse - Occurrence' },   // BitIndex 8
+            { code: 54, label: 'Y Phase - Current reverse - Restoration' },  // BitIndex 9
+            { code: 55, label: 'B Phase - Current reverse - Occurrence' },   // Index 10
+            { code: 56, label: 'B Phase - Current reverse - Restoration' },  // Index 11
         ],
     },
     {
@@ -164,7 +172,9 @@ import {
     fetchConnectedHeaders, 
     fetchDLMSObjects, 
     readDLMSObject,
-    readDLMSObjectsBatch
+    readDLMSObjectsBatch,
+    fetchEventStatusMappings,
+    writeDLMSObjectAttribute
 } from '../../../api/device';
 import { Device } from '../../../components/dashboard/device/devices-table';
 
@@ -181,6 +191,7 @@ export default function Page(): React.JSX.Element {
     
     const [activeTab, setActiveTab] = useState<number>(0);
     const [associationObjectList, setAssociationObjectList] = useState<any[]>([]);
+    const [eventStatusSections, setEventStatusSections] = useState<EventStatusSection[]>(DEFAULT_EVENT_STATUS_SECTIONS);
 
     const selectedHeader = headers.find((h: any) => h.id === selectedHeaderId);
     const isDataObjectType = selectedHeader?.name === 'Data' || selectedHeader?.name === 'iecHdlcSetup' || selectedHeader?.name === 'lecHdlcSetup' || selectedHeader?.name === 'TcpUdpSetup' || selectedHeader?.name === 'Ip4Setup' || selectedHeader?.name === 'MacAddressSetup' || selectedHeader?.name === 'AssociationLogicalName' || selectedHeader?.name === 'Clock' || selectedHeader?.name === 'ScriptTable' || selectedHeader?.name === 'ActionSchedule' || selectedHeader?.name === 'ActivityCalendar';
@@ -222,9 +233,13 @@ export default function Page(): React.JSX.Element {
     const [calendarData, setCalendarData] = useState<any>(null);
     const [calendarTitle, setCalendarTitle] = useState('');
 
+    const [editingAttrId, setEditingAttrId] = useState<number | null>(null);
+    const [editingValue, setEditingValue] = useState<string>('');
+    const [writing, setWriting] = useState<boolean>(false);
+
     const isEventStatusRow = (row: any): boolean => {
         const obisCode = row?.obisCode || '';
-        return EVENT_STATUS_SECTIONS.some(section => section.obisCode === obisCode);
+        return eventStatusSections.some(section => section.obisCode === obisCode);
     };
 
     const parseEventStatusValue = (value: string | null | undefined, section: EventStatusSection, obisCode?: string): Set<number> => {
@@ -500,16 +515,72 @@ export default function Page(): React.JSX.Element {
     };
 
     useEffect(() => {
-        const loadDevices = async () => {
+        const loadDevicesAndMappings = async () => {
             try {
                 const fetchedDevices = await fetchDevices();
                 setDevices(fetchedDevices);
             } catch (error) {
                 console.error('Failed to fetch devices:', error);
             }
+
+            try {
+                const mappingsRes = await fetchEventStatusMappings();
+                if (mappingsRes && mappingsRes.status && Array.isArray(mappingsRes.data) && mappingsRes.data.length > 0) {
+                    const grouped = mappingsRes.data.reduce((acc: any, item: any) => {
+                        const obis = item.obisCode;
+                        if (!acc[obis]) {
+                            acc[obis] = {
+                                key: item.category,
+                                title: `${item.category.charAt(0).toUpperCase() + item.category.slice(1)} Related`,
+                                obisCode: obis,
+                                items: []
+                            };
+                        }
+                        acc[obis].items.push({
+                            code: item.eventCode,
+                            label: item.label
+                        });
+                        return acc;
+                    }, {});
+                    setEventStatusSections(Object.values(grouped));
+                }
+            } catch (error) {
+                console.error('Failed to fetch dynamic event mappings:', error);
+            }
         };
-        loadDevices();
+        loadDevicesAndMappings();
     }, []);
+
+    const handleStartEdit = (attrId: number, currentVal: string) => {
+        setEditingAttrId(attrId);
+        setEditingValue(currentVal || '');
+    };
+
+    const handleCancelEdit = () => {
+        setEditingAttrId(null);
+        setEditingValue('');
+    };
+
+    const handleSaveWrite = async (obj: any, attrId: number) => {
+        setWriting(true);
+        try {
+            const res = await writeDLMSObjectAttribute(selectedDeviceId, obj.obisCode, editingValue, attrId);
+            if (res && res.status) {
+                setDisplayMsg(`Successfully wrote '${editingValue}' to the device.`);
+                setOpenSnackbar(true);
+                setEditingAttrId(null);
+                handleScanSingleObject(obj.id);
+            } else {
+                setDisplayMsg(res?.errors?.[0] || 'Write request failed.');
+                setOpenSnackbar(true);
+            }
+        } catch (error: any) {
+            setDisplayMsg(error.message || 'Error executing write operation.');
+            setOpenSnackbar(true);
+        } finally {
+            setWriting(false);
+        }
+    };
 
     const handleDeviceSelection = async (id: string | number) => {
         setSelectedDeviceId(id);
@@ -605,7 +676,11 @@ export default function Page(): React.JSX.Element {
                         'object list',
                         'associated partners id',
                         'application context name',
-                        'authentication mechanism name'
+                        'authentication mechanism name',
+                        'xdlms context info',
+                        'lls secret',
+                        'security setup reference',
+                        'user list'
                     ];
                     mapped = mapped.filter((p: any) => {
                         const nameLower = p.name?.toLowerCase() || '';
@@ -805,10 +880,7 @@ export default function Page(): React.JSX.Element {
         const name = row.name;
         
         const isJsonObjectList = name?.toLowerCase().includes('object list') && value?.startsWith('[') && value?.endsWith(']');
-        const isContextOrAuthJson = value?.startsWith('{') && value?.endsWith('}') && (
-            name?.toLowerCase().includes('context name') || 
-            name?.toLowerCase().includes('mechanism name')
-        );
+        const isContextOrAuthJson = value?.startsWith('{') && value?.endsWith('}');
         const isProfileGenericBuffer = row.objectType?.toLowerCase() === 'profilegeneric' && value?.startsWith('[') && value?.endsWith(']');
         const isActivityCalendar = row.objectType?.toLowerCase() === 'activitycalendar';
 
@@ -913,7 +985,7 @@ export default function Page(): React.JSX.Element {
     };
 
     const renderEventStatusDetails = (obj: any) => {
-        const matchingSections = EVENT_STATUS_SECTIONS.filter(section => section.obisCode === obj?.obisCode);
+        const matchingSections = eventStatusSections.filter(section => section.obisCode === obj?.obisCode);
         const displayValue = (obj?.value === 'Scanning...' || obj?.value?.startsWith('Error')) 
             ? (obj?.valueBeforeScan || obj?.value) 
             : obj?.value;
@@ -1088,30 +1160,30 @@ export default function Page(): React.JSX.Element {
             )}
 
             {isTableObjectType && discoveredParams.length > 0 && (
-                <Card>
-                    <CardHeader title="Discovered Meter Parameters (Current Values)" />
+                <Card sx={{ borderRadius: '8px' }}>
+                    <CardHeader 
+                        title="Discovered Meter Parameters (Current Values)" 
+                        titleTypographyProps={{ variant: 'subtitle1', fontWeight: 600 }}
+                        sx={{ py: 1.5, px: 2 }}
+                    />
                     <Divider />
-                    <CardContent>
-                        <TableContainer component={Paper} sx={{ maxHeight: 400 }}>
-                            <Table stickyHeader aria-label="discovered parameters table">
-                                <TableHead>
+                    <CardContent sx={{ p: 1, '&:last-child': { pb: 1 } }}>
+                        <TableContainer component={Paper} sx={{ maxHeight: 220, borderRadius: '6px' }}>
+                            <Table size="small" stickyHeader aria-label="discovered parameters table">
+                                <TableHead sx={{ bgcolor: 'var(--mui-palette-neutral-50)' }}>
                                     <TableRow>
-                                        <TableCell sx={{ fontWeight: 'bold' }}>Name</TableCell>
-                                        <TableCell sx={{ fontWeight: 'bold' }}>Object Type</TableCell>
-                                        <TableCell sx={{ fontWeight: 'bold' }}>Attribute 2</TableCell>
-                                        <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>Details</TableCell>
-                                        {!isDataObjectType && <TableCell sx={{ fontWeight: 'bold' }}>Attribute 3</TableCell>}
-                                        {isExtendedRegisterType && <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>}
-                                        {isExtendedRegisterType && <TableCell sx={{ fontWeight: 'bold' }}>Capture Time</TableCell>}
+                                        <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
+                                        <TableCell sx={{ fontWeight: 600 }}>Object Type</TableCell>
+                                        <TableCell sx={{ fontWeight: 600 }}>Attribute 2</TableCell>
+                                        <TableCell sx={{ fontWeight: 600, textAlign: 'center' }}>Details</TableCell>
+                                        {isExtendedRegisterType && <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>}
+                                        {isExtendedRegisterType && <TableCell sx={{ fontWeight: 600 }}>Capture Time</TableCell>}
                                     </TableRow>
                                 </TableHead>
                                 <TableBody>
                                     {discoveredParams.map((row, idx) => {
                                         const isJsonObjectList = row.name?.toLowerCase().includes('object list') && row.value?.startsWith('[') && row.value?.endsWith(']');
-                                        const isContextOrAuthJson = row.value?.startsWith('{') && row.value?.endsWith('}') && (
-                                            row.name?.toLowerCase().includes('context name') || 
-                                            row.name?.toLowerCase().includes('mechanism name')
-                                        );
+                                        const isContextOrAuthJson = row.value?.startsWith('{') && row.value?.endsWith('}');
                                         const isProfileGenericBuffer = row.objectType?.toLowerCase() === 'profilegeneric' && row.value?.startsWith('[') && row.value?.endsWith(']');
                                         const isActivityCalendar = row.objectType?.toLowerCase() === 'activitycalendar';
                                         return (
@@ -1212,11 +1284,6 @@ export default function Page(): React.JSX.Element {
                                                         View Details
                                                     </Button>
                                                 </TableCell>
-                                                {!isDataObjectType && (
-                                                    <TableCell sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
-                                                        {row.attribute3 || 'N/A'}
-                                                    </TableCell>
-                                                )}
                                                 {isExtendedRegisterType && (
                                                     <TableCell sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
                                                         {row.attribute4 || 'N/A'}

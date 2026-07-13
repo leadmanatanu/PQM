@@ -9,6 +9,8 @@ using PQM.Core.IRepositories;
 using PQM.Infrastructure;
 using PQM.Infrastructure.Services;
 using PQM.Server.Models;
+using Microsoft.AspNetCore.SignalR;
+using PQM.Server.Hubs;
 
 namespace PQM.Server.Controllers
 {
@@ -21,19 +23,47 @@ namespace PQM.Server.Controllers
         private readonly ILogger<DeviceController> _logger;
         private readonly IConfiguration _configuration;
         private readonly string _connectionString;
+        private readonly DLMSSessionManager _sessionManager;
+        private readonly IHubContext<MeterHub> _hubContext;
 
         public DeviceController(
             ILogger<DeviceController> logger,
             IDeviceService deviceService,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            DLMSSessionManager sessionManager,
+            IHubContext<MeterHub> hubContext)
         {
             _logger = logger;
             _deviceService = deviceService;
             _configuration = configuration;
+            _sessionManager = sessionManager;
+            _hubContext = hubContext;
 
             _connectionString =
                 configuration.GetConnectionString("DefaultConnection")
                 ?? throw new InvalidOperationException("Connection string not found.");
+        }
+
+        // -------------------- NOTIFY DEVICE UPDATE (SignalR Broadcast) --------------------
+        [HttpPost("{deviceId}/notify-update")]
+        public async Task<IActionResult> NotifyUpdate(int deviceId)
+        {
+            try
+            {
+                await _hubContext.Clients.All.SendAsync("MeterUpdated", deviceId);
+
+                _apiResponse.Status = true;
+                _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
+                _apiResponse.Data = $"Real-time notification broadcasted successfully for device {deviceId}.";
+                return Ok(_apiResponse);
+            }
+            catch (Exception ex)
+            {
+                _apiResponse.Status = false;
+                _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
+                _apiResponse.Errors = new List<string> { ex.Message };
+                return Ok(_apiResponse);
+            }
         }
 
         // -------------------- GET DEVICES --------------------
@@ -106,6 +136,57 @@ namespace PQM.Server.Controllers
             return Ok(_apiResponse);
         }
 
+        // -------------------- CONNECT DEVICE --------------------
+        [HttpPost("{id}/connect")]
+        public IActionResult Connect(int id)
+        {
+            _apiResponse.Errors.Clear();
+
+            var device = _deviceService.GetDevices().FirstOrDefault(d => d.Id == id);
+            if (device == null)
+                return Error("Device not found", System.Net.HttpStatusCode.NotFound);
+
+            int clientAddress = _configuration.GetValue("DlmsSettings:ClientAddress", 1);
+            int serverAddress = _configuration.GetValue("DlmsSettings:ServerAddress", 1);
+            string authStr = _configuration.GetValue("DlmsSettings:Authentication", "None");
+            string password = _configuration.GetValue("DlmsSettings:Password", "");
+            bool useLogicalNameReferencing = _configuration.GetValue("DlmsSettings:UseLogicalNameReferencing", true);
+            string standardStr = _configuration.GetValue("DlmsSettings:Standard", "DLMS");
+
+            if (!Enum.TryParse(authStr, true, out Authentication authentication))
+                authentication = Authentication.None;
+
+            if (!Enum.TryParse(standardStr, true, out Standard standard))
+                standard = Standard.DLMS;
+
+            try
+            {
+                _sessionManager.Connect(id, device.IP, device.PORT, clientAddress, serverAddress, authentication, password, useLogicalNameReferencing, standard);
+                
+                _apiResponse.Status = true;
+                _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
+                _apiResponse.Data = $"Successfully connected to device {device.Name} at {device.IP}:{device.PORT}.";
+                return Ok(_apiResponse);
+            }
+            catch (Exception ex)
+            {
+                return Error($"Failed to connect to device: {ex.Message}", System.Net.HttpStatusCode.InternalServerError);
+            }
+        }
+
+        // -------------------- DISCONNECT DEVICE --------------------
+        [HttpPost("{id}/disconnect")]
+        public IActionResult Disconnect(int id)
+        {
+            _apiResponse.Errors.Clear();
+            _sessionManager.Disconnect(id);
+
+            _apiResponse.Status = true;
+            _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
+            _apiResponse.Data = "Disconnected successfully.";
+            return Ok(_apiResponse);
+        }
+
         // -------------------- DISCOVER PARAMETERS --------------------
         [HttpPost("{id}/discover-parameters")]
         public IActionResult DiscoverParameters(int id, [FromQuery] string? objectType = null)
@@ -129,14 +210,19 @@ namespace PQM.Server.Controllers
             if (!Enum.TryParse(standardStr, true, out Standard standard))
                 standard = Standard.DLMS;
 
-            List<DiscoveredParameter> parameters;
-            List<Gurux.DLMS.Objects.GXDLMSObject> allDlmsObjects = new();
-
-            using (var reader = new DLMSReader(device.IP, device.PORT, clientAddress, serverAddress, authentication, password, useLogicalNameReferencing, standard))
+            // Run the discovery — if TCP was dropped silently by meter, auto-reconnect and retry once
+            return ExecuteWithAutoReconnect(id, device, () =>
             {
-                reader.Connect();
-                parameters = reader.GetAssociationViewWithValues(objectType);
-                
+                var reader = GetOrCreateSession(id, device);
+                var parameters = reader.GetAssociationViewWithValues(objectType);
+
+                // If any parameters returned had connection errors, trigger auto-reconnect
+                if (parameters.Any(p => p.Value.StartsWith("Error:", StringComparison.OrdinalIgnoreCase) && IsConnectionLostError(p.Value)))
+                {
+                    throw new System.IO.IOException("Connection lost during parameter discovery");
+                }
+
+                var allDlmsObjects = new List<Gurux.DLMS.Objects.GXDLMSObject>();
                 if (reader.Objects != null)
                 {
                     foreach (var obj in reader.Objects)
@@ -144,116 +230,116 @@ namespace PQM.Server.Controllers
                         allDlmsObjects.Add(obj);
                     }
                 }
-            }
 
-            using var db = new DataContext(_connectionString);
+                using var db = new DataContext(_connectionString);
 
-            // Backward compatibility: Populate the flat Parameter table
-            var existingParams = db.Parameter
-                .Where(p => !string.IsNullOrEmpty(p.ObisCode))
-                .ToList();
+                // Backward compatibility: Populate the flat Parameter table
+                var existingParams = db.Parameter
+                    .Where(p => !string.IsNullOrEmpty(p.ObisCode))
+                    .ToList();
 
-            var obisMap = existingParams
-                .ToDictionary(p => p.ObisCode!, p => p);
+                var obisMap = existingParams
+                    .ToDictionary(p => p.ObisCode!, p => p);
 
-            foreach (var p in parameters)
-            {
-                if (!obisMap.ContainsKey(p.ObisCode))
+                foreach (var p in parameters)
                 {
-                    var param = new Parameter
+                    if (!obisMap.ContainsKey(p.ObisCode))
                     {
-                        Name = p.Name,
-                        ObisCode = p.ObisCode,
-                        ObjectType = p.ObjectType,
-                        IsActive = true,
-                        CreatedDate = DateTime.UtcNow
-                    };
-                    db.Parameter.Add(param);
-                    obisMap[p.ObisCode] = param;
-                }
-            }
-            db.SaveChanges();
-
-            // DYNAMIC CLONE OF GURUX DIRECTOR: Seed ConnectedHeader, DLMSObject, ObjectParameter
-            using (var transaction = db.Database.BeginTransaction())
-            {
-                try
-                {
-                    // 1. Get existing headers for this device
-                    var existingHeaders = db.ConnectedHeader.Where(h => h.DeviceId == id).ToList();
-                    var headerIds = existingHeaders.Select(h => h.Id).ToList();
-
-                    // 2. Get existing objects for these headers
-                    var existingObjects = db.DLMSObject.Where(o => headerIds.Contains(o.HeaderId)).ToList();
-                    var objectIds = existingObjects.Select(o => o.Id).ToList();
-
-                    // 3. Delete existing ParameterValues, ObjectParameters, DLMSObjects, ConnectedHeaders
-                    var parameterIds = db.ObjectParameter.Where(p => objectIds.Contains(p.ObjectId)).Select(p => p.Id).ToList();
-                    var valuesToDelete = db.ParameterValue.Where(v => parameterIds.Contains(v.ParameterId));
-                    db.ParameterValue.RemoveRange(valuesToDelete);
-
-                    var paramsToDelete = db.ObjectParameter.Where(p => objectIds.Contains(p.ObjectId));
-                    db.ObjectParameter.RemoveRange(paramsToDelete);
-
-                    db.DLMSObject.RemoveRange(existingObjects);
-                    db.ConnectedHeader.RemoveRange(existingHeaders);
-                    db.SaveChanges();
-
-                    // 4. Group discovered objects by ObjectType and seed new records
-                    var groupedObjects = allDlmsObjects.GroupBy(o => o.ObjectType);
-                    foreach (var group in groupedObjects)
-                    {
-                        var friendlyName = DLMSReader.GetFriendlyClassName(group.Key);
-                        var header = new ConnectedHeader
+                        var param = new Parameter
                         {
-                            DeviceId = id,
-                            Name = friendlyName
+                            Name = p.Name,
+                            ObisCode = p.ObisCode,
+                            ObjectType = p.ObjectType,
+                            IsActive = true,
+                            CreatedDate = DateTime.UtcNow
                         };
-                        db.ConnectedHeader.Add(header);
-                        db.SaveChanges(); // Populate header.Id
+                        db.Parameter.Add(param);
+                        obisMap[p.ObisCode] = param;
+                    }
+                }
+                db.SaveChanges();
 
-                        foreach (var obj in group)
+                // DYNAMIC CLONE OF GURUX DIRECTOR: Seed ConnectedHeader, DLMSObject, ObjectParameter
+                using (var transaction = db.Database.BeginTransaction())
+                {
+                    try
+                    {
+                        // 1. Get existing headers for this device
+                        var existingHeaders = db.ConnectedHeader.Where(h => h.DeviceId == id).ToList();
+                        var headerIds = existingHeaders.Select(h => h.Id).ToList();
+
+                        // 2. Get existing objects for these headers
+                        var existingObjects = db.DLMSObject.Where(o => headerIds.Contains(o.HeaderId)).ToList();
+                        var objectIds = existingObjects.Select(o => o.Id).ToList();
+
+                        // 3. Delete existing ParameterValues, ObjectParameters, DLMSObjects, ConnectedHeaders
+                        var parameterIds = db.ObjectParameter.Where(p => objectIds.Contains(p.ObjectId)).Select(p => p.Id).ToList();
+                        var valuesToDelete = db.ParameterValue.Where(v => parameterIds.Contains(v.ParameterId));
+                        db.ParameterValue.RemoveRange(valuesToDelete);
+
+                        var paramsToDelete = db.ObjectParameter.Where(p => objectIds.Contains(p.ObjectId));
+                        db.ObjectParameter.RemoveRange(paramsToDelete);
+
+                        db.DLMSObject.RemoveRange(existingObjects);
+                        db.ConnectedHeader.RemoveRange(existingHeaders);
+                        db.SaveChanges();
+
+                        // 4. Group discovered objects by ObjectType and seed new records
+                        var groupedObjects = allDlmsObjects.GroupBy(o => o.ObjectType);
+                        foreach (var group in groupedObjects)
                         {
-                            var dlmsObj = new DLMSObject
+                            var friendlyName = DLMSReader.GetFriendlyClassName(group.Key);
+                            var header = new ConnectedHeader
                             {
-                                HeaderId = header.Id,
-                                Name = string.IsNullOrEmpty(obj.Description) ? $"{obj.ObjectType} - {obj.LogicalName}" : obj.Description,
-                                ObisCode = obj.LogicalName,
-                                ObjectType = obj.ObjectType.ToString()
+                                DeviceId = id,
+                                Name = friendlyName
                             };
-                            db.DLMSObject.Add(dlmsObj);
-                            db.SaveChanges(); // Populate dlmsObj.Id
+                            db.ConnectedHeader.Add(header);
+                            db.SaveChanges(); // Populate header.Id
 
-                            foreach (var attr in obj.Attributes)
+                            foreach (var obj in group)
                             {
-                                var objParam = new ObjectParameter
+                                var dlmsObj = new DLMSObject
                                 {
-                                    ObjectId = dlmsObj.Id,
-                                    AttributeId = attr.Index,
-                                    Name = attr.Name ?? $"Attribute {attr.Index}",
-                                    DataType = attr.Type.ToString(),
-                                    AccessType = attr.Access.ToString()
+                                    HeaderId = header.Id,
+                                    Name = string.IsNullOrEmpty(obj.Description) ? $"{obj.ObjectType} - {obj.LogicalName}" : obj.Description,
+                                    ObisCode = obj.LogicalName,
+                                    ObjectType = obj.ObjectType.ToString()
                                 };
-                                db.ObjectParameter.Add(objParam);
+                                db.DLMSObject.Add(dlmsObj);
+                                db.SaveChanges(); // Populate dlmsObj.Id
+
+                                foreach (var attr in obj.Attributes)
+                                {
+                                    var objParam = new ObjectParameter
+                                    {
+                                        ObjectId = dlmsObj.Id,
+                                        AttributeId = attr.Index,
+                                        Name = attr.Name ?? $"Attribute {attr.Index}",
+                                        DataType = attr.Type.ToString(),
+                                        AccessType = attr.Access.ToString()
+                                    };
+                                    db.ObjectParameter.Add(objParam);
+                                }
                             }
                         }
+
+                        db.SaveChanges();
+                        transaction.Commit();
                     }
-
-                    db.SaveChanges();
-                    transaction.Commit();
+                    catch (Exception ex)
+                    {
+                        transaction.Rollback();
+                        _logger.LogError(ex, "Failed to dynamically save discovered objects for device {DeviceId}", id);
+                        throw;
+                    }
                 }
-                catch (Exception ex)
-                {
-                    transaction.Rollback();
-                    _logger.LogError(ex, "Failed to dynamically save discovered objects for device {DeviceId}", id);
-                    return Error($"Failed to seed discovered objects: {ex.Message}", System.Net.HttpStatusCode.InternalServerError);
-                }
-            }
 
-            _apiResponse.Status = true;
-            _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-            _apiResponse.Data = parameters;
-            return Ok(_apiResponse);
+                _apiResponse.Status = true;
+                _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
+                _apiResponse.Data = parameters;
+                return Ok(_apiResponse);
+            });
         }
 
         [HttpPost("{id}/read-parameter/{parameterId}")]
@@ -265,46 +351,43 @@ namespace PQM.Server.Controllers
             if (device == null)
                 return Error("Device not found", System.Net.HttpStatusCode.NotFound);
 
-            using var db = new DataContext(_connectionString);
-            var param = db.Parameter.FirstOrDefault(p => p.Id == parameterId);
-
-            if (param == null || string.IsNullOrEmpty(param.ObisCode))
-                return Error("Invalid parameter", System.Net.HttpStatusCode.NotFound);
-
-            int clientAddress = _configuration.GetValue("DlmsSettings:ClientAddress", 1);
-            int serverAddress = _configuration.GetValue("DlmsSettings:ServerAddress", 1);
-            string authStr = _configuration.GetValue("DlmsSettings:Authentication", "None");
-            string password = _configuration.GetValue("DlmsSettings:Password", "");
-            bool useLogicalNameReferencing = _configuration.GetValue("DlmsSettings:UseLogicalNameReferencing", true);
-            string standardStr = _configuration.GetValue("DlmsSettings:Standard", "DLMS");
-
-            Enum.TryParse(authStr, true, out Authentication authentication);
-            if (!Enum.TryParse(standardStr, true, out Standard standard))
-                standard = Standard.DLMS;
-
-            string value;
-            using (var reader = new DLMSReader(device.IP, device.PORT, clientAddress, serverAddress, authentication, password, useLogicalNameReferencing, standard))
+            return ExecuteWithAutoReconnect(id, device, () =>
             {
-                reader.Connect();
-                value = reader.ReadRegister(param.ObisCode, param.Name ?? "");
-            }
+                using var db = new DataContext(_connectionString);
+                var param = db.Parameter.FirstOrDefault(p => p.Id == parameterId);
 
-            db.DeviceLog.Add(new DeviceLog
-            {
-                DeviceId = id,
-                ParameterId = parameterId,
-                Value = value,
-                DateStamp = DateTime.UtcNow
+                if (param == null || string.IsNullOrEmpty(param.ObisCode))
+                    return Error("Invalid parameter", System.Net.HttpStatusCode.NotFound);
+
+                var reader = GetOrCreateSession(id, device);
+                string value = reader.ReadRegister(param.ObisCode, param.Name ?? "");
+
+                if (value.StartsWith("Error:", StringComparison.OrdinalIgnoreCase) && IsConnectionLostError(value))
+                {
+                    throw new System.IO.IOException(value);
+                }
+
+                if (param.ObisCode.StartsWith("0.0.96.11."))
+                {
+                    value = DecodeEventStatusBitmask(db, param.ObisCode, value);
+                }
+
+                db.DeviceLog.Add(new DeviceLog
+                {
+                    DeviceId = id,
+                    ParameterId = parameterId,
+                    Value = value,
+                    DateStamp = DateTime.UtcNow
+                });
+
+                SaveTypedReading(db, id, param.Name ?? "", param.ObjectType ?? "", value, 2);
+                db.SaveChanges();
+
+                _apiResponse.Status = true;
+                _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
+                _apiResponse.Data = value;
+                return Ok(_apiResponse);
             });
-
-            SaveTypedReading(db, id, param.Name ?? "", param.ObjectType ?? "", value, 2);
-
-            db.SaveChanges();
-
-            _apiResponse.Status = true;
-            _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-            _apiResponse.Data = value;
-            return Ok(_apiResponse);
         }
 
         [HttpPost("{id}/read-object/{objectId}")]
@@ -316,99 +399,115 @@ namespace PQM.Server.Controllers
             if (device == null)
                 return Error("Device not found", System.Net.HttpStatusCode.NotFound);
 
-            using var db = new DataContext(_connectionString);
-            var dlmsObject = db.DLMSObject.FirstOrDefault(o => o.Id == objectId);
-            if (dlmsObject == null)
-                return Error("DLMS Object not found", System.Net.HttpStatusCode.NotFound);
-
-            var parameters = db.ObjectParameter.Where(p => p.ObjectId == objectId).ToList();
-            if (!parameters.Any())
-                return Error("No parameters found for the object", System.Net.HttpStatusCode.NotFound);
-
-            int clientAddress = _configuration.GetValue("DlmsSettings:ClientAddress", 1);
-            int serverAddress = _configuration.GetValue("DlmsSettings:ServerAddress", 1);
-            string authStr = _configuration.GetValue("DlmsSettings:Authentication", "None");
-            string password = _configuration.GetValue("DlmsSettings:Password", "");
-            bool useLogicalNameReferencing = _configuration.GetValue("DlmsSettings:UseLogicalNameReferencing", true);
-            string standardStr = _configuration.GetValue("DlmsSettings:Standard", "DLMS");
-
-            if (!Enum.TryParse(authStr, true, out Authentication authentication))
-                authentication = Authentication.None;
-
-            if (!Enum.TryParse(standardStr, true, out Standard standard))
-                standard = Standard.DLMS;
-
-            var results = new List<object>();
-
-            try
+            return ExecuteWithAutoReconnect(id, device, () =>
             {
-                using (var reader = new DLMSReader(device.IP, device.PORT, clientAddress, serverAddress, authentication, password, useLogicalNameReferencing, standard))
+                using var db = new DataContext(_connectionString);
+                var dlmsObject = db.DLMSObject.FirstOrDefault(o => o.Id == objectId);
+                if (dlmsObject == null)
+                    return Error("DLMS Object not found", System.Net.HttpStatusCode.NotFound);
+
+                var parameters = db.ObjectParameter.Where(p => p.ObjectId == objectId).ToList();
+                if (!parameters.Any())
+                    return Error("No parameters found for the object", System.Net.HttpStatusCode.NotFound);
+
+                var reader = GetOrCreateSession(id, device);
+
+                Gurux.DLMS.Objects.GXDLMSObject? obj = null;
+                if (reader.Objects != null)
                 {
-                    reader.Connect();
-
-                    Gurux.DLMS.Objects.GXDLMSObject? obj = null;
-                    if (reader.Objects != null)
-                    {
-                        obj = reader.Objects.FirstOrDefault(o => o.LogicalName == dlmsObject.ObisCode);
-                    }
-
-                    if (obj == null)
-                    {
-                        if (!Enum.TryParse<ObjectType>(dlmsObject.ObjectType, out var objectType))
-                        {
-                            objectType = ObjectType.Register;
-                        }
-                        obj = GXDLMSClient.CreateObject(objectType);
-                        obj.LogicalName = dlmsObject.ObisCode;
-                    }
-
-                    foreach (var param in parameters)
-                    {
-                        string value;
-                        try
-                        {
-                            value = reader.ReadObjectAttribute(obj, param.AttributeId);
-                        }
-                        catch (Exception ex)
-                        {
-                            value = $"Error: {ex.Message}";
-                        }
-
-                        var pv = new ParameterValue
-                        {
-                            ParameterId = param.Id,
-                            Value = value ?? "",
-                            Timestamp = DateTime.UtcNow
-                        };
-                        db.ParameterValue.Add(pv);
-                        results.Add(new
-                        {
-                            pv.Id,
-                            param.ObjectId,
-                            pv.ParameterId,
-                            AttributeId = param.AttributeId,
-                            param.Name,
-                            param.DataType,
-                            param.AccessType,
-                            pv.Value,
-                            pv.Timestamp
-                        });
-
-                        SaveTypedReading(db, id, dlmsObject.Name ?? "", dlmsObject.ObjectType, value ?? "", param.AttributeId);
-                    }
-
-                    db.SaveChanges();
+                    obj = reader.Objects.FirstOrDefault(o => o.LogicalName == dlmsObject.ObisCode);
                 }
+
+                if (obj == null)
+                {
+                    if (!Enum.TryParse<ObjectType>(dlmsObject.ObjectType, out var objectType))
+                    {
+                        objectType = ObjectType.Register;
+                    }
+                    obj = GXDLMSClient.CreateObject(objectType);
+                    obj.LogicalName = dlmsObject.ObisCode;
+                }
+
+                var results = new List<object>();
+                foreach (var param in parameters)
+                {
+                    string value = reader.ReadObjectAttribute(obj, param.AttributeId);
+                    if (value.StartsWith("Error:", StringComparison.OrdinalIgnoreCase) && IsConnectionLostError(value))
+                    {
+                        throw new System.IO.IOException(value);
+                    }
+
+                    if (dlmsObject.ObisCode.StartsWith("0.0.96.11.") && param.AttributeId == 2)
+                    {
+                        value = DecodeEventStatusBitmask(db, dlmsObject.ObisCode, value);
+                    }
+
+                    var pv = new ParameterValue
+                    {
+                        ParameterId = param.Id,
+                        Value = value ?? "",
+                        Timestamp = DateTime.UtcNow
+                    };
+                    db.ParameterValue.Add(pv);
+                    results.Add(new
+                    {
+                        pv.Id,
+                        param.ObjectId,
+                        pv.ParameterId,
+                        AttributeId = param.AttributeId,
+                        param.Name,
+                        param.DataType,
+                        param.AccessType,
+                        pv.Value,
+                        pv.Timestamp
+                    });
+
+                    SaveTypedReading(db, id, dlmsObject.Name ?? "", dlmsObject.ObjectType, value ?? "", param.AttributeId);
+                }
+
+                db.SaveChanges();
 
                 _apiResponse.Status = true;
                 _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
                 _apiResponse.Data = results;
                 return Ok(_apiResponse);
-            }
-            catch (Exception ex)
+            });
+        }
+
+        public class WriteObjectRequest
+        {
+            public required string ObisCode { get; set; }
+            public required string Value { get; set; }
+            public int AttributeId { get; set; } = 2;
+        }
+
+        [HttpPost("{id}/write-object")]
+        public IActionResult WriteObject(int id, [FromBody] WriteObjectRequest request)
+        {
+            _apiResponse.Errors.Clear();
+
+            if (request == null || string.IsNullOrEmpty(request.ObisCode))
             {
-                return Error($"DLMS Error: {ex.Message}", System.Net.HttpStatusCode.InternalServerError);
+                return Error("Invalid write request payload.", System.Net.HttpStatusCode.BadRequest);
             }
+
+            var device = _deviceService.GetDevices().FirstOrDefault(d => d.Id == id);
+            if (device == null)
+                return Error("Device not found", System.Net.HttpStatusCode.NotFound);
+
+            return ExecuteWithAutoReconnect(id, device, () =>
+            {
+                var reader = GetOrCreateSession(id, device);
+                reader.WriteRegister(request.ObisCode, request.Value, request.AttributeId);
+
+                // Broadcast change through SignalR
+                _hubContext.Clients.All.SendAsync("MeterUpdated", id);
+
+                _apiResponse.Status = true;
+                _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
+                _apiResponse.Data = $"Successfully wrote '{request.Value}' to parameter {request.ObisCode} (Attribute {request.AttributeId}).";
+                return Ok(_apiResponse);
+            });
         }
 
         [HttpPost("{id}/read-objects")]
@@ -448,89 +547,106 @@ namespace PQM.Server.Controllers
                 standard = Standard.DLMS;
 
             // Dictionary to store results grouped by objectId
-            var results = new Dictionary<int, List<object>>();
-
-            try
+            // Run the scan — if TCP was dropped silently by meter, auto-reconnect and retry once
+            return ExecuteWithAutoReconnect(id, device, () =>
             {
-                using (var reader = new DLMSReader(device.IP, device.PORT, clientAddress, serverAddress, authentication, password, useLogicalNameReferencing, standard))
+                var reader = GetOrCreateSession(id, device);
+                var batchResults = new Dictionary<int, List<object>>();
+
+                foreach (var dlmsObject in dlmsObjects)
                 {
-                    reader.Connect();
+                    var objectParameters = parameters.Where(p => p.ObjectId == dlmsObject.Id).ToList();
+                    if (!objectParameters.Any()) continue;
 
-                    foreach (var dlmsObject in dlmsObjects)
+                    Gurux.DLMS.Objects.GXDLMSObject? obj = null;
+                    if (reader.Objects != null)
+                        obj = reader.Objects.FirstOrDefault(o => o.LogicalName == dlmsObject.ObisCode);
+
+                    if (obj == null)
                     {
-                        var objectParameters = parameters.Where(p => p.ObjectId == dlmsObject.Id).ToList();
-                        if (!objectParameters.Any())
-                            continue;
-
-                        Gurux.DLMS.Objects.GXDLMSObject? obj = null;
-                        if (reader.Objects != null)
-                        {
-                            obj = reader.Objects.FirstOrDefault(o => o.LogicalName == dlmsObject.ObisCode);
-                        }
-
-                        if (obj == null)
-                        {
-                            if (!Enum.TryParse<ObjectType>(dlmsObject.ObjectType, out var objectType))
-                            {
-                                objectType = ObjectType.Register;
-                            }
-                            obj = GXDLMSClient.CreateObject(objectType);
-                            obj.LogicalName = dlmsObject.ObisCode;
-                        }
-
-                        var objResults = new List<object>();
-                        foreach (var param in objectParameters)
-                        {
-                            string value;
-                            try
-                            {
-                                value = reader.ReadObjectAttribute(obj, param.AttributeId);
-                            }
-                            catch (Exception ex)
-                            {
-                                value = $"Error: {ex.Message}";
-                            }
-
-                            var pv = new ParameterValue
-                            {
-                                ParameterId = param.Id,
-                                Value = value ?? "",
-                                Timestamp = DateTime.UtcNow
-                            };
-                            db.ParameterValue.Add(pv);
-                            objResults.Add(new
-                            {
-                                pv.Id,
-                                param.ObjectId,
-                                pv.ParameterId,
-                                AttributeId = param.AttributeId,
-                                param.Name,
-                                param.DataType,
-                                param.AccessType,
-                                pv.Value,
-                                pv.Timestamp
-                            });
-
-                            SaveTypedReading(db, id, dlmsObject.Name ?? "", dlmsObject.ObjectType, value ?? "", param.AttributeId);
-                        }
-                        results[dlmsObject.Id] = objResults;
+                        if (!Enum.TryParse<ObjectType>(dlmsObject.ObjectType, out var ot))
+                            ot = ObjectType.Register;
+                        obj = GXDLMSClient.CreateObject(ot);
+                        obj.LogicalName = dlmsObject.ObisCode;
                     }
 
-                    db.SaveChanges();
+                    var objResults = new List<object>();
+                    foreach (var param in objectParameters)
+                    {
+                        // Let connection errors bubble up so ExecuteWithAutoReconnect can retry
+                        string value = reader.ReadObjectAttribute(obj, param.AttributeId);
+                        if (value.StartsWith("Error:", StringComparison.OrdinalIgnoreCase) && IsConnectionLostError(value))
+                        {
+                            throw new System.IO.IOException(value);
+                        }
+
+                        if (dlmsObject.ObisCode.StartsWith("0.0.96.11.") && param.AttributeId == 2)
+                        {
+                            value = DecodeEventStatusBitmask(db, dlmsObject.ObisCode, value);
+                        }
+
+                        var pv = new ParameterValue
+                        {
+                            ParameterId = param.Id,
+                            Value = value ?? "",
+                            Timestamp = DateTime.UtcNow
+                        };
+                        db.ParameterValue.Add(pv);
+                        objResults.Add(new
+                        {
+                            pv.Id, param.ObjectId, pv.ParameterId,
+                            AttributeId = param.AttributeId,
+                            param.Name, param.DataType, param.AccessType,
+                            pv.Value, pv.Timestamp
+                        });
+                        SaveTypedReading(db, id, dlmsObject.Name ?? "", dlmsObject.ObjectType, value ?? "", param.AttributeId);
+                    }
+                    batchResults[dlmsObject.Id] = objResults;
                 }
 
+                db.SaveChanges();
                 _apiResponse.Status = true;
                 _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-                _apiResponse.Data = results;
+                _apiResponse.Data = batchResults;
                 return Ok(_apiResponse);
+            });
+        }
+
+        // -------------------- HELPERS --------------------
+
+        /// <summary>
+        /// Runs 'action'. If the connection dropped (meter closed idle TCP), it reconnects once and retries.
+        /// This way the user never sees a "Failed to receive reply" error after waiting.
+        /// </summary>
+        private IActionResult ExecuteWithAutoReconnect(int deviceId, Device device, Func<IActionResult> action)
+        {
+            try
+            {
+                return action();
+            }
+            catch (Exception ex) when (IsConnectionLostError(ex.Message))
+            {
+                _logger.LogWarning("[Session] Connection lost for device {DeviceId}: {Msg}. Reconnecting...", deviceId, ex.Message);
+                _sessionManager.Disconnect(deviceId);
+
+                try
+                {
+                    // Force a fresh connection and retry once
+                    return action();
+                }
+                catch (Exception retryEx)
+                {
+                    _sessionManager.Disconnect(deviceId);
+                    return Error($"DLMS Error after reconnect: {retryEx.Message}", System.Net.HttpStatusCode.InternalServerError);
+                }
             }
             catch (Exception ex)
             {
+                _sessionManager.Disconnect(deviceId);
                 return Error($"DLMS Error: {ex.Message}", System.Net.HttpStatusCode.InternalServerError);
             }
         }
 
-        // -------------------- HELPERS --------------------
         private IActionResult Error(string message, System.Net.HttpStatusCode code)
         {
             _apiResponse.Status = false;
@@ -545,6 +661,85 @@ namespace PQM.Server.Controllers
             if (string.IsNullOrWhiteSpace(device.IP)) _apiResponse.Errors.Add("IP required");
             if (device.PORT <= 0) _apiResponse.Errors.Add("Port required");
             return !_apiResponse.Errors.Any();
+        }
+
+        private DLMSReader GetOrCreateSession(int deviceId, Device device)
+        {
+            return GetOrReconnectSession(deviceId, device);
+        }
+
+        /// <summary>
+        /// Returns a live DLMS session. If the cached session is stale/dead (TCP dropped by meter
+        /// after inactivity), it silently reconnects and returns a fresh session.
+        /// The user never sees a "Failed to receive reply" error caused by an idle connection.
+        /// </summary>
+        private DLMSReader GetOrReconnectSession(int deviceId, Device device)
+        {
+            int clientAddress = _configuration.GetValue("DlmsSettings:ClientAddress", 1);
+            int serverAddress = _configuration.GetValue("DlmsSettings:ServerAddress", 1);
+            string authStr = _configuration.GetValue("DlmsSettings:Authentication", "None");
+            string password = _configuration.GetValue("DlmsSettings:Password", "");
+            bool useLogicalNameReferencing = _configuration.GetValue("DlmsSettings:UseLogicalNameReferencing", true);
+            string standardStr = _configuration.GetValue("DlmsSettings:Standard", "DLMS");
+
+            if (!Enum.TryParse(authStr, true, out Authentication authentication))
+                authentication = Authentication.None;
+            if (!Enum.TryParse(standardStr, true, out Standard standard))
+                standard = Standard.DLMS;
+
+            // Try existing cached session first
+            var reader = _sessionManager.GetSession(deviceId);
+            if (reader != null)
+                return reader;
+
+            // No session — create a fresh one
+            _logger.LogInformation("[Session] Connecting to device {DeviceId} at {IP}:{Port}", deviceId, device.IP, device.PORT);
+            return _sessionManager.Connect(deviceId, device.IP, device.PORT, clientAddress, serverAddress, authentication, password, useLogicalNameReferencing, standard);
+        }
+
+        private string DecodeEventStatusBitmask(DataContext db, string obisCode, string rawValue)
+        {
+            if (string.IsNullOrEmpty(rawValue) || !int.TryParse(rawValue.Trim(), out int numericValue))
+            {
+                return rawValue;
+            }
+
+            var mappings = db.EventStatusMapping
+                .Where(m => m.ObisCode == obisCode)
+                .ToList();
+
+            if (!mappings.Any())
+            {
+                return rawValue;
+            }
+
+            var activeEvents = new List<string>();
+            foreach (var mapping in mappings)
+            {
+                if ((numericValue & (1 << mapping.BitIndex)) != 0)
+                {
+                    activeEvents.Add(mapping.EventCode.ToString());
+                }
+            }
+
+            if (activeEvents.Any())
+            {
+                return string.Join(",", activeEvents);
+            }
+
+            return "0";
+        }
+
+        /// <summary>
+        /// Checks if an exception means the TCP connection died (meter closed idle socket).
+        /// </summary>
+        private static bool IsConnectionLostError(string message)
+        {
+            return message.Contains("Failed to receive reply", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("timeout", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("socket", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("connection", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("disconnected", StringComparison.OrdinalIgnoreCase);
         }
 
         private bool IsDeviceAlreadyExist(Device device)

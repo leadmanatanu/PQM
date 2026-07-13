@@ -14,6 +14,7 @@ using Gurux.DLMS;
 using Gurux.DLMS.Enums;
 using Microsoft.EntityFrameworkCore;
 using Gurux.DLMS.Objects;
+using Parameter = PQM.Core.Entities.Parameter;
 
 
 Console.WriteLine("Start reading ftp files");
@@ -99,8 +100,50 @@ string standardStr = config.GetValue<string>("DlmsSettings:Standard", "DLMS");
 Enum.TryParse<Authentication>(authStr, true, out var authentication);
 Enum.TryParse<Standard>(standardStr, true, out var standard);
 
-// Only execute DLMS Reading, as requested
-ReadDLMSData(deviceService, deviceParamService, deviceLogService, errorLogPath, logEnabled, lstDevices, clientAddress, serverAddress, authentication, dlmsPassword, useLogicalNameReferencing, standard);
+// Execute DLMS Reading in a continuous loop until stopped by the user
+Console.WriteLine("\nStarting continuous DLMS reading loop.");
+Console.WriteLine("Press ESC or 'q' to stop reading and exit...");
+
+bool keepRunning = true;
+while (keepRunning)
+{
+    ReadDLMSData(deviceService, deviceParamService, deviceLogService, errorLogPath, logEnabled, lstDevices, clientAddress, serverAddress, authentication, dlmsPassword, useLogicalNameReferencing, standard);
+
+    Console.WriteLine("\n==================================================");
+    Console.WriteLine("Cycle completed. Waiting 30 seconds before next run...");
+    Console.WriteLine("Press ESC or 'q' to disconnect and exit.");
+    Console.WriteLine("==================================================");
+
+    // Sleep for 30 seconds, checking for exit key press periodically
+    int sleepIntervalMs = 30000;
+    int checkIntervalMs = 100;
+    int slept = 0;
+    while (slept < sleepIntervalMs)
+    {
+        try
+        {
+            if (Console.KeyAvailable)
+            {
+                var key = Console.ReadKey(true);
+                if (key.Key == ConsoleKey.Escape || key.KeyChar == 'q' || key.KeyChar == 'Q')
+                {
+                    keepRunning = false;
+                    break;
+                }
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            // Standard input is redirected, fall back to simple sleep
+            Thread.Sleep(sleepIntervalMs - slept);
+            break;
+        }
+        Thread.Sleep(checkIntervalMs);
+        slept += checkIntervalMs;
+    }
+}
+
+Console.WriteLine("Disconnected successfully. Exiting program.");
 
 
 
@@ -269,10 +312,262 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                     Console.WriteLine($"[DLMS Reader] Warning: Could not ensure AssociationLogicalName table exists: {ex.Message}");
                 }
 
+                // Ensure ConnectedHeader table exists
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ConnectedHeader' AND xtype='U')
+                        CREATE TABLE [ConnectedHeader] (
+                            [Id] INT IDENTITY(1,1) PRIMARY KEY,
+                            [DeviceId] INT NOT NULL,
+                            [Name] NVARCHAR(MAX) NULL
+                        )
+                    ");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DLMS Reader] Warning: Could not ensure ConnectedHeader table exists: {ex.Message}");
+                }
+
+                // Ensure DLMSObject table exists
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='DLMSObject' AND xtype='U')
+                        CREATE TABLE [DLMSObject] (
+                            [Id] INT IDENTITY(1,1) PRIMARY KEY,
+                            [HeaderId] INT NOT NULL,
+                            [Name] NVARCHAR(MAX) NOT NULL,
+                            [ObisCode] NVARCHAR(MAX) NOT NULL,
+                            [ObjectType] NVARCHAR(MAX) NOT NULL
+                        )
+                    ");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DLMS Reader] Warning: Could not ensure DLMSObject table exists: {ex.Message}");
+                }
+
+                // Ensure ObjectParameter table exists
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ObjectParameter' AND xtype='U')
+                        CREATE TABLE [ObjectParameter] (
+                            [Id] INT IDENTITY(1,1) PRIMARY KEY,
+                            [ObjectId] INT NOT NULL,
+                            [AttributeId] INT NOT NULL,
+                            [Name] NVARCHAR(MAX) NOT NULL,
+                            [DataType] NVARCHAR(MAX) NULL,
+                            [AccessType] NVARCHAR(MAX) NULL
+                        )
+                    ");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DLMS Reader] Warning: Could not ensure ObjectParameter table exists: {ex.Message}");
+                }
+
+                // Ensure ParameterValue table exists
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ParameterValue' AND xtype='U')
+                        CREATE TABLE [ParameterValue] (
+                            [Id] BIGINT IDENTITY(1,1) PRIMARY KEY,
+                            [ParameterId] INT NOT NULL,
+                            [Value] NVARCHAR(MAX) NULL,
+                            [Timestamp] DATETIME2 NOT NULL
+                        )
+                    ");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DLMS Reader] Warning: Could not ensure ParameterValue table exists: {ex.Message}");
+                }
+
+                // Ensure ProfileGenericEntry table exists
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ProfileGenericEntry' AND xtype='U')
+                        CREATE TABLE [ProfileGenericEntry] (
+                            [Id] BIGINT IDENTITY(1,1) PRIMARY KEY,
+                            [DeviceId] INT NOT NULL,
+                            [ObisCode] NVARCHAR(MAX) NOT NULL,
+                            [ProfileName] NVARCHAR(MAX) NOT NULL,
+                            [EntryTime] DATETIME2 NOT NULL,
+                            [ColumnName] NVARCHAR(MAX) NOT NULL,
+                            [NumericValue] FLOAT NULL,
+                            [TextValue] NVARCHAR(MAX) NULL,
+                            [Unit] NVARCHAR(MAX) NULL
+                        )
+                    ");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DLMS Reader] Warning: Could not ensure ProfileGenericEntry table exists: {ex.Message}");
+                }
+
+                // Ensure EventStatusMapping table exists
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='EventStatusMapping' AND xtype='U')
+                        CREATE TABLE [EventStatusMapping] (
+                            [Id] INT IDENTITY(1,1) PRIMARY KEY,
+                            [Category] NVARCHAR(MAX) NOT NULL,
+                            [ObisCode] NVARCHAR(MAX) NOT NULL,
+                            [BitIndex] INT NOT NULL,
+                            [EventCode] INT NOT NULL,
+                            [Label] NVARCHAR(MAX) NOT NULL
+                        )
+                    ");
+
+                    if (dbContext.EventStatusMapping.Count() == 0)
+                    {
+                         var list = new List<EventStatusMapping>
+                         {
+                             // Voltage Related Events
+                             new EventStatusMapping { Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 0, EventCode = 1, Label = "R-Phase - Voltage Missing - Occurrence" },
+                             new EventStatusMapping { Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 1, EventCode = 2, Label = "R-Phase - Voltage Missing - Restoration" },
+                             new EventStatusMapping { Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 2, EventCode = 3, Label = "Y-Phase - Voltage Missing - Occurrence" },
+                             new EventStatusMapping { Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 3, EventCode = 4, Label = "Y-Phase - Voltage Missing - Restoration" },
+                             new EventStatusMapping { Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 4, EventCode = 5, Label = "B-Phase - Voltage Missing - Occurrence" },
+                             new EventStatusMapping { Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 5, EventCode = 6, Label = "B-Phase - Voltage Missing - Restoration" },
+                             new EventStatusMapping { Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 6, EventCode = 7, Label = "Over Voltage in any Phase - Occurrence" },
+                             new EventStatusMapping { Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 7, EventCode = 8, Label = "Over Voltage in any Phase - Restoration" },
+                             new EventStatusMapping { Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 8, EventCode = 9, Label = "Low Voltage in any Phase - Occurrence" },
+                             new EventStatusMapping { Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 9, EventCode = 10, Label = "Low Voltage in any Phase - Restoration" },
+                             new EventStatusMapping { Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 10, EventCode = 11, Label = "Voltage Unbalance - Occurrence" },
+                             new EventStatusMapping { Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 11, EventCode = 12, Label = "Voltage Unbalance - Restoration" },
+
+                             // Current Related Events
+                             new EventStatusMapping { Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 0, EventCode = 51, Label = "R Phase - Current reverse - Occurrence" },
+                             new EventStatusMapping { Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 1, EventCode = 52, Label = "R Phase - Current reverse - Restoration" },
+                             new EventStatusMapping { Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 2, EventCode = 53, Label = "Y Phase - Current reverse - Occurrence" },
+                             new EventStatusMapping { Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 3, EventCode = 54, Label = "Y Phase - Current reverse - Restoration" },
+                             new EventStatusMapping { Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 4, EventCode = 55, Label = "B Phase - Current reverse - Occurrence" },
+                             new EventStatusMapping { Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 5, EventCode = 56, Label = "B Phase - Current reverse - Restoration" },
+                             new EventStatusMapping { Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 6, EventCode = 63, Label = "Current Unbalance - Occurrence" },
+                             new EventStatusMapping { Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 7, EventCode = 64, Label = "Current Unbalance - Restoration" },
+                             new EventStatusMapping { Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 8, EventCode = 65, Label = "Current bypass - Occurrence" },
+                             new EventStatusMapping { Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 9, EventCode = 66, Label = "Current bypass - Restoration" },
+                             new EventStatusMapping { Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 10, EventCode = 67, Label = "Over current in any phase - Occurrence" },
+                             new EventStatusMapping { Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 11, EventCode = 68, Label = "Over current in any phase - Restoration" },
+
+                             // Power Related Events
+                             new EventStatusMapping { Category = "power", ObisCode = "0.0.96.11.2.255", BitIndex = 0, EventCode = 101, Label = "Power failure - Occurrence" },
+                             new EventStatusMapping { Category = "power", ObisCode = "0.0.96.11.2.255", BitIndex = 1, EventCode = 102, Label = "Power failure - Restoration" },
+
+                             // Transaction Related Events
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 0, EventCode = 151, Label = "Real Time Clock - Date and Time" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 1, EventCode = 152, Label = "Demand Integration Period" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 2, EventCode = 153, Label = "Profile Capture Period" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 3, EventCode = 154, Label = "Single-action Schedule for Billing Dates" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 4, EventCode = 155, Label = "Activity Calendar Time Zones" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 5, EventCode = 157, Label = "New Firmware Activated" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 6, EventCode = 158, Label = "Load limit (kW) set" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 7, EventCode = 159, Label = "Enabled - load limit function" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 8, EventCode = 160, Label = "Disabled - load limit function" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 9, EventCode = 161, Label = "LLS secret (MR) change" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 10, EventCode = 162, Label = "HLS key (US) change" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 11, EventCode = 163, Label = "HLS key (FW) change" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 12, EventCode = 164, Label = "Global key change(encryption and authentication)" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 13, EventCode = 165, Label = "ESWF change" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 14, EventCode = 166, Label = "MD reset" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 15, EventCode = 169, Label = "Single Action Schedule for Image Activation" },
+                             new EventStatusMapping { Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 16, EventCode = 182, Label = "Passive Relay time." },
+
+                             // Others Events
+                             new EventStatusMapping { Category = "others", ObisCode = "0.0.96.11.4.255", BitIndex = 0, EventCode = 201, Label = "Influence of permanent magnet - Occurrence" },
+                             new EventStatusMapping { Category = "others", ObisCode = "0.0.96.11.4.255", BitIndex = 1, EventCode = 202, Label = "Influence of permanent magnet - Restoration" },
+                             new EventStatusMapping { Category = "others", ObisCode = "0.0.96.11.4.255", BitIndex = 2, EventCode = 203, Label = "Neutral disturbance - Occurrence" },
+                             new EventStatusMapping { Category = "others", ObisCode = "0.0.96.11.4.255", BitIndex = 3, EventCode = 204, Label = "Neutral disturbance - Restoration" },
+                             new EventStatusMapping { Category = "others", ObisCode = "0.0.96.11.4.255", BitIndex = 4, EventCode = 205, Label = "Meter cover opened" },
+                             new EventStatusMapping { Category = "others", ObisCode = "0.0.96.11.4.255", BitIndex = 5, EventCode = 206, Label = "Terminal cover opened" }
+                         };
+                         dbContext.EventStatusMapping.AddRange(list);
+                         dbContext.SaveChanges();
+                         Console.WriteLine("[DLMS Reader] Seeded 49 EventStatusMapping values successfully.");
+                     }
+                 }
+                 catch (Exception ex)
+                 {
+                     Console.WriteLine($"[DLMS Reader] Warning: Could not ensure or seed EventStatusMapping table: {ex.Message}");
+                 }
+
+                 // Ensure columns exist on Parameter table
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'Parameter') AND name = N'Scaler')
+                            ALTER TABLE [Parameter] ADD [Scaler] INT NULL;
+
+                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'Parameter') AND name = N'Unit')
+                            ALTER TABLE [Parameter] ADD [Unit] NVARCHAR(MAX) NULL;
+                    ");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DLMS Reader] Warning: Could not ensure columns on Parameter exist: {ex.Message}");
+                }
+
+                // Ensure columns exist on Register table
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'Register') AND name = N'NumericValue')
+                            ALTER TABLE [Register] ADD [NumericValue] FLOAT NULL;
+
+                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'Register') AND name = N'ObisCode')
+                            ALTER TABLE [Register] ADD [ObisCode] NVARCHAR(MAX) NULL;
+
+                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'Register') AND name = N'Scaler')
+                            ALTER TABLE [Register] ADD [Scaler] INT NULL;
+
+                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'Register') AND name = N'Unit')
+                            ALTER TABLE [Register] ADD [Unit] NVARCHAR(MAX) NULL;
+                    ");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DLMS Reader] Warning: Could not ensure columns on Register exist: {ex.Message}");
+                }
+
+                // Ensure columns exist on DeviceLog table
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'DeviceLog') AND name = N'NumericValue')
+                            ALTER TABLE [DeviceLog] ADD [NumericValue] FLOAT NULL;
+
+                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'DeviceLog') AND name = N'Unit')
+                            ALTER TABLE [DeviceLog] ADD [Unit] NVARCHAR(MAX) NULL;
+                    ");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DLMS Reader] Warning: Could not ensure columns on DeviceLog exist: {ex.Message}");
+                }
+
+                // Ensure columns exist on ParameterValue table
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        IF EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'ParameterValue') AND name = N'Value' AND is_nullable = 0)
+                            ALTER TABLE [ParameterValue] ALTER COLUMN [Value] NVARCHAR(MAX) NULL;
+                    ");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DLMS Reader] Warning: Could not alter column on ParameterValue: {ex.Message}");
+                }
+
                 using (var reader = new DLMSReader(item.IP, item.PORT, clientAddress, serverAddress, authentication, password, useLogicalNameReferencing, standard))
                 {
                     reader.Connect();
-                    
+
                     Console.ForegroundColor = ConsoleColor.Green;
                     Console.WriteLine($"[DLMS Reader] Connected successfully to {item.Name}!");
                     Console.ResetColor();
@@ -327,16 +622,16 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                         dbContext.SaveChanges();
                     }
 
+                    // Ensure all parameters exist in database in one batch
+                    bool parametersAdded = false;
                     foreach (var obj in reader.Objects)
                     {
-                        // Resolve description
-                        converter.UpdateOBISCodeInformation(obj);
-                        string paramName = string.IsNullOrEmpty(obj.Description) ? $"{obj.ObjectType} - {obj.LogicalName}" : obj.Description;
-
-                        // Check if Parameter exists in database, if not insert it (Equalise parameter)
                         var dbParam = existingParams.FirstOrDefault(p => p.ObisCode == obj.LogicalName);
                         if (dbParam == null)
                         {
+                            converter.UpdateOBISCodeInformation(obj);
+                            string paramName = string.IsNullOrEmpty(obj.Description) ? $"{obj.ObjectType} - {obj.LogicalName}" : obj.Description;
+                            
                             dbParam = new PQM.Core.Entities.Parameter
                             {
                                 Name = paramName,
@@ -347,24 +642,48 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                                 CreatedDate = DateTime.UtcNow
                             };
                             dbContext.Parameter.Add(dbParam);
-                            dbContext.SaveChanges();
                             existingParams.Add(dbParam); // Add to cache list
+                            parametersAdded = true;
                         }
+                    }
+                    if (parametersAdded)
+                    {
+                        dbContext.SaveChanges();
+                    }
 
-                        // Map parameter to device if not mapped
-                        var mapping = existingMappings.FirstOrDefault(m => m.ParameterId == dbParam.Id);
-                        if (mapping == null)
+                    // Map parameters to device in one batch
+                    bool mappingsAdded = false;
+                    foreach (var obj in reader.Objects)
+                    {
+                        var dbParam = existingParams.FirstOrDefault(p => p.ObisCode == obj.LogicalName);
+                        if (dbParam != null)
                         {
-                            mapping = new DeviceParameterMapping
+                            var mapping = existingMappings.FirstOrDefault(m => m.ParameterId == dbParam.Id);
+                            if (mapping == null)
                             {
-                                DeviceId = item.Id,
-                                ParameterId = dbParam.Id,
-                                DateStamp = DateTime.UtcNow
-                            };
-                            dbContext.DeviceParameterMapping.Add(mapping);
-                            dbContext.SaveChanges();
-                            existingMappings.Add(mapping);
+                                mapping = new DeviceParameterMapping
+                                {
+                                    DeviceId = item.Id,
+                                    ParameterId = dbParam.Id,
+                                    DateStamp = DateTime.UtcNow
+                                };
+                                dbContext.DeviceParameterMapping.Add(mapping);
+                                existingMappings.Add(mapping);
+                                mappingsAdded = true;
+                            }
                         }
+                    }
+                    if (mappingsAdded)
+                    {
+                        dbContext.SaveChanges();
+                    }
+
+                    foreach (var obj in reader.Objects)
+                    {
+                        // Resolve description
+                        converter.UpdateOBISCodeInformation(obj);
+                        string paramName = string.IsNullOrEmpty(obj.Description) ? $"{obj.ObjectType} - {obj.LogicalName}" : obj.Description;
+                        var dbParam = existingParams.FirstOrDefault(p => p.ObisCode == obj.LogicalName);
 
                         // Read values
                         string attr2Val = "";
@@ -387,13 +706,13 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                             Console.ResetColor();
                             attr2Val = $"Error: {ex.Message}";
 
-                            // Check if the connection is dead/socket lost
-                            bool isDisconnected = ex.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase) ||
-                                                 ex.Message.Contains("connection", StringComparison.OrdinalIgnoreCase) ||
-                                                 ex.Message.Contains("socket", StringComparison.OrdinalIgnoreCase) ||
-                                                 ex.Message.Contains("disconnected", StringComparison.OrdinalIgnoreCase) ||
-                                                 ex.InnerException is System.Net.Sockets.SocketException ||
-                                                 ex.InnerException is System.IO.IOException;
+                             // Check if the connection is dead/socket lost
+                             bool isDisconnected = ex.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase) ||
+                                                  ex.Message.Contains("connection", StringComparison.OrdinalIgnoreCase) ||
+                                                  ex.Message.Contains("socket", StringComparison.OrdinalIgnoreCase) ||
+                                                  ex.Message.Contains("disconnected", StringComparison.OrdinalIgnoreCase) ||
+                                                  ex.InnerException is System.Net.Sockets.SocketException ||
+                                                  ex.InnerException is System.IO.IOException;
 
                             if (isDisconnected)
                             {
@@ -401,6 +720,13 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                                 Console.WriteLine("[DLMS Reader] Connection lost or device offline. Aborting scan loop for this device to disconnect immediately and continue.");
                                 Console.ResetColor();
                                 break; // exit parameter scan loop early
+                            }
+                        }
+                        if (!string.IsNullOrEmpty(attr2Val) && !attr2Val.StartsWith("Error"))
+                        {
+                            if (obj.LogicalName.StartsWith("0.0.96.11."))
+                            {
+                                attr2Val = DecodeEventStatusBitmask(dbContext, obj.LogicalName, attr2Val);
                             }
                         }
                         string attr3Val = "";
@@ -1159,6 +1485,28 @@ static void ReadDLMSData(IDeviceService? deviceService, IDeviceParameterService?
                             Console.ResetColor();
                         }
                     }
+
+                    // Trigger real-time SignalR UI update notification
+                    try
+                    {
+                        using (var httpClient = new System.Net.Http.HttpClient())
+                        {
+                            var url = $"http://localhost:5135/api/device/{item.Id}/notify-update";
+                            var response = httpClient.PostAsync(url, null).GetAwaiter().GetResult();
+                            if (response.IsSuccessStatusCode)
+                            {
+                                Console.WriteLine($"[DLMS Reader] Sent live update notification to backend UI for device {item.Name} (ID: {item.Id}).");
+                            }
+                            else
+                            {
+                                Console.WriteLine($"[DLMS Reader] Live update notification returned code {response.StatusCode} for device {item.Name}.");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[DLMS Reader] Warning: Could not send real-time SignalR update notification: {ex.Message}");
+                    }
                 }
             }
         }
@@ -1270,4 +1618,38 @@ static string MergeProfileGenericJson(string? existingJson, string newJson)
         return newJson;
     }
 }
+
+static string DecodeEventStatusBitmask(PQM.Infrastructure.DataContext db, string obisCode, string rawValue)
+{
+    if (string.IsNullOrEmpty(rawValue) || !int.TryParse(rawValue.Trim(), out int numericValue))
+    {
+        return rawValue;
+    }
+
+    var mappings = db.EventStatusMapping
+        .Where(m => m.ObisCode == obisCode)
+        .ToList();
+
+    if (!mappings.Any())
+    {
+        return rawValue;
+    }
+
+    var activeEvents = new List<string>();
+    foreach (var mapping in mappings)
+    {
+        if ((numericValue & (1 << mapping.BitIndex)) != 0)
+        {
+            activeEvents.Add(mapping.EventCode.ToString());
+        }
+    }
+
+    if (activeEvents.Any())
+    {
+        return string.Join(",", activeEvents);
+    }
+
+    return "0";
+}
+
 

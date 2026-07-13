@@ -327,3 +327,34 @@ export const fetchDeviceConfiguration = async (id: string | number): Promise<any
     }
 };
 
+// Fetch Event Status Mappings dynamically from database
+export const fetchEventStatusMappings = async (): Promise<any | null> => {
+    try {
+        const { data } = await axios.get(`${API_URL}/eventstatusmapping`);
+        return data;
+    } catch (error) {
+        console.error("Error fetching event status mappings:", error);
+        return null;
+    }
+};
+
+// Write a DLMS object attribute value
+export const writeDLMSObjectAttribute = async (
+    deviceId: string | number,
+    obisCode: string,
+    value: string,
+    attributeId: number = 2
+): Promise<any | null> => {
+    try {
+        const { data } = await axios.post(`${API_URL}/device/${deviceId}/write-object`, {
+            obisCode,
+            value,
+            attributeId
+        });
+        return data;
+    } catch (error) {
+        console.error("Error writing DLMS object attribute:", error);
+        return null;
+    }
+};
+

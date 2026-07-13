@@ -15,6 +15,7 @@ import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
+import Chip from '@mui/material/Chip';
 import dayjs from 'dayjs';
 
 import { useSelection } from '@/hooks/use-selection';
@@ -112,22 +113,22 @@ export function DevicesTable({
     }, [page, rowsPerPage]);
 
     return (
-        <Card>
-            <Box sx={{ overflowX: 'auto' }}>
-                <Table sx={{ minWidth: '800px' }}>
-                    <TableHead>
+        <Card sx={{ borderRadius: '8px' }}>
+            <Box sx={{ overflowX: 'auto', maxHeight: '350px', overflowY: 'auto' }}>
+                <Table size="small" sx={{ minWidth: '800px' }}>
+                    <TableHead sx={{ bgcolor: 'var(--mui-palette-neutral-50)' }}>
                         <TableRow>
-                            <TableCell>Id</TableCell>
-                            <TableCell>Name</TableCell>
-                            <TableCell>Serial No</TableCell>
-                            <TableCell>Consumer No</TableCell>
-                            <TableCell>FTP Folder</TableCell>
-                            <TableCell>Status</TableCell>
-                            <TableCell>IP</TableCell>
-                            <TableCell>PORT</TableCell>
-                            <TableCell>Created Date</TableCell>
-                            <TableCell>Last Sync</TableCell>
-                            <TableCell>Action</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>Id</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>Serial No</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>Consumer No</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>FTP Folder</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>IP</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>PORT</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>Created Date</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>Last Sync</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }} align="center">Action</TableCell>
                         </TableRow>
                     </TableHead>
                     <TableBody>
@@ -137,21 +138,28 @@ export function DevicesTable({
                             return (
                                 <TableRow hover key={row.id} selected={isSelected}>
                                     <TableCell>{row.id}</TableCell>
-                                    <TableCell>{row.name}</TableCell>
-                                    <TableCell>{row.serialNumber}</TableCell>
-                                    <TableCell>{row.consumerNumber}</TableCell>
-                                    <TableCell>{row.ftpFolder}</TableCell>
-                                    <TableCell>{row.isActive ? <p>Active</p> : <p>Inactive</p>}</TableCell>
-                                    <TableCell>{row.ip}</TableCell>
-                                    <TableCell>{row.port}</TableCell>
-                                    <TableCell>{dayjs(row.createdDate).format('MMM D, YYYY')}</TableCell>
-                                    <TableCell>{row.lastSync ? dayjs(row.lastSync).format('MMM D, YYYY') : ''}</TableCell>
+                                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.name}</TableCell>
+                                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.serialNumber}</TableCell>
+                                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.consumerNumber}</TableCell>
+                                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.ftpFolder}</TableCell>
                                     <TableCell>
+                                        <Chip
+                                            label={row.isActive ? 'Active' : 'Inactive'}
+                                            color={row.isActive ? 'success' : 'default'}
+                                            size="small"
+                                            variant="outlined"
+                                        />
+                                    </TableCell>
+                                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.ip}</TableCell>
+                                    <TableCell>{row.port}</TableCell>
+                                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{dayjs(row.createdDate).format('MMM D, YYYY')}</TableCell>
+                                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.lastSync ? dayjs(row.lastSync).format('MMM D, YYYY') : ''}</TableCell>
+                                    <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
                                         <Button
                                             variant="outlined"
                                             size="small"
                                             onClick={() => handleEditClick(row.id)}
-                                            sx={{ mr: 1 }}
+                                            sx={{ mr: 1, textTransform: 'none' }}
                                         >
                                             Edit
                                         </Button>
@@ -159,7 +167,7 @@ export function DevicesTable({
                                             variant="outlined"
                                             size="small"
                                             onClick={() => handleDeleteClick(row.id)}
-                                            sx={{ mr: 1 }}
+                                            sx={{ textTransform: 'none' }}
                                         >
                                             Delete
                                         </Button>

@@ -12,18 +12,25 @@ export function DevicesFilters({ show = true }: DevicesFiltersProps): React.JSX.
     //console.log("isVisible " + isVisible);
     if (!show) return null;
     return (
-    <Card sx={{ p: 2 }}>
       <OutlinedInput
         defaultValue=""
         fullWidth
+        size="small"
         placeholder="Search device"
         startAdornment={
           <InputAdornment position="start">
             <MagnifyingGlassIcon fontSize="var(--icon-fontSize-md)" />
           </InputAdornment>
         }
-        sx={{ maxWidth: '500px' }}
+        sx={{ 
+          maxWidth: '300px', 
+          width: '100%', 
+          borderRadius: '8px',
+          bgcolor: 'var(--mui-palette-background-paper)',
+          '& .MuiOutlinedInput-notchedOutline': {
+            borderColor: 'var(--mui-palette-divider)',
+          }
+        }}
       />
-    </Card>
   );
 }
