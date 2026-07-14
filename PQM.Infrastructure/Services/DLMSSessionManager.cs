@@ -23,7 +23,8 @@ namespace PQM.Infrastructure.Services
             Gurux.DLMS.Enums.Authentication authentication = Gurux.DLMS.Enums.Authentication.None,
             string password = "",
             bool useLogicalNameReferencing = true,
-            Gurux.DLMS.Enums.Standard standard = Gurux.DLMS.Enums.Standard.DLMS)
+            Gurux.DLMS.Enums.Standard standard = Gurux.DLMS.Enums.Standard.DLMS,
+            Gurux.DLMS.Enums.InterfaceType interfaceType = Gurux.DLMS.Enums.InterfaceType.WRAPPER)
         {
             // Disconnect any existing session first
             Disconnect(deviceId);
@@ -32,7 +33,7 @@ namespace PQM.Infrastructure.Services
                 ipAddress, port,
                 clientAddress, serverAddress,
                 authentication, password,
-                useLogicalNameReferencing, standard);
+                useLogicalNameReferencing, standard, interfaceType);
 
             try
             {

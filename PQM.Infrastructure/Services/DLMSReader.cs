@@ -30,13 +30,13 @@ namespace PQM.Infrastructure.Services
 
         public GXDLMSObjectCollection Objects => _client.Objects;
 
-        public DLMSReader(string ipAddress, int port, int clientAddress = 16, int serverAddress = 1, Authentication authentication = Authentication.None, string password = "", bool useLogicalNameReferencing = true, Standard standard = Standard.DLMS)
+        public DLMSReader(string ipAddress, int port, int clientAddress = 16, int serverAddress = 1, Authentication authentication = Authentication.None, string password = "", bool useLogicalNameReferencing = true, Standard standard = Standard.DLMS, InterfaceType interfaceType = InterfaceType.WRAPPER)
         {
             _media = new GXNet(NetworkType.Tcp, ipAddress, port);
             
             _client = new GXDLMSClient(useLogicalNameReferencing)
             {
-                InterfaceType = InterfaceType.WRAPPER, // Standard wrapper for TCP
+                InterfaceType = interfaceType,
                 ClientAddress = clientAddress,
                 ServerAddress = serverAddress,
                 Authentication = authentication,

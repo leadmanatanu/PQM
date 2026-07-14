@@ -219,6 +219,9 @@ namespace PQM.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("ConnectionSettings")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("ConsumerNumber")
                         .HasColumnType("nvarchar(max)");
 
@@ -227,9 +230,6 @@ namespace PQM.Infrastructure.Migrations
 
                     b.Property<int?>("CreatedId")
                         .HasColumnType("int");
-
-                    b.Property<string>("FtpFolder")
-                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("IP")
                         .IsRequired()
@@ -1253,6 +1253,45 @@ namespace PQM.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("TcpUdpSetup");
+                });
+
+            modelBuilder.Entity("PQM.Core.Entities.User", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("User");
                 });
 #pragma warning restore 612, 618
         }

@@ -6,6 +6,7 @@ import { UserIcon } from '@phosphor-icons/react/dist/ssr/User';
 import { UsersIcon } from '@phosphor-icons/react/dist/ssr/Users';
 import { XSquare } from '@phosphor-icons/react/dist/ssr/XSquare';
 import { Devices } from '@phosphor-icons/react/dist/ssr/Devices';
+import { FileText } from '@phosphor-icons/react/dist/ssr/FileText';
 
 export const navIcons = {
     'chart-pie': ChartPieIcon,
@@ -15,4 +16,5 @@ export const navIcons = {
     user: UserIcon,
     users: UsersIcon,
     devices: Devices,
+    'file-text': FileText,
 } as Record<string, Icon>;

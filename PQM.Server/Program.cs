@@ -10,9 +10,10 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
 var connectionString =
-    builder.Configuration.GetConnectionString("DefaultConnection")
+    builder.Configuration["DATABASE_CONNECTION_STRING"]
+    ?? builder.Configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException(
-        "Connection string 'DefaultConnection' not found."
+        "Connection string 'DefaultConnection' or 'DATABASE_CONNECTION_STRING' not found."
     );
 
 builder.Services.AddTransient<IDeviceService>(_ =>
@@ -77,7 +78,10 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-app.UseHttpsRedirection();
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 app.UseAuthorization();
 
 app.MapControllers();

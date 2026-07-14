@@ -98,10 +98,10 @@ export function SignUpForm(): React.JSX.Element {
             control={control}
             name="lastName"
             render={({ field }) => (
-              <FormControl error={Boolean(errors.firstName)}>
+              <FormControl error={Boolean(errors.lastName)}>
                 <InputLabel>Last name</InputLabel>
                 <OutlinedInput {...field} label="Last name" />
-                {errors.firstName ? <FormHelperText>{errors.firstName.message}</FormHelperText> : null}
+                {errors.lastName ? <FormHelperText>{errors.lastName.message}</FormHelperText> : null}
               </FormControl>
             )}
           />
@@ -133,7 +133,14 @@ export function SignUpForm(): React.JSX.Element {
             render={({ field }) => (
               <div>
                 <FormControlLabel
-                  control={<Checkbox {...field} />}
+                  control={
+                    <Checkbox
+                      checked={field.value}
+                      onChange={(e) => field.onChange(e.target.checked)}
+                      onBlur={field.onBlur}
+                      inputRef={field.ref}
+                    />
+                  }
                   label={
                     <React.Fragment>
                       I have read the <Link>terms and conditions</Link>

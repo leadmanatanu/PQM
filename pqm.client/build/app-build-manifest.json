@@ -31,20 +31,10 @@
       "static/chunks/main-app.js",
       "static/chunks/app/dashboard/devices/page.js"
     ],
-    "/dashboard/mapping/page": [
+    "/_not-found/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/dashboard/mapping/page.js"
-    ],
-    "/dashboard/devicereadings/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/dashboard/devicereadings/page.js"
-    ],
-    "/dashboard/eventreadings/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/dashboard/eventreadings/page.js"
+      "static/chunks/app/_not-found/page.js"
     ]
   }
 }

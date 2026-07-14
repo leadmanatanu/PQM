@@ -37,8 +37,8 @@ export function MobileNav({ open, onClose }: MobileNavProps): React.JSX.Element 
   const router = useRouter();
   const { user, checkSession } = useUser();
 
-  const displayName = user ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.name : 'Tarlok Singh';
-  const emailAddress = user?.email || 'tarlokthakur@gmail.com';
+  const displayName = user ? user.name || `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() : '';
+  const emailAddress = user?.email || '';
   const avatarSrc = user?.avatar || '/assets/avatar-1.png';
 
   const handleSignOut = React.useCallback(async (): Promise<void> => {
@@ -108,50 +108,6 @@ export function MobileNav({ open, onClose }: MobileNavProps): React.JSX.Element 
           </Box>
         </Box>
         <Stack spacing={0.5}>
-          <Button 
-            component={RouterLink} 
-            href={paths.dashboard.settings}
-            variant="text" 
-            size="small" 
-            onClick={onClose}
-            startIcon={<GearSixIcon fontSize="18" />}
-            sx={{ 
-              color: 'var(--NavItem-color)', 
-              justifyContent: 'flex-start', 
-              p: '4px 8px', 
-              borderRadius: '4px',
-              textTransform: 'none',
-              fontSize: '0.8125rem',
-              '&:hover': { 
-                bgcolor: 'rgba(255, 255, 255, 0.04)',
-                color: 'white' 
-              } 
-            }}
-          >
-            Settings
-          </Button>
-          <Button 
-            component={RouterLink} 
-            href={paths.dashboard.account}
-            variant="text" 
-            size="small" 
-            onClick={onClose}
-            startIcon={<UserIcon fontSize="18" />}
-            sx={{ 
-              color: 'var(--NavItem-color)', 
-              justifyContent: 'flex-start', 
-              p: '4px 8px', 
-              borderRadius: '4px',
-              textTransform: 'none',
-              fontSize: '0.8125rem',
-              '&:hover': { 
-                bgcolor: 'rgba(255, 255, 255, 0.04)',
-                color: 'white' 
-              } 
-            }}
-          >
-            Profile
-          </Button>
           <Button 
             onClick={() => {
               onClose?.();

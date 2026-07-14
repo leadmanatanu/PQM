@@ -70,9 +70,64 @@ namespace PQM.Server.Controllers
         [HttpGet]
         public IActionResult Get()
         {
+            var devices = _deviceService.GetDevices().ToList();
+            var result = devices.Select(d => new {
+                d.Id,
+                d.Name,
+                d.IP,
+                d.PORT,
+                d.SerialNumber,
+                d.ConsumerNumber,
+                d.IsActive,
+                d.IsDeleted,
+                d.CreatedDate,
+                d.CreatedId,
+                d.ModifiedDate,
+                d.ModifiedId,
+                d.LastSync,
+                d.ConnectionSettings,
+                IsConnected = _sessionManager.GetSession(d.Id) != null
+            }).ToList();
+
             _apiResponse.Status = true;
             _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-            _apiResponse.Data = _deviceService.GetDevices().ToList();
+            _apiResponse.Data = result;
+            return Ok(_apiResponse);
+        }
+
+        [HttpGet("{id}")]
+        public IActionResult Get(int id)
+        {
+            var d = _deviceService.GetDevices().FirstOrDefault(x => x.Id == id);
+            if (d == null)
+            {
+                _apiResponse.Status = false;
+                _apiResponse.StatusCode = System.Net.HttpStatusCode.NotFound;
+                _apiResponse.Errors.Add("Device not found.");
+                return Ok(_apiResponse);
+            }
+
+            var result = new {
+                d.Id,
+                d.Name,
+                d.IP,
+                d.PORT,
+                d.SerialNumber,
+                d.ConsumerNumber,
+                d.IsActive,
+                d.IsDeleted,
+                d.CreatedDate,
+                d.CreatedId,
+                d.ModifiedDate,
+                d.ModifiedId,
+                d.LastSync,
+                d.ConnectionSettings,
+                IsConnected = _sessionManager.GetSession(d.Id) != null
+            };
+
+            _apiResponse.Status = true;
+            _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
+            _apiResponse.Data = result;
             return Ok(_apiResponse);
         }
 
@@ -136,6 +191,52 @@ namespace PQM.Server.Controllers
             return Ok(_apiResponse);
         }
 
+        // -------------------- EDIT DEVICE --------------------
+        [HttpPut]
+        public IActionResult Put([FromBody] Device device)
+        {
+            _apiResponse.Errors.Clear();
+
+            if (device == null || device.Id <= 0)
+            {
+                _apiResponse.Status = false;
+                _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
+                _apiResponse.Errors.Add("Invalid device payload.");
+                return Ok(_apiResponse);
+            }
+
+            if (!RequiredFieldValidation(device) || !IsDeviceAlreadyExist(device))
+            {
+                _apiResponse.StatusCode = System.Net.HttpStatusCode.NotAcceptable;
+                return Ok(_apiResponse);
+            }
+
+            try
+            {
+                var success = _deviceService.UpdateDevice(device);
+                if (success)
+                {
+                    _apiResponse.Status = true;
+                    _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
+                    _apiResponse.Data = device;
+                }
+                else
+                {
+                    _apiResponse.Status = false;
+                    _apiResponse.StatusCode = System.Net.HttpStatusCode.NotFound;
+                    _apiResponse.Errors.Add("Device not found.");
+                }
+                return Ok(_apiResponse);
+            }
+            catch (Exception ex)
+            {
+                _apiResponse.Status = false;
+                _apiResponse.StatusCode = System.Net.HttpStatusCode.InternalServerError;
+                _apiResponse.Errors.Add(ex.Message);
+                return Ok(_apiResponse);
+            }
+        }
+
         // -------------------- CONNECT DEVICE --------------------
         [HttpPost("{id}/connect")]
         public IActionResult Connect(int id)
@@ -153,16 +254,76 @@ namespace PQM.Server.Controllers
             bool useLogicalNameReferencing = _configuration.GetValue("DlmsSettings:UseLogicalNameReferencing", true);
             string standardStr = _configuration.GetValue("DlmsSettings:Standard", "DLMS");
 
-            if (!Enum.TryParse(authStr, true, out Authentication authentication))
-                authentication = Authentication.None;
+            InterfaceType interfaceType = InterfaceType.WRAPPER;
 
-            if (!Enum.TryParse(standardStr, true, out Standard standard))
-                standard = Standard.DLMS;
+            if (!string.IsNullOrEmpty(device.ConnectionSettings))
+            {
+                try
+                {
+                    var settings = System.Text.Json.JsonSerializer.Deserialize<DeviceConnectionSettings>(device.ConnectionSettings);
+                    if (settings != null)
+                    {
+                        clientAddress = settings.ClientAddress;
+                        // Combine logical + physical server address as Gurux expects
+                        serverAddress = GXDLMSClient.GetServerAddress(settings.LogicalServer, settings.PhysicalServer);
+                        authStr = settings.Authentication;
+                        password = settings.Password ?? "";
+                        useLogicalNameReferencing = settings.LogicalNameReferencing;
+                        standardStr = settings.Manufacturer;
+
+                        // Parse interface type from settings
+                        if (!string.IsNullOrEmpty(settings.Interface) &&
+                            Enum.TryParse(settings.Interface, true, out InterfaceType parsedInterface))
+                            interfaceType = parsedInterface;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to deserialize ConnectionSettings for device {DeviceId} in Connect", id);
+                }
+            }
+
+            // Map Gurux Director authentication labels to Gurux enum values
+            // Gurux Director shows "MR" (Meter Reader) which is Low authentication
+            Authentication authentication = authStr?.ToUpperInvariant() switch
+            {
+                "MR" or "LOW" => Authentication.Low,
+                "HLS" or "HIGH" => Authentication.High,
+                "HLS_MD5" or "HIGHMD5" => Authentication.HighMD5,
+                "HLS_SHA1" or "HIGHSHA1" => Authentication.HighSHA1,
+                "HLS_GMAC" or "HIGHGMAC" => Authentication.HighGMAC,
+                _ => Authentication.None
+            };
+
+            // Map manufacturer/standard string to Gurux Standard enum
+            // Gurux Director stores "Indian Standard" or "IndianStandard" → Standard.India
+            Standard standard = standardStr?.Replace(" ", "").ToUpperInvariant() switch
+            {
+                "INDIANSTANDARD" or "INDIA" => Standard.India,
+                _ => Standard.DLMS
+            };
 
             try
             {
-                _sessionManager.Connect(id, device.IP, device.PORT, clientAddress, serverAddress, authentication, password, useLogicalNameReferencing, standard);
-                
+                _sessionManager.Connect(id, device.IP, device.PORT, clientAddress, serverAddress, authentication, password, useLogicalNameReferencing, standard, interfaceType);
+
+                // Save LastSync timestamp to database on every successful connection
+                try
+                {
+                    using var db = new DataContext(_connectionString);
+                    var deviceRecord = db.Device.FirstOrDefault(d => d.Id == id);
+                    if (deviceRecord != null)
+                    {
+                        deviceRecord.LastSync = DateTime.UtcNow;
+                        db.Device.Update(deviceRecord);
+                        db.SaveChanges();
+                    }
+                }
+                catch (Exception dbEx)
+                {
+                    _logger.LogWarning(dbEx, "Failed to update LastSync for device {DeviceId} after connect", id);
+                }
+
                 _apiResponse.Status = true;
                 _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
                 _apiResponse.Data = $"Successfully connected to device {device.Name} at {device.IP}:{device.PORT}.";
@@ -682,10 +843,48 @@ namespace PQM.Server.Controllers
             bool useLogicalNameReferencing = _configuration.GetValue("DlmsSettings:UseLogicalNameReferencing", true);
             string standardStr = _configuration.GetValue("DlmsSettings:Standard", "DLMS");
 
-            if (!Enum.TryParse(authStr, true, out Authentication authentication))
-                authentication = Authentication.None;
-            if (!Enum.TryParse(standardStr, true, out Standard standard))
-                standard = Standard.DLMS;
+            InterfaceType interfaceType = InterfaceType.WRAPPER;
+
+            if (!string.IsNullOrEmpty(device.ConnectionSettings))
+            {
+                try
+                {
+                    var settings = System.Text.Json.JsonSerializer.Deserialize<DeviceConnectionSettings>(device.ConnectionSettings);
+                    if (settings != null)
+                    {
+                        clientAddress = settings.ClientAddress;
+                        serverAddress = GXDLMSClient.GetServerAddress(settings.LogicalServer, settings.PhysicalServer);
+                        authStr = settings.Authentication;
+                        password = settings.Password ?? "";
+                        useLogicalNameReferencing = settings.LogicalNameReferencing;
+                        standardStr = settings.Manufacturer;
+
+                        if (!string.IsNullOrEmpty(settings.Interface) &&
+                            Enum.TryParse(settings.Interface, true, out InterfaceType parsedInterface))
+                            interfaceType = parsedInterface;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to deserialize ConnectionSettings for device {DeviceId} in GetOrReconnectSession", deviceId);
+                }
+            }
+
+            Authentication authentication = authStr?.ToUpperInvariant() switch
+            {
+                "MR" or "LOW" => Authentication.Low,
+                "HLS" or "HIGH" => Authentication.High,
+                "HLS_MD5" or "HIGHMD5" => Authentication.HighMD5,
+                "HLS_SHA1" or "HIGHSHA1" => Authentication.HighSHA1,
+                "HLS_GMAC" or "HIGHGMAC" => Authentication.HighGMAC,
+                _ => Authentication.None
+            };
+
+            Standard standard = standardStr?.Replace(" ", "").ToUpperInvariant() switch
+            {
+                "INDIANSTANDARD" or "INDIA" => Standard.India,
+                _ => Standard.DLMS
+            };
 
             // Try existing cached session first
             var reader = _sessionManager.GetSession(deviceId);
@@ -694,7 +893,7 @@ namespace PQM.Server.Controllers
 
             // No session — create a fresh one
             _logger.LogInformation("[Session] Connecting to device {DeviceId} at {IP}:{Port}", deviceId, device.IP, device.PORT);
-            return _sessionManager.Connect(deviceId, device.IP, device.PORT, clientAddress, serverAddress, authentication, password, useLogicalNameReferencing, standard);
+            return _sessionManager.Connect(deviceId, device.IP, device.PORT, clientAddress, serverAddress, authentication, password, useLogicalNameReferencing, standard, interfaceType);
         }
 
         private string DecodeEventStatusBitmask(DataContext db, string obisCode, string rawValue)
@@ -928,5 +1127,28 @@ namespace PQM.Server.Controllers
                 ? "IecHdlcSetup"
                 : objectType.Trim();
         }
+    }
+
+    public class DeviceConnectionSettings
+    {
+        public string Manufacturer { get; set; } = "IndianStandard";
+        public string Interface { get; set; } = "HDLC";
+        public string Authentication { get; set; } = "None";
+        public string Password { get; set; } = "";
+        public string WaitTime { get; set; } = "00:00:05";
+        public string AddressType { get; set; } = "Default";
+        public int LogicalServer { get; set; } = 0;
+        public string Media { get; set; } = "Net";
+        public bool LogicalNameReferencing { get; set; } = true;
+        public int ClientAddress { get; set; } = 16;
+        public bool Ascii { get; set; } = true;
+        public int ResendCount { get; set; } = 3;
+        public bool Broadcast { get; set; } = false;
+        public int PhysicalServer { get; set; } = 1;
+        public bool VerboseMode { get; set; } = false;
+        public string HostName { get; set; } = "";
+        public string Port { get; set; } = "4059";
+        public string Protocol { get; set; } = "Tcp";
+        public bool UseSerialPort { get; set; } = false;
     }
 }

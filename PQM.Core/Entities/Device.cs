@@ -9,7 +9,6 @@ namespace PQM.Core.Entities
         public required string Name { get; set; }
         public required string IP { get; set; }
         public int PORT { get; set; }
-        public string? FtpFolder { get; set; }
         public string? SerialNumber { get; set; }
         public string? ConsumerNumber { get; set; }
         public bool IsActive { get; set; }
@@ -19,5 +18,6 @@ namespace PQM.Core.Entities
         public DateTime? ModifiedDate { get; set; }
         public int? ModifiedId { get; set; }
         public DateTime? LastSync { get; set; }
+        public string? ConnectionSettings { get; set; }
     }
 }
