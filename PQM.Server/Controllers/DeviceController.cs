@@ -84,7 +84,6 @@ namespace PQM.Server.Controllers
                 d.CreatedId,
                 d.ModifiedDate,
                 d.ModifiedId,
-                d.LastSync,
                 d.ConnectionSettings,
                 IsConnected = _sessionManager.GetSession(d.Id) != null
             }).ToList();
@@ -119,8 +118,7 @@ namespace PQM.Server.Controllers
                 d.CreatedDate,
                 d.CreatedId,
                 d.ModifiedDate,
-                d.ModifiedId,
-                d.LastSync,
+                d.ModifiedId,                
                 d.ConnectionSettings,
                 IsConnected = _sessionManager.GetSession(d.Id) != null
             };
@@ -255,12 +253,15 @@ namespace PQM.Server.Controllers
             string standardStr = _configuration.GetValue("DlmsSettings:Standard", "DLMS");
 
             InterfaceType interfaceType = InterfaceType.WRAPPER;
+            int waitTimeMs = 5000;
+            int retryCount = 3;
 
             if (!string.IsNullOrEmpty(device.ConnectionSettings))
             {
                 try
                 {
-                    var settings = System.Text.Json.JsonSerializer.Deserialize<DeviceConnectionSettings>(device.ConnectionSettings);
+                    var settings = System.Text.Json.JsonSerializer.Deserialize<DeviceConnectionSettings>(device.ConnectionSettings, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
                     if (settings != null)
                     {
                         clientAddress = settings.ClientAddress;
@@ -270,6 +271,15 @@ namespace PQM.Server.Controllers
                         password = settings.Password ?? "";
                         useLogicalNameReferencing = settings.LogicalNameReferencing;
                         standardStr = settings.Manufacturer;
+                        retryCount = settings.ResendCount > 0 ? settings.ResendCount : 3;
+
+                        // Parse WaitTime from "hh:mm:ss" or "mm:ss" format
+                        if (!string.IsNullOrEmpty(settings.WaitTime) &&
+                            TimeSpan.TryParse(settings.WaitTime, out var waitSpan))
+                        {
+                            waitTimeMs = (int)waitSpan.TotalMilliseconds;
+                            if (waitTimeMs <= 0) waitTimeMs = 5000;
+                        }
 
                         // Parse interface type from settings
                         if (!string.IsNullOrEmpty(settings.Interface) &&
@@ -305,7 +315,7 @@ namespace PQM.Server.Controllers
 
             try
             {
-                _sessionManager.Connect(id, device.IP, device.PORT, clientAddress, serverAddress, authentication, password, useLogicalNameReferencing, standard, interfaceType);
+                _sessionManager.Connect(id, device.IP, device.PORT, clientAddress, serverAddress, authentication, password, useLogicalNameReferencing, standard, interfaceType, waitTimeMs, retryCount);
 
                 // Save LastSync timestamp to database on every successful connection
                 try
@@ -849,7 +859,8 @@ namespace PQM.Server.Controllers
             {
                 try
                 {
-                    var settings = System.Text.Json.JsonSerializer.Deserialize<DeviceConnectionSettings>(device.ConnectionSettings);
+                    var settings = System.Text.Json.JsonSerializer.Deserialize<DeviceConnectionSettings>(device.ConnectionSettings, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
                     if (settings != null)
                     {
                         clientAddress = settings.ClientAddress;
