@@ -691,6 +691,8 @@ export default function Page(): React.JSX.Element {
                 objectType: obj.objectType,
                 value: 'Waiting...',
                 attribute3: 'Waiting...',
+                attribute4: obj.objectType?.toLowerCase() === 'extendedregister' ? 'Waiting...' : undefined,
+                attribute5: obj.objectType?.toLowerCase() === 'extendedregister' ? 'Waiting...' : undefined,
                 allAttributes: (obj.allAttributes || []).map((attr: any) => ({
                     ...attr,
                     value: 'Waiting...',
@@ -720,6 +722,8 @@ export default function Page(): React.JSX.Element {
                     objectType: obj.objectType,
                     value: 'Waiting...',
                     attribute3: 'Waiting...',
+                    attribute4: obj.objectType?.toLowerCase() === 'extendedregister' ? 'Waiting...' : undefined,
+                    attribute5: obj.objectType?.toLowerCase() === 'extendedregister' ? 'Waiting...' : undefined,
                     allAttributes: (obj.allAttributes || []).map((attr: any) => ({
                         ...attr,
                         value: 'Waiting...',
@@ -1263,8 +1267,6 @@ export default function Page(): React.JSX.Element {
                                         <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
                                         <TableCell sx={{ fontWeight: 600 }}>Object Type</TableCell>
                                         <TableCell sx={{ fontWeight: 600 }}>Attribute 2</TableCell>
-                                        <TableCell sx={{ fontWeight: 600, textAlign: 'center' }}>Details</TableCell>
-                                        {hasExtendedRegister && <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>}
                                         {hasExtendedRegister && <TableCell sx={{ fontWeight: 600 }}>Capture Time</TableCell>}
                                     </TableRow>
                                 </TableHead>
@@ -1362,21 +1364,6 @@ export default function Page(): React.JSX.Element {
                                                         )
                                                     )}
                                                 </TableCell>
-                                                <TableCell sx={{ textAlign: 'center' }}>
-                                                    <Button
-                                                        variant="outlined"
-                                                        size="small"
-                                                        startIcon={<VisibilityIcon fontSize="small" />}
-                                                        onClick={() => handleOpenDetails(row.id)}
-                                                    >
-                                                        View Details
-                                                    </Button>
-                                                </TableCell>
-                                                {hasExtendedRegister && (
-                                                    <TableCell sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
-                                                        {row.attribute4 || '—'}
-                                                    </TableCell>
-                                                )}
                                                 {hasExtendedRegister && (
                                                     <TableCell sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
                                                         {row.attribute5 || '—'}
