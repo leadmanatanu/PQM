@@ -1,41 +1,43 @@
-'use client';
- 
 import type { Device } from '@/components/dashboard/device/devices-table';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     FormControl,
     TextField,
     Card,
     Autocomplete,
-    Select,
-    MenuItem,
-    InputLabel,
     Stack,
+    FormControlLabel,
+    Checkbox,
+    Typography,
+    Chip,
+    Button,
+    Box,
 } from '@mui/material';
- 
+
 interface DeviceFiltersProps {
     rows: Device[];
     onDeviceSelect?: (id: string | number) => void;
-    headers?: any[];
-    selectedHeaderId?: string | number;
-    onHeaderSelect?: (id: string | number) => void;
-    objects?: any[];
-    selectedObjectId?: string | number;
-    onObjectSelect?: (id: string | number) => void;
+    onSelectParametersClick?: () => void;
 }
- 
+
 export function DeviceFilters({
     rows = [],
     onDeviceSelect = () => { },
-    headers = [],
-    selectedHeaderId = '',
-    onHeaderSelect = () => { },
-    objects = [],
-    selectedObjectId = '',
-    onObjectSelect = () => { },
+    onSelectParametersClick = () => { },
 }: DeviceFiltersProps): React.JSX.Element {
     const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
- 
+    const [showOnlyConnected, setShowOnlyConnected] = useState<boolean>(true);
+
+    // Sync local selected device state when rows change
+    useEffect(() => {
+        if (selectedDevice) {
+            const current = rows.find(r => r.id === selectedDevice.id);
+            if (current) {
+                setSelectedDevice(current);
+            }
+        }
+    }, [rows, selectedDevice]);
+
     const handleChange = (
         event: React.SyntheticEvent,
         newValue: Device | null,
@@ -43,16 +45,20 @@ export function DeviceFilters({
         setSelectedDevice(newValue);
         onDeviceSelect(newValue ? newValue.id : 0);
     };
- 
+
+    const displayedOptions = showOnlyConnected 
+        ? rows.filter(device => device.isConnected)
+        : rows;
+
     return (
-        <Card sx={{ p: 2, maxWidth: '500px', width: '100%', borderRadius: '8px' }}>
+        <Card sx={{ p: 3, maxWidth: '500px', width: '100%', borderRadius: '8px' }}>
             <Stack direction="column" spacing={2}>
                 <FormControl fullWidth size="small">
                     <Autocomplete
                         id="device-filter-autocomplete"
-                        options={rows}
+                        options={displayedOptions}
                         size="small"
-                        getOptionLabel={(device) => device.name}
+                        getOptionLabel={(device) => `${device.name} (Id: ${device.id})`}
                         value={selectedDevice}
                         onChange={handleChange}
                         isOptionEqualToValue={(option, value) => option.id === value.id}
@@ -62,46 +68,62 @@ export function DeviceFilters({
                                 label="Select or type to search device"
                                 variant="outlined"
                                 size="small"
-                            />
+                             />
                         )}
                         openOnFocus
                     />
                 </FormControl>
-                {selectedDevice && headers.length > 0 && (
-                    <FormControl fullWidth size="small">
-                        <InputLabel id="header-select-label">Select Object Type</InputLabel>
-                        <Select
-                            labelId="header-select-label"
-                            id="header-select"
-                            value={selectedHeaderId}
-                            label="Select Object Type"
+
+                <FormControlLabel
+                    control={
+                        <Checkbox
+                            checked={showOnlyConnected}
+                            onChange={(e) => setShowOnlyConnected(e.target.checked)}
+                            color="primary"
                             size="small"
-                            onChange={(e) => onHeaderSelect(e.target.value as string | number)}
-                        >
-                            {headers.map((h) => (
-                                <MenuItem key={h.id} value={h.id}>{h.name}</MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
+                        />
+                    }
+                    label={
+                        <Typography variant="body2" color="text.secondary">
+                            Show only connected devices
+                        </Typography>
+                    }
+                />
+
+                {selectedDevice && (
+                    <Box sx={{ mt: 1, p: 2, bgcolor: 'var(--mui-palette-neutral-50)', borderRadius: '6px', border: '1px solid var(--mui-palette-divider)' }}>
+                        <Stack spacing={1.5}>
+                            <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                                    {selectedDevice.name}
+                                </Typography>
+                                <Chip
+                                    label={selectedDevice.isConnected ? 'Connected' : 'Disconnected'}
+                                    color={selectedDevice.isConnected ? 'success' : 'error'}
+                                    size="small"
+                                    variant="outlined"
+                                />
+                            </Stack>
+                            <Typography variant="caption" color="text.secondary" display="block">
+                                <strong>IP:</strong> {selectedDevice.ip} | <strong>Port:</strong> {selectedDevice.port}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" display="block">
+                                <strong>Serial No:</strong> {selectedDevice.serialNumber || 'N/A'} | <strong>Account No:</strong> {selectedDevice.consumerNumber || 'N/A'}
+                            </Typography>
+                            {selectedDevice.isConnected && (
+                                <Button
+                                    variant="contained"
+                                    size="small"
+                                    color="primary"
+                                    sx={{ mt: 1, textTransform: 'none' }}
+                                    onClick={onSelectParametersClick}
+                                >
+                                    Select Parameters to Scan
+                                </Button>
+                            )}
+                        </Stack>
+                    </Box>
                 )}
-                {/*{selectedDevice && selectedHeaderId && objects.length > 0 && (*/}
-                {/*    <FormControl fullWidth>*/}
-                {/*        <InputLabel id="object-select-label">Select Object</InputLabel>*/}
-                {/*        <Select*/}
-                {/*            labelId="object-select-label"*/}
-                {/*            id="object-select"*/}
-                {/*            value={selectedObjectId}*/}
-                {/*            label="Select Object"*/}
-                {/*            onChange={(e) => onObjectSelect(e.target.value as string | number)}*/}
-                {/*        >*/}
-                {/*            {objects.map((obj) => (*/}
-                {/*                <MenuItem key={obj.id} value={obj.id}>*/}
-                {/*                    {obj.obisCode} {obj.name}*/}
-                {/*                </MenuItem>*/}
-                {/*            ))}*/}
-                {/*        </Select>*/}
-                {/*    </FormControl>*/}
-                {/*)}*/}
             </Stack>
         </Card>
     );

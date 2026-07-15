@@ -2,8 +2,7 @@ import axios from 'axios';
 import dayjs from 'dayjs';
 import type { Device } from '@/components/dashboard/device/devices-table';
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-const API_URL = 'http://localhost:5135/api';
-//const API_URL = 'http://103.83.106.174:83/api';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5135/api';
 
 export interface ApiResponse<T = any> {
     status: string;
@@ -90,12 +89,13 @@ export const addDevice = async (device: Device): Promise<any | undefined> => {
     try {
         const payload = {
             Name: device.name,
-            IsActive: device.isActive === '1',
+            IsActive: device.isActive === '1' || device.isActive === true || String(device.isActive) === 'true',
             IP: device.ip,
             Port: device.port,
             SerialNumber: device.serialNumber,
             ConsumerNumber: device.consumerNumber,
-            ftpFolder: device.ftpFolder,
+            ConnectionSettings: device.connectionSettings,
+            DeviceType: device.deviceType,
         };
         const { data } = await axios.post<ApiResponse>(`${API_URL}/device`, payload);
         return data;
@@ -111,12 +111,13 @@ export const editDevice = async (device: Device): Promise<any | undefined> => {
         const payload = {
             Id: device.id,
             Name: device.name,
-            IsActive: device.isActive === '1',
+            IsActive: device.isActive === '1' || device.isActive === true || String(device.isActive) === 'true',
             IP: device.ip,
             Port: device.port,
             SerialNumber: device.serialNumber,
             ConsumerNumber: device.consumerNumber,
-            ftpFolder: device.ftpFolder,
+            ConnectionSettings: device.connectionSettings,
+            DeviceType: device.deviceType,
         };
         const { data } = await axios.put<ApiResponse>(`${API_URL}/device`, payload);
         return data;
@@ -355,6 +356,60 @@ export const writeDLMSObjectAttribute = async (
     } catch (error) {
         console.error("Error writing DLMS object attribute:", error);
         return null;
+    }
+};
+
+// Generate grouped report for selected device and parameters
+export const fetchReport = async (
+    deviceId: number | string,
+    parameterIds: (number | string)[],
+    startDate: string,
+    endDate: string
+): Promise<any | null> => {
+    try {
+        const { data } = await axios.post(`${API_URL}/reports/generate`, {
+            deviceId: Number(deviceId),
+            parameterIds: parameterIds.map(Number),
+            startDate,
+            endDate
+        });
+        return data;
+    } catch (error) {
+        console.error("Error generating report:", error);
+        return null;
+    }
+};
+
+// Fetch device by ID
+export const fetchDeviceById = async (id: number): Promise<Device | undefined> => {
+    try {
+        const { data } = await axios.get<ApiResponse<Device>>(`${API_URL}/device/${id}`);
+        return data.data;
+    } catch (error) {
+        console.error(`Error fetching device ${id}:`, error);
+        return undefined;
+    }
+};
+
+// Connect to device
+export const connectDevice = async (id: number): Promise<any | undefined> => {
+    try {
+        const { data } = await axios.post<ApiResponse>(`${API_URL}/device/${id}/connect`);
+        return data;
+    } catch (error: any) {
+        console.error('Error connecting to device:', error);
+        return error.response?.data || { status: false, errors: ['Network connection error.'] };
+    }
+};
+
+// Disconnect from device
+export const disconnectDevice = async (id: number): Promise<any | undefined> => {
+    try {
+        const { data } = await axios.post<ApiResponse>(`${API_URL}/device/${id}/disconnect`);
+        return data;
+    } catch (error: any) {
+        console.error('Error disconnecting from device:', error);
+        return error.response?.data || { status: false, errors: ['Network connection error.'] };
     }
 };
 

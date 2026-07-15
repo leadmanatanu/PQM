@@ -38,6 +38,7 @@ namespace PQM.Infrastructure
         public DbSet<ObjectParameter> ObjectParameter { get; set; } = null!;
         public DbSet<ParameterValue> ParameterValue { get; set; } = null!;
         public DbSet<EventStatusMapping> EventStatusMapping { get; set; } = null!;
+        public DbSet<User> User { get; set; } = null!;
 
         public DataContext(string connectionString)
         {

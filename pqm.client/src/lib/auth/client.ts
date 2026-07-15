@@ -1,20 +1,9 @@
 'use client';
 
+import axios from 'axios';
 import type { User } from '@/types/user';
 
-function generateToken(): string {
-  const arr = new Uint8Array(12);
-  globalThis.crypto.getRandomValues(arr);
-  return Array.from(arr, (v) => v.toString(16).padStart(2, '0')).join('');
-}
-
-const user = {
-  id: 'USR-000',
-  avatar: '/assets/avatar-1.png',
-  firstName: 'Tarlok',
-  lastName: 'Singh',
-    email: 'tarlokthakur@gmail.com',
-} satisfies User;
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5135/api';
 
 export interface SignUpParams {
   firstName: string;
@@ -36,15 +25,36 @@ export interface ResetPasswordParams {
   email: string;
 }
 
+interface ApiResponse<T = any> {
+  status: boolean;
+  statusCode: number;
+  data: T;
+  errors: string[];
+}
+
 class AuthClient {
-  async signUp(_: SignUpParams): Promise<{ error?: string }> {
-    // Make API request
+  async signUp(params: SignUpParams): Promise<{ error?: string }> {
+    try {
+      const response = await axios.post<ApiResponse>(`${API_URL}/auth/signup`, {
+        firstName: params.firstName,
+        lastName: params.lastName,
+        email: params.email,
+        password: params.password
+      });
 
-    // We do not handle the API, so we'll just generate a token and store it in localStorage.
-    const token = generateToken();
-    localStorage.setItem('custom-auth-token', token);
-
-    return {};
+      const res = response.data;
+      if (res.status && res.data?.token) {
+        localStorage.setItem('custom-auth-token', res.data.token);
+        // Store user info in localStorage for client retrieval
+        localStorage.setItem('pqm_current_user', JSON.stringify(res.data.user));
+        return {};
+      } else {
+        return { error: res.errors?.[0] || 'Failed to sign up.' };
+      }
+    } catch (error: any) {
+      console.error('Sign up error:', error);
+      return { error: error.response?.data?.errors?.[0] || error.message || 'Server error during sign up.' };
+    }
   }
 
   async signInWithOAuth(_: SignInWithOAuthParams): Promise<{ error?: string }> {
@@ -54,17 +64,25 @@ class AuthClient {
   async signInWithPassword(params: SignInWithPasswordParams): Promise<{ error?: string }> {
     const { email, password } = params;
 
-    // Make API request
+    try {
+      const response = await axios.post<ApiResponse>(`${API_URL}/auth/login`, {
+        email,
+        password
+      });
 
-    // We do not handle the API, so we'll check if the credentials match with the hardcoded ones.
-      if (email !== 'tarlokthakur@gmail.com' || password !== 'Secret1') {
-      return { error: 'Invalid credentials' };
+      const res = response.data;
+      if (res.status && res.data?.token) {
+        localStorage.setItem('custom-auth-token', res.data.token);
+        // Store user info in localStorage for client retrieval
+        localStorage.setItem('pqm_current_user', JSON.stringify(res.data.user));
+        return {};
+      } else {
+        return { error: res.errors?.[0] || 'Invalid credentials' };
+      }
+    } catch (error: any) {
+      console.error('Login error:', error);
+      return { error: error.response?.data?.errors?.[0] || error.message || 'Server error during login.' };
     }
-
-    const token = generateToken();
-    localStorage.setItem('custom-auth-token', token);
-
-    return {};
   }
 
   async resetPassword(_: ResetPasswordParams): Promise<{ error?: string }> {
@@ -76,21 +94,41 @@ class AuthClient {
   }
 
   async getUser(): Promise<{ data?: User | null; error?: string }> {
-    // Make API request
-
-    // We do not handle the API, so just check if we have a token in localStorage.
     const token = localStorage.getItem('custom-auth-token');
+    const userStr = localStorage.getItem('pqm_current_user');
 
-    if (!token) {
+    if (!token || !userStr) {
       return { data: null };
     }
 
-    return { data: user };
+    try {
+      const user = JSON.parse(userStr) as User;
+      return { data: user };
+    } catch (error) {
+      console.error('Error parsing stored user:', error);
+      localStorage.removeItem('custom-auth-token');
+      localStorage.removeItem('pqm_current_user');
+      return { data: null };
+    }
   }
 
   async signOut(): Promise<{ error?: string }> {
-    localStorage.removeItem('custom-auth-token');
+    const token = localStorage.getItem('custom-auth-token');
+    
+    if (token) {
+      try {
+        await axios.post(`${API_URL}/auth/logout`, null, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+      } catch (error) {
+        console.error('Sign out error on server:', error);
+      }
+    }
 
+    localStorage.removeItem('custom-auth-token');
+    localStorage.removeItem('pqm_current_user');
     return {};
   }
 }

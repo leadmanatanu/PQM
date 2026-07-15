@@ -1,0 +1,1 @@
+7/14/2026 5:52:14 PM Connecting to DLMS meter Test at 192.168.0.3:4059

@@ -1,4 +1,4 @@
-﻿using PQM.Core.Entities;
+using PQM.Core.Entities;
 using PQM.Core.IRepositories;
 
 namespace PQM.Infrastructure.Repositories
@@ -36,7 +36,8 @@ namespace PQM.Infrastructure.Repositories
             deviceData.ConsumerNumber = device.ConsumerNumber;
             deviceData.IP = device.IP;
             deviceData.PORT = device.PORT;
-            deviceData.FtpFolder = device.FtpFolder;
+            deviceData.ConnectionSettings = device.ConnectionSettings;
+            deviceData.DeviceType = device.DeviceType;
             deviceData.IsActive = device.IsActive;
             deviceData.IsDeleted = device.IsDeleted;
             deviceData.ModifiedDate = DateTime.UtcNow;
