@@ -84,7 +84,9 @@ namespace PQM.Server.Controllers
                 d.CreatedId,
                 d.ModifiedDate,
                 d.ModifiedId,
+                d.LastSync,
                 d.ConnectionSettings,
+                d.DeviceType,
                 IsConnected = _sessionManager.GetSession(d.Id) != null
             }).ToList();
 
@@ -118,8 +120,10 @@ namespace PQM.Server.Controllers
                 d.CreatedDate,
                 d.CreatedId,
                 d.ModifiedDate,
-                d.ModifiedId,                
+                d.ModifiedId,
+                d.LastSync,
                 d.ConnectionSettings,
+                d.DeviceType,
                 IsConnected = _sessionManager.GetSession(d.Id) != null
             };
 

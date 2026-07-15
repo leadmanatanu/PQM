@@ -37,6 +37,7 @@ namespace PQM.Infrastructure.Repositories
             deviceData.IP = device.IP;
             deviceData.PORT = device.PORT;
             deviceData.ConnectionSettings = device.ConnectionSettings;
+            deviceData.DeviceType = device.DeviceType;
             deviceData.IsActive = device.IsActive;
             deviceData.IsDeleted = device.IsDeleted;
             deviceData.ModifiedDate = DateTime.UtcNow;

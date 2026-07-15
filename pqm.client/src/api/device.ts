@@ -95,6 +95,7 @@ export const addDevice = async (device: Device): Promise<any | undefined> => {
             SerialNumber: device.serialNumber,
             ConsumerNumber: device.consumerNumber,
             ConnectionSettings: device.connectionSettings,
+            DeviceType: device.deviceType,
         };
         const { data } = await axios.post<ApiResponse>(`${API_URL}/device`, payload);
         return data;
@@ -116,6 +117,7 @@ export const editDevice = async (device: Device): Promise<any | undefined> => {
             SerialNumber: device.serialNumber,
             ConsumerNumber: device.consumerNumber,
             ConnectionSettings: device.connectionSettings,
+            DeviceType: device.deviceType,
         };
         const { data } = await axios.put<ApiResponse>(`${API_URL}/device`, payload);
         return data;

@@ -210,6 +210,13 @@ export default function Page(): React.JSX.Element {
     const [openSnackbar, setOpenSnackbar] = useState(false);
     const [displayMsg, setDisplayMsg] = useState<string | null>(null);
 
+    // Selector Popup Dialog States
+    const [paramsSelectorOpen, setParamsSelectorOpen] = useState<boolean>(false);
+    const [allDeviceParams, setAllDeviceParams] = useState<any[]>([]);
+    const [selectedParamIds, setSelectedParamIds] = useState<number[]>([]);
+    const [fetchingAllParams, setFetchingAllParams] = useState<boolean>(false);
+    const [selectorSearchQuery, setSelectorSearchQuery] = useState<string>('');
+
     // Object list modal states
     const [objectListOpen, setObjectListOpen] = useState(false);
     const [objectListData, setObjectListData] = useState<any[]>([]);
@@ -589,6 +596,8 @@ export default function Page(): React.JSX.Element {
         setSelectedObjectId('');
         setDiscoveredParams([]);
         setAssociationObjectList([]);
+        setAllDeviceParams([]);
+        setSelectedParamIds([]);
         
         if (Number(id) > 0) {
             try {
@@ -617,13 +626,6 @@ export default function Page(): React.JSX.Element {
                             console.error('Failed to fetch DLMS objects for AssociationLogicalName:', err);
                         });
                     }
-                    
-                    // Auto-select "Register" header if present
-                    const regHeader = result.data.find((h: any) => h.name === 'Register');
-                    if (regHeader) {
-                        setSelectedHeaderId(regHeader.id);
-                        handleHeaderSelection(regHeader.id);
-                    }
                 }
             } catch (error) {
                 console.error('Failed to fetch connected headers:', error);
@@ -631,6 +633,73 @@ export default function Page(): React.JSX.Element {
         } else {
             setHeaders([]);
         }
+    };
+
+    const openParamsSelector = async () => {
+        setParamsSelectorOpen(true);
+        if (Number(selectedDeviceId) > 0 && allDeviceParams.length === 0) {
+            setFetchingAllParams(true);
+            try {
+                const headersRes = await fetchConnectedHeaders(selectedDeviceId);
+                if (headersRes && headersRes.status) {
+                    const headersList = headersRes.data;
+                    setHeaders(headersList);
+                    
+                    // Fetch DLMS Objects for all headers in parallel
+                    const allParamsPromises = headersList.map(async (h: any) => {
+                        const objectsRes = await fetchDLMSObjects(h.id);
+                        if (objectsRes && objectsRes.status) {
+                            return objectsRes.data.map((obj: any) => ({
+                                ...obj,
+                                headerName: h.name,
+                                headerId: h.id
+                            }));
+                        }
+                        return [];
+                    });
+                    
+                    const nestedResults = await Promise.all(allParamsPromises);
+                    const flattened = nestedResults.flat();
+                    setAllDeviceParams(flattened);
+                    // Pre-select already displayed parameters if any
+                    if (discoveredParams.length > 0) {
+                        setSelectedParamIds(discoveredParams.map(p => p.id));
+                    }
+                }
+            } catch (err) {
+                console.error('Error fetching all device parameters:', err);
+                setDisplayMsg('Failed to load parameters.');
+                setOpenSnackbar(true);
+            } finally {
+                setFetchingAllParams(false);
+            }
+        }
+    };
+
+    const handleParamsSelectorConfirm = () => {
+        const selectedParams = allDeviceParams.filter(p => selectedParamIds.includes(p.id));
+        const mapped = selectedParams.map((obj: any) => {
+            // Check if we already have it in discoveredParams to keep its current values/state
+            const existing = discoveredParams.find(p => p.id === obj.id);
+            if (existing) {
+                return existing;
+            }
+            return {
+                id: obj.id,
+                name: `${obj.obisCode} ${obj.name}`,
+                obisCode: obj.obisCode,
+                objectType: obj.objectType,
+                value: 'Waiting...',
+                attribute3: 'Waiting...',
+                allAttributes: (obj.allAttributes || []).map((attr: any) => ({
+                    ...attr,
+                    value: 'Waiting...',
+                    Value: 'Waiting...'
+                }))
+            };
+        });
+        setDiscoveredParams(mapped);
+        setParamsSelectorOpen(false);
     };
 
     const handleHeaderSelection = async (headerId: string | number) => {
@@ -1123,11 +1192,35 @@ export default function Page(): React.JSX.Element {
             </Stack>
         );
     };
-
-    // Generic forms and lists used instead
-
     const selectedObj = discoveredParams.find(p => p.id === selectedObjectId);
     const detailsObj = discoveredParams.find(p => p.id === detailsObjectId);
+    const hasExtendedRegister = discoveredParams.some(p => p.objectType?.toLowerCase() === 'extendedregister');
+
+    const handleToggleParam = (id: number) => {
+        setSelectedParamIds(prev => 
+            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+        );
+    };
+
+    const handleToggleHeaderGroup = (headerName: string, checked: boolean) => {
+        const groupIds = allDeviceParams.filter(p => p.headerName === headerName).map(p => p.id);
+        setSelectedParamIds(prev => {
+            if (checked) {
+                const added = new Set([...prev, ...groupIds]);
+                return Array.from(added);
+            } else {
+                return prev.filter(id => !groupIds.includes(id));
+            }
+        });
+    };
+
+    const handleToggleSelectAll = (checked: boolean) => {
+        if (checked) {
+            setSelectedParamIds(allDeviceParams.map(p => p.id));
+        } else {
+            setSelectedParamIds([]);
+        }
+    };
 
     return (
         <Stack spacing={3}>
@@ -1137,12 +1230,7 @@ export default function Page(): React.JSX.Element {
             <DeviceFilters 
                 rows={devices} 
                 onDeviceSelect={handleDeviceSelection} 
-                headers={headers}
-                selectedHeaderId={selectedHeaderId}
-                onHeaderSelect={handleHeaderSelection}
-                objects={objects}
-                selectedObjectId={selectedObjectId}
-                onObjectSelect={handleObjectSelection}
+                onSelectParametersClick={openParamsSelector}
             />
             
             {Number(selectedDeviceId) > 0 && discoveredParams.length > 0 && (
@@ -1153,13 +1241,13 @@ export default function Page(): React.JSX.Element {
                         onClick={handleDiscoverParameters}
                         disabled={discovering}
                     >
-                        {discovering ? 'Reading Meter...' : 'Scan & Discover Meter Parameters'}
+                        {discovering ? 'Reading Meter...' : 'Scan'}
                     </Button>
                     {discovering && <CircularProgress size={24} />}
                 </Stack>
             )}
 
-            {isTableObjectType && discoveredParams.length > 0 && (
+            {discoveredParams.length > 0 && (
                 <Card sx={{ borderRadius: '8px' }}>
                     <CardHeader 
                         title="Discovered Meter Parameters (Current Values)" 
@@ -1168,7 +1256,7 @@ export default function Page(): React.JSX.Element {
                     />
                     <Divider />
                     <CardContent sx={{ p: 1, '&:last-child': { pb: 1 } }}>
-                        <TableContainer component={Paper} sx={{ maxHeight: 220, borderRadius: '6px' }}>
+                        <TableContainer component={Paper} sx={{ maxHeight: 300, borderRadius: '6px' }}>
                             <Table size="small" stickyHeader aria-label="discovered parameters table">
                                 <TableHead sx={{ bgcolor: 'var(--mui-palette-neutral-50)' }}>
                                     <TableRow>
@@ -1176,8 +1264,8 @@ export default function Page(): React.JSX.Element {
                                         <TableCell sx={{ fontWeight: 600 }}>Object Type</TableCell>
                                         <TableCell sx={{ fontWeight: 600 }}>Attribute 2</TableCell>
                                         <TableCell sx={{ fontWeight: 600, textAlign: 'center' }}>Details</TableCell>
-                                        {isExtendedRegisterType && <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>}
-                                        {isExtendedRegisterType && <TableCell sx={{ fontWeight: 600 }}>Capture Time</TableCell>}
+                                        {hasExtendedRegister && <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>}
+                                        {hasExtendedRegister && <TableCell sx={{ fontWeight: 600 }}>Capture Time</TableCell>}
                                     </TableRow>
                                 </TableHead>
                                 <TableBody>
@@ -1284,14 +1372,14 @@ export default function Page(): React.JSX.Element {
                                                         View Details
                                                     </Button>
                                                 </TableCell>
-                                                {isExtendedRegisterType && (
+                                                {hasExtendedRegister && (
                                                     <TableCell sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
-                                                        {row.attribute4 || 'N/A'}
+                                                        {row.attribute4 || '—'}
                                                     </TableCell>
                                                 )}
-                                                {isExtendedRegisterType && (
+                                                {hasExtendedRegister && (
                                                     <TableCell sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
-                                                        {row.attribute5 || 'N/A'}
+                                                        {row.attribute5 || '—'}
                                                     </TableCell>
                                                 )}
                                             </TableRow>
@@ -1304,7 +1392,148 @@ export default function Page(): React.JSX.Element {
                 </Card>
             )}
 
-            {discoveredParams.length > 0 && (!isTableObjectType || selectedObj) && (
+            {/* Parameter Selector Dialog */}
+            <Dialog
+                open={paramsSelectorOpen}
+                onClose={() => setParamsSelectorOpen(false)}
+                maxWidth="md"
+                fullWidth
+            >
+                <DialogTitle sx={{ fontWeight: 'bold' }}>
+                    Select Parameters to Map & Scan
+                </DialogTitle>
+                <Divider />
+                <DialogContent>
+                    {fetchingAllParams ? (
+                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', p: 4, gap: 2 }}>
+                            <CircularProgress />
+                            <Typography variant="body2" color="text.secondary">
+                                Loading all parameters from device...
+                            </Typography>
+                        </Box>
+                    ) : (
+                        <Stack spacing={2}>
+                            <TextField
+                                label="Search parameters by name or OBIS code"
+                                value={selectorSearchQuery}
+                                onChange={(e) => setSelectorSearchQuery(e.target.value)}
+                                size="small"
+                                fullWidth
+                                variant="outlined"
+                            />
+                            
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <FormControlLabel
+                                    control={
+                                        <Checkbox
+                                            checked={allDeviceParams.length > 0 && selectedParamIds.length === allDeviceParams.length}
+                                            indeterminate={selectedParamIds.length > 0 && selectedParamIds.length < allDeviceParams.length}
+                                            onChange={(e) => handleToggleSelectAll(e.target.checked)}
+                                        />
+                                    }
+                                    label="Select All Parameters"
+                                />
+                                <Typography variant="caption" color="text.secondary">
+                                    Selected: {selectedParamIds.length} / {allDeviceParams.length}
+                                </Typography>
+                            </Box>
+
+                            <Divider />
+
+                            <Box sx={{ maxHeight: '400px', overflowY: 'auto' }}>
+                                {(() => {
+                                    const query = selectorSearchQuery.toLowerCase();
+                                    const filteredParams = allDeviceParams.filter(p => 
+                                        (p.name || '').toLowerCase().includes(query) || 
+                                        (p.obisCode || '').toLowerCase().includes(query)
+                                    );
+
+                                    const groups: Record<string, any[]> = {};
+                                    filteredParams.forEach(p => {
+                                        const group = p.headerName || 'General';
+                                        if (!groups[group]) {
+                                            groups[group] = [];
+                                        }
+                                        groups[group].push(p);
+                                    });
+
+                                    const groupNames = Object.keys(groups);
+                                    if (groupNames.length === 0) {
+                                        return (
+                                            <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 4 }}>
+                                                No parameters matched search query.
+                                            </Typography>
+                                        );
+                                    }
+
+                                    return groupNames.map(groupName => {
+                                        const groupItems = groups[groupName];
+                                        const allGroupSelected = groupItems.every(item => selectedParamIds.includes(item.id));
+                                        const someGroupSelected = groupItems.some(item => selectedParamIds.includes(item.id)) && !allGroupSelected;
+
+                                        return (
+                                            <Box key={groupName} sx={{ mb: 3 }}>
+                                                <Box sx={{ display: 'flex', alignItems: 'center', bgcolor: 'var(--mui-palette-neutral-50)', p: 1, borderRadius: '4px', mb: 1 }}>
+                                                    <Checkbox
+                                                        size="small"
+                                                        checked={allGroupSelected}
+                                                        indeterminate={someGroupSelected}
+                                                        onChange={(e) => handleToggleHeaderGroup(groupName, e.target.checked)}
+                                                    />
+                                                    <Typography variant="subtitle2" sx={{ fontWeight: 600, ml: 1 }}>
+                                                        {groupName}
+                                                    </Typography>
+                                                </Box>
+                                                <Grid container spacing={1} sx={{ pl: 4 }}>
+                                                    {groupItems.map(item => (
+                                                        <Grid size={{ xs: 12, sm: 6 }} key={item.id}>
+                                                            <FormControlLabel
+                                                                control={
+                                                                    <Checkbox
+                                                                        size="small"
+                                                                        checked={selectedParamIds.includes(item.id)}
+                                                                        onChange={() => handleToggleParam(item.id)}
+                                                                    />
+                                                                }
+                                                                label={
+                                                                    <Box>
+                                                                        <Typography variant="body2">
+                                                                            {item.name}
+                                                                        </Typography>
+                                                                        <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+                                                                            {item.obisCode}
+                                                                        </Typography>
+                                                                    </Box>
+                                                                }
+                                                            />
+                                                        </Grid>
+                                                    ))}
+                                                </Grid>
+                                            </Box>
+                                        );
+                                    });
+                                })()}
+                            </Box>
+                        </Stack>
+                    )}
+                </DialogContent>
+                <Divider />
+                <DialogActions sx={{ p: 2 }}>
+                    <Button onClick={() => setParamsSelectorOpen(false)} variant="outlined">
+                        Cancel
+                    </Button>
+                    <Button 
+                        onClick={handleParamsSelectorConfirm} 
+                        variant="contained" 
+                        color="primary"
+                        disabled={fetchingAllParams}
+                    >
+                        OK
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {discoveredParams.length > 0 && selectedObj && (
                 <Card>
                     <CardHeader 
                         title={`${selectedHeader?.name || 'Object'} Configuration & Details`} 

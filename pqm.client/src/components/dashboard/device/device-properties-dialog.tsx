@@ -48,6 +48,7 @@ export function DevicePropertiesDialog({
   const [consumerNumber, setConsumerNumber] = React.useState('');
   const [ip, setIp] = React.useState('');
   const [port, setPort] = React.useState('4059');
+  const [deviceType, setDeviceType] = React.useState('LnT');
 
   // Connection settings states
   const [manufacturer, setManufacturer] = React.useState('IndianStandard');
@@ -67,7 +68,6 @@ export function DevicePropertiesDialog({
   const [verboseMode, setVerboseMode] = React.useState(false);
   const [protocol, setProtocol] = React.useState('Tcp');
   const [useSerialPort, setUseSerialPort] = React.useState(false);
-  const [isHex, setIsHex] = React.useState(false);
 
   // Validation errors state
   const [errors, setErrors] = React.useState({
@@ -87,6 +87,7 @@ export function DevicePropertiesDialog({
       setConsumerNumber(device.consumerNumber || '');
       setIp(device.ip || '');
       setPort(String(device.port ?? '4059'));
+      setDeviceType(device.deviceType || 'LnT');
 
       // Connection settings parsing
       if (device.connectionSettings) {
@@ -122,6 +123,7 @@ export function DevicePropertiesDialog({
       setConsumerNumber('');
       setIp('');
       setPort('4059');
+      setDeviceType('LnT');
       resetConnectionDefaults();
     }
     
@@ -240,7 +242,8 @@ export function DevicePropertiesDialog({
       serialNumber,
       consumerNumber,
       isActive: device?.isActive || '1',
-      connectionSettings: JSON.stringify(settingsObj)
+      connectionSettings: JSON.stringify(settingsObj),
+      deviceType
     };
 
     try {
@@ -302,7 +305,8 @@ export function DevicePropertiesDialog({
       serialNumber,
       consumerNumber,
       isActive: device?.isActive || '1',
-      connectionSettings: JSON.stringify(settingsObj)
+      connectionSettings: JSON.stringify(settingsObj),
+      deviceType
     };
 
     try {
@@ -368,6 +372,21 @@ export function DevicePropertiesDialog({
                 />
               </Grid>
 
+              {/* Type */}
+              <Grid size={{ xs: 12 }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Type</InputLabel>
+                  <Select
+                    value={deviceType}
+                    label="Type"
+                    onChange={(e) => setDeviceType(e.target.value)}
+                  >
+                    <MenuItem value="LnT">LnT</MenuItem>
+                    <MenuItem value="ABT">ABT</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+
               {/* Serial No & Account No */}
               <Grid size={{ xs: 6 }}>
                 <TextField
@@ -396,24 +415,6 @@ export function DevicePropertiesDialog({
                   fullWidth
                   size="small"
                 />
-              </Grid>
-
-              {/* Manufacturer */}
-              <Grid size={{ xs: 12 }}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Manufacturer</InputLabel>
-                  <Select
-                    value={manufacturer}
-                    label="Manufacturer"
-                    onChange={(e) => setManufacturer(e.target.value)}
-                  >
-                    <MenuItem value="IndianStandard">Indian Standard</MenuItem>
-                    <MenuItem value="DLMS">DLMS</MenuItem>
-                    <MenuItem value="Itron">Itron</MenuItem>
-                    <MenuItem value="LandisGyr">Landis & Gyr</MenuItem>
-                    <MenuItem value="Schneider">Schneider Electric</MenuItem>
-                  </Select>
-                </FormControl>
               </Grid>
 
               {/* Interface & Logical Name Referencing */}
@@ -602,7 +603,7 @@ export function DevicePropertiesDialog({
                 <Grid size={{ xs: 12 }}>
                   <Box sx={{ border: '1px solid #ccc', borderRadius: '4px', p: 2, mt: 1 }}>
                     <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600, color: 'text.secondary' }}>
-                      Settings
+                      Network Settings
                     </Typography>
                     <Grid container spacing={2}>
                       <Grid size={{ xs: 12 }}>
@@ -646,18 +647,6 @@ export function DevicePropertiesDialog({
                           </Select>
                         </FormControl>
                       </Grid>
-                      <Grid size={{ xs: 12 }}>
-                        <FormControlLabel
-                          control={
-                            <Checkbox
-                              checked={useSerialPort}
-                              onChange={(e) => setUseSerialPort(e.target.checked)}
-                              color="primary"
-                            />
-                          }
-                          label="Use Serial port through ethernet."
-                        />
-                      </Grid>
                     </Grid>
                   </Box>
                 </Grid>
@@ -684,23 +673,7 @@ export function DevicePropertiesDialog({
         )}
       </DialogContent>
 
-      <DialogActions sx={{ px: 3, pb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Button variant="outlined" size="small" sx={{ textTransform: 'none' }}>
-            Initial settings...
-          </Button>
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={isHex}
-                onChange={(e) => setIsHex(e.target.checked)}
-                color="primary"
-                size="small"
-              />
-            }
-            label="Hex"
-          />
-        </Box>
+      <DialogActions sx={{ px: 3, pb: 3, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
         <Box sx={{ display: 'flex', gap: 1 }}>
           {device && device.id > 0 && (
             <Button

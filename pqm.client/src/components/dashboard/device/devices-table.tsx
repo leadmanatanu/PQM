@@ -1,6 +1,6 @@
 'use client';
 
-import * as React from 'react';
+import React, { useState } from 'react';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Divider from '@mui/material/Divider';
@@ -10,10 +10,14 @@ import TableCell from '@mui/material/TableCell';
 import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
-import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
 import dayjs from 'dayjs';
-
+import MoreVertIcon from "@mui/icons-material/MoreVert";
+import {
+    IconButton,
+    Menu,
+    MenuItem,
+} from "@mui/material";
 export interface Device {
     id: number;
     name: string;
@@ -30,6 +34,7 @@ export interface Device {
     lastSync?: Date;
     connectionSettings?: string;
     isConnected?: boolean;
+    deviceType?: string;
 }
 
 interface DevicesTableProps {
@@ -53,6 +58,8 @@ export function DevicesTable({
     onDelete,
     onConnectToggle,
 }: DevicesTableProps): React.JSX.Element | null {
+    const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+    const [selectedRow, setSelectedRow] = useState<Device | null>(null);
     if (!show) return null;
 
     const handleChangePage = (
@@ -71,6 +78,18 @@ export function DevicesTable({
     const handleDeleteClick = (deviceId: number) => {
         onDelete(deviceId);
     };
+    const handleMenuOpen = (
+        event: React.MouseEvent<HTMLElement>,
+        row: any
+    ) => {
+        setAnchorEl(event.currentTarget);
+        setSelectedRow(row);
+    };
+
+    const handleMenuClose = () => {
+        setAnchorEl(null);
+        setSelectedRow(null);
+    };
 
     return (
         <Card sx={{ borderRadius: '8px' }}>
@@ -85,6 +104,7 @@ export function DevicesTable({
                             <TableCell sx={{ fontWeight: 600 }}>IP</TableCell>
                             <TableCell sx={{ fontWeight: 600 }}>PORT</TableCell>
                             <TableCell sx={{ fontWeight: 600 }}>Created Date</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
                             <TableCell sx={{ fontWeight: 600 }}>Last Sync</TableCell>
                             <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
                             <TableCell sx={{ fontWeight: 600 }} align="center">Action</TableCell>
@@ -98,9 +118,10 @@ export function DevicesTable({
                                     <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.name}</TableCell>
                                     <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.serialNumber}</TableCell>
                                     <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.consumerNumber}</TableCell>
-                                     <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.ip}</TableCell>
+                                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.ip}</TableCell>
                                     <TableCell>{row.port}</TableCell>
                                     <TableCell sx={{ whiteSpace: 'nowrap' }}>{dayjs(row.createdDate).format('MMM D, YYYY')}</TableCell>
+                                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.deviceType || '—'}</TableCell>
                                     <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.lastSync ? dayjs(row.lastSync).format('MMM D, YYYY') : ''}</TableCell>
                                     <TableCell>
                                         <Chip
@@ -110,32 +131,53 @@ export function DevicesTable({
                                             variant="outlined"
                                         />
                                     </TableCell>
-                                    <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
-                                        <Button
-                                            variant="outlined"
+                                    <TableCell align="center">
+                                        <IconButton
+                                            onClick={(e) => handleMenuOpen(e, row)}
                                             size="small"
-                                            onClick={() => onPropertiesClick(row)}
-                                            sx={{ mr: 1, textTransform: 'none' }}
                                         >
-                                            Properties
-                                        </Button>
-                                        <Button
-                                            variant="outlined"
-                                            size="small"
-                                            color={row.isConnected ? 'error' : 'success'}
-                                            onClick={() => onConnectToggle(row)}
-                                            sx={{ mr: 1, textTransform: 'none' }}
+                                            <MoreVertIcon />
+                                        </IconButton>
+
+                                        <Menu
+                                            anchorEl={anchorEl}
+                                            open={Boolean(anchorEl)}
+                                            onClose={handleMenuClose}
                                         >
-                                            {row.isConnected ? 'Disconnect' : 'Connect'}
-                                        </Button>
-                                        <Button
-                                            variant="outlined"
-                                            size="small"
-                                            onClick={() => handleDeleteClick(row.id)}
-                                            sx={{ textTransform: 'none' }}
-                                        >
-                                            Delete
-                                        </Button>
+                                            <MenuItem
+                                                onClick={() => {
+                                                    if (selectedRow) {
+                                                        onPropertiesClick(selectedRow);
+                                                    }
+                                                    handleMenuClose();
+                                                }}
+                                            >
+                                                Properties
+                                            </MenuItem>
+
+                                            <MenuItem
+                                                onClick={() => {
+                                                    if (selectedRow) {
+                                                        onConnectToggle(selectedRow);
+                                                    }
+                                                    handleMenuClose();
+                                                }}
+                                            >
+                                                {selectedRow?.isConnected ? "Disconnect" : "Connect"}
+                                            </MenuItem>
+
+                                            <MenuItem
+                                                onClick={() => {
+                                                    if (selectedRow) {
+                                                        handleDeleteClick(selectedRow.id);
+                                                    }
+                                                    handleMenuClose();                                                    
+                                                }}
+                                                sx={{ color: "error.main" }}
+                                            >
+                                                Delete
+                                            </MenuItem>
+                                        </Menu>
                                     </TableCell>
                                 </TableRow>
                             );

@@ -19,5 +19,6 @@ namespace PQM.Core.Entities
         public int? ModifiedId { get; set; }
         public DateTime? LastSync { get; set; }
         public string? ConnectionSettings { get; set; }
+        public string? DeviceType { get; set; }
     }
 }
