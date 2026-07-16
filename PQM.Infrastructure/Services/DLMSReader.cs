@@ -730,9 +730,9 @@ namespace PQM.Infrastructure.Services
                     if (obj is GXDLMSExtendedRegister extReg)
                     {
                         if (attributeId == 4)
-                            return extReg.Status != null ? extReg.Status.ToString() ?? "" : "";
+                            return extReg.Status != null ? FormatValue(extReg.Status) : "";
                         if (attributeId == 5)
-                            return extReg.CaptureTime.ToString();
+                            return extReg.CaptureTime != null ? FormatValue(extReg.CaptureTime) : "";
                     }
 
                     if (obj is GXDLMSActionSchedule actionSchAttr)
