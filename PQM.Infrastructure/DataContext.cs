@@ -14,30 +14,11 @@ namespace PQM.Infrastructure
     public class DataContext : DbContext
     {
         private readonly string _connectionString;
+        public DbSet<User> User { get; set; } = null!;
         public DbSet<Device> Device { get; set; } = null!;
         public DbSet<Parameter> Parameter { get; set; } = null!;
-        public DbSet<DeviceParameterMapping> DeviceParameterMapping { get; set; } = null!;
-        public DbSet<DeviceLog> DeviceLog { get; set; } = null!;
-        public DbSet<EventLog> EventLog { get; set; } = null!;
-        public DbSet<FTPSetting> FTPSetting { get; set; } = null!;
-        public DbSet<Register> Register { get; set; } = null!;
-        public DbSet<Data> Data { get; set; } = null!;
-        public DbSet<IecHdlcSetup> IecHdlcSetup { get; set; } = null!;
-        public DbSet<TcpUdpSetup> TcpUdpSetup { get; set; } = null!;
-        public DbSet<Ip4Setup> Ip4Setup { get; set; } = null!;
-        public DbSet<MacAddressSetup> MacAddressSetup { get; set; } = null!;
-        public DbSet<AssociationLogicalName> AssociationLogicalName { get; set; } = null!;
-        public DbSet<Clock> Clock { get; set; } = null!;
-        public DbSet<ScriptTable> ScriptTable { get; set; } = null!;
-        public DbSet<ProfileGeneric> ProfileGeneric { get; set; } = null!;
-        public DbSet<ProfileGenericEntry> ProfileGenericEntry { get; set; } = null!;
-        public DbSet<ActionSchedule> ActionSchedule { get; set; } = null!;
-        public DbSet<ActivityCalendar> ActivityCalendar { get; set; } = null!;
-        public DbSet<ConnectedHeader> ConnectedHeader { get; set; } = null!;
-        public DbSet<DLMSObject> DLMSObject { get; set; } = null!;
-        public DbSet<ObjectParameter> ObjectParameter { get; set; } = null!;
         public DbSet<ParameterValue> ParameterValue { get; set; } = null!;
-        public DbSet<EventStatusMapping> EventStatusMapping { get; set; } = null!;
+        public DbSet<Event> Event { get; set; } = null!;
 
         public DataContext(string connectionString)
         {
@@ -53,67 +34,52 @@ namespace PQM.Infrastructure
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            modelBuilder.Entity<DeviceLogSearch>().HasNoKey().ToTable((string?)null);
 
-            modelBuilder.Entity<EventStatusMapping>().HasData(
-                // Voltage Related Events
-                new EventStatusMapping { Id = 1, Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 0, EventCode = 1, Label = "R-Phase - Voltage Missing - Occurrence" },
-                new EventStatusMapping { Id = 2, Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 1, EventCode = 2, Label = "R-Phase - Voltage Missing - Restoration" },
-                new EventStatusMapping { Id = 3, Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 2, EventCode = 3, Label = "Y-Phase - Voltage Missing - Occurrence" },
-                new EventStatusMapping { Id = 4, Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 3, EventCode = 4, Label = "Y-Phase - Voltage Missing - Restoration" },
-                new EventStatusMapping { Id = 5, Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 4, EventCode = 5, Label = "B-Phase - Voltage Missing - Occurrence" },
-                new EventStatusMapping { Id = 6, Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 5, EventCode = 6, Label = "B-Phase - Voltage Missing - Restoration" },
-                new EventStatusMapping { Id = 7, Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 6, EventCode = 7, Label = "Over Voltage in any Phase - Occurrence" },
-                new EventStatusMapping { Id = 8, Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 7, EventCode = 8, Label = "Over Voltage in any Phase - Restoration" },
-                new EventStatusMapping { Id = 9, Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 8, EventCode = 9, Label = "Low Voltage in any Phase - Occurrence" },
-                new EventStatusMapping { Id = 10, Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 9, EventCode = 10, Label = "Low Voltage in any Phase - Restoration" },
-                new EventStatusMapping { Id = 11, Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 10, EventCode = 11, Label = "Voltage Unbalance - Occurrence" },
-                new EventStatusMapping { Id = 12, Category = "voltage", ObisCode = "0.0.96.11.0.255", BitIndex = 11, EventCode = 12, Label = "Voltage Unbalance - Restoration" },
 
-                // Current Related Events
-                new EventStatusMapping { Id = 13, Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 4, EventCode = 51, Label = "R Phase - Current reverse - Occurrence" },
-                new EventStatusMapping { Id = 14, Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 5, EventCode = 52, Label = "R Phase - Current reverse - Restoration" },
-                new EventStatusMapping { Id = 15, Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 8, EventCode = 53, Label = "Y Phase - Current reverse - Occurrence" },
-                new EventStatusMapping { Id = 16, Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 9, EventCode = 54, Label = "Y Phase - Current reverse - Restoration" },
-                new EventStatusMapping { Id = 17, Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 10, EventCode = 55, Label = "B Phase - Current reverse - Occurrence" },
-                new EventStatusMapping { Id = 18, Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 11, EventCode = 56, Label = "B Phase - Current reverse - Restoration" },
-                new EventStatusMapping { Id = 19, Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 7, EventCode = 63, Label = "Current Unbalance - Occurrence" },
-                new EventStatusMapping { Id = 20, Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 6, EventCode = 64, Label = "Current Unbalance - Restoration" },
-                new EventStatusMapping { Id = 21, Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 0, EventCode = 65, Label = "Current bypass - Occurrence" },
-                new EventStatusMapping { Id = 22, Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 1, EventCode = 66, Label = "Current bypass - Restoration" },
-                new EventStatusMapping { Id = 23, Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 2, EventCode = 67, Label = "Over current in any phase - Occurrence" },
-                new EventStatusMapping { Id = 24, Category = "current", ObisCode = "0.0.96.11.1.255", BitIndex = 3, EventCode = 68, Label = "Over current in any phase - Restoration" },
-
-                // Power Related Events
-                new EventStatusMapping { Id = 25, Category = "power", ObisCode = "0.0.96.11.2.255", BitIndex = 0, EventCode = 101, Label = "Power failure - Occurrence" },
-                new EventStatusMapping { Id = 26, Category = "power", ObisCode = "0.0.96.11.2.255", BitIndex = 1, EventCode = 102, Label = "Power failure - Restoration" },
-
-                // Transaction Related Events
-                new EventStatusMapping { Id = 27, Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 0, EventCode = 151, Label = "Real Time Clock - Date and Time" },
-                new EventStatusMapping { Id = 28, Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 1, EventCode = 152, Label = "Demand Integration Period" },
-                new EventStatusMapping { Id = 29, Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 2, EventCode = 153, Label = "Profile Capture Period" },
-                new EventStatusMapping { Id = 30, Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 3, EventCode = 154, Label = "Single-action Schedule for Billing Dates" },
-                new EventStatusMapping { Id = 31, Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 4, EventCode = 155, Label = "Activity Calendar Time Zones" },
-                new EventStatusMapping { Id = 32, Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 5, EventCode = 157, Label = "New Firmware Activated" },
-                new EventStatusMapping { Id = 33, Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 6, EventCode = 158, Label = "Load limit (kW) set" },
-                new EventStatusMapping { Id = 34, Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 7, EventCode = 159, Label = "Enabled - load limit function" },
-                new EventStatusMapping { Id = 35, Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 8, EventCode = 160, Label = "Disabled - load limit function" },
-                new EventStatusMapping { Id = 36, Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 9, EventCode = 161, Label = "LLS secret (MR) change" },
-                new EventStatusMapping { Id = 37, Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 10, EventCode = 162, Label = "HLS key (US) change" },
-                new EventStatusMapping { Id = 38, Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 11, EventCode = 163, Label = "HLS key (FW) change" },
-                new EventStatusMapping { Id = 39, Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 12, EventCode = 164, Label = "Global key change(encryption and authentication)" },
-                new EventStatusMapping { Id = 40, Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 13, EventCode = 165, Label = "ESWF change" },
-                new EventStatusMapping { Id = 41, Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 14, EventCode = 166, Label = "MD reset" },
-                new EventStatusMapping { Id = 42, Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 15, EventCode = 169, Label = "Single Action Schedule for Image Activation" },
-                new EventStatusMapping { Id = 43, Category = "transaction", ObisCode = "0.0.96.11.3.255", BitIndex = 16, EventCode = 182, Label = "Passive Relay time." },
-
-                // Others Events
-                new EventStatusMapping { Id = 44, Category = "others", ObisCode = "0.0.96.11.4.255", BitIndex = 0, EventCode = 201, Label = "Influence of permanent magnet - Occurrence" },
-                new EventStatusMapping { Id = 45, Category = "others", ObisCode = "0.0.96.11.4.255", BitIndex = 1, EventCode = 202, Label = "Influence of permanent magnet - Restoration" },
-                new EventStatusMapping { Id = 46, Category = "others", ObisCode = "0.0.96.11.4.255", BitIndex = 2, EventCode = 203, Label = "Neutral disturbance - Occurrence" },
-                new EventStatusMapping { Id = 47, Category = "others", ObisCode = "0.0.96.11.4.255", BitIndex = 3, EventCode = 204, Label = "Neutral disturbance - Restoration" },
-                new EventStatusMapping { Id = 48, Category = "others", ObisCode = "0.0.96.11.4.255", BitIndex = 4, EventCode = 205, Label = "Meter cover opened" },
-                new EventStatusMapping { Id = 50, Category = "others", ObisCode = "0.0.96.11.4.255", BitIndex = 5, EventCode = 206, Label = "Terminal cover opened" }
+            modelBuilder.Entity<Parameter>().HasData(
+                new Parameter { Id = 1, Name = "Accuracy Test Start", ObisCode = "0.128.162.0.128.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 2, Name = "Accuracy Test Stop", ObisCode = "0.128.162.1.128.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 3, Name = "Activity Calendar", ObisCode = "0.0.13.0.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 4, Name = "Apparent Power – kVA", ObisCode = "1.0.9.7.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 5, Name = "Association LN Meter Reader", ObisCode = "0.0.40.0.2.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 6, Name = "Available Billing Periods", ObisCode = "0.0.0.1.1.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 7, Name = "Billing Date", ObisCode = "0.0.0.1.2.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 8, Name = "Billing Period Script Table", ObisCode = "0.0.10.0.1.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 9, Name = "Capture Period of Daily Load Profile", ObisCode = "1.0.0.8.5.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 10, Name = "Category", ObisCode = "0.0.94.91.11.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 11, Name = "CMRI Reset", ObisCode = "0.128.154.128.128.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 12, Name = "CT Rating", ObisCode = "0.0.94.91.12.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 13, Name = "Cumulative Billing Count", ObisCode = "0.0.0.1.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 14, Name = "Cumulative Energy – kVAh (Export)", ObisCode = "1.0.10.8.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 15, Name = "Cumulative Energy (kVAh)", ObisCode = "1.0.9.8.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 16, Name = "Cumulative Energy (kvarh) – Lag", ObisCode = "1.0.5.8.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 17, Name = "Cumulative Energy (kvarh) – Lead", ObisCode = "1.0.8.8.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 18, Name = "Cumulative Energy (kWh)", ObisCode = "1.0.1.8.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 19, Name = "Cumulative Energy (kWh) – Export", ObisCode = "1.0.2.8.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 20, Name = "Cumulative Power Failure Duration", ObisCode = "0.0.94.91.8.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 21, Name = "Cumulative Programming Count", ObisCode = "0.0.96.2.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 22, Name = "Cumulative Tamper Count", ObisCode = "0.0.94.91.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 23, Name = "Current – IB", ObisCode = "1.0.71.7.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 24, Name = "Current – IR", ObisCode = "1.0.31.7.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 25, Name = "Current – IY", ObisCode = "1.0.51.7.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 26, Name = "Current Related Event Code", ObisCode = "0.0.96.11.1.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 27, Name = "Power Failure Related Event Code", ObisCode = "0.0.96.11.2.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 28, Name = "Profile Capture Period", ObisCode = "1.0.0.8.4.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 29, Name = "PT Power Fail Tamper Events", ObisCode = "1.0.128.7.90.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 30, Name = "Reset Type", ObisCode = "0.128.153.128.128.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 31, Name = "Signed Active Power – kW", ObisCode = "1.0.1.7.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 32, Name = "Signed Power Factor – B Phase", ObisCode = "1.0.73.7.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 33, Name = "Signed Power Factor – R Phase", ObisCode = "1.0.33.7.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 34, Name = "Signed Power Factor – Y Phase", ObisCode = "1.0.53.7.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 35, Name = "Signed Reactive Power – kvar", ObisCode = "1.0.3.7.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 36, Name = "Single Action Schedule for Billing Dates", ObisCode = "0.0.15.0.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 37, Name = "TCP/UDP Setup", ObisCode = "0.0.25.0.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 38, Name = "TCP/UDP Setup IPv4 Address", ObisCode = "0.0.25.1.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 39, Name = "TCP/UDP Setup MAC Address", ObisCode = "0.0.25.2.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 40, Name = "Transaction Related Event Code", ObisCode = "0.0.96.11.3.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 41, Name = "Voltage – VBN", ObisCode = "1.0.72.7.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 42, Name = "Voltage – VRN", ObisCode = "1.0.32.7.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) },
+                new Parameter { Id = 43, Name = "Voltage – VYN", ObisCode = "1.0.52.7.0.255", IsActive = true, CreatedDate = new DateTime(2026, 1, 1) }
             );
         }
     }

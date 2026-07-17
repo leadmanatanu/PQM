@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PQM.Infrastructure;
 
@@ -11,9 +12,11 @@ using PQM.Infrastructure;
 namespace PQM.Infrastructure.Migrations
 {
     [DbContext(typeof(DataContext))]
-    partial class DataContextModelSnapshot : ModelSnapshot
+    [Migration("20260717055216_CleanAndSimplifySchema")]
+    partial class CleanAndSimplifySchema
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -160,8 +163,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Accuracy Test Start",
-                            ObisCode = "0.128.162.0.128.255"
+                            Name = "Cumulative Active Energy Import (kWh Import)",
+                            ObisCode = "1.0.1.8.0.255",
+                            Unit = "kWh"
                         },
                         new
                         {
@@ -169,8 +173,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Accuracy Test Stop",
-                            ObisCode = "0.128.162.1.128.255"
+                            Name = "Cumulative Active Energy Export (kWh Export)",
+                            ObisCode = "1.0.2.8.0.255",
+                            Unit = "kWh"
                         },
                         new
                         {
@@ -178,8 +183,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Activity Calendar",
-                            ObisCode = "0.0.13.0.0.255"
+                            Name = "Cumulative Apparent Energy Import (kVAh Import)",
+                            ObisCode = "1.0.9.8.0.255",
+                            Unit = "kVAh"
                         },
                         new
                         {
@@ -187,8 +193,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Apparent Power – kVA",
-                            ObisCode = "1.0.9.7.0.255"
+                            Name = "Cumulative Apparent Energy Export (kVAh Export)",
+                            ObisCode = "1.0.10.8.0.255",
+                            Unit = "kVAh"
                         },
                         new
                         {
@@ -196,8 +203,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Association LN Meter Reader",
-                            ObisCode = "0.0.40.0.2.255"
+                            Name = "Cumulative Reactive Energy Lag (kvarh Lag)",
+                            ObisCode = "1.0.5.8.0.255",
+                            Unit = "kvarh"
                         },
                         new
                         {
@@ -205,8 +213,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Available Billing Periods",
-                            ObisCode = "0.0.0.1.1.255"
+                            Name = "Cumulative Reactive Energy Lead (kvarh Lead)",
+                            ObisCode = "1.0.8.8.0.255",
+                            Unit = "kvarh"
                         },
                         new
                         {
@@ -214,8 +223,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Billing Date",
-                            ObisCode = "0.0.0.1.2.255"
+                            Name = "Voltage L1",
+                            ObisCode = "1.0.32.7.0.255",
+                            Unit = "Volt"
                         },
                         new
                         {
@@ -223,8 +233,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Billing Period Script Table",
-                            ObisCode = "0.0.10.0.1.255"
+                            Name = "Voltage L2",
+                            ObisCode = "1.0.52.7.0.255",
+                            Unit = "Volt"
                         },
                         new
                         {
@@ -232,8 +243,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Capture Period of Daily Load Profile",
-                            ObisCode = "1.0.0.8.5.255"
+                            Name = "Voltage L3",
+                            ObisCode = "1.0.72.7.0.255",
+                            Unit = "Volt"
                         },
                         new
                         {
@@ -241,8 +253,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Category",
-                            ObisCode = "0.0.94.91.11.255"
+                            Name = "Current L1",
+                            ObisCode = "1.0.31.7.0.255",
+                            Unit = "Amp"
                         },
                         new
                         {
@@ -250,8 +263,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "CMRI Reset",
-                            ObisCode = "0.128.154.128.128.255"
+                            Name = "Current L2",
+                            ObisCode = "1.0.51.7.0.255",
+                            Unit = "Amp"
                         },
                         new
                         {
@@ -259,8 +273,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "CT Rating",
-                            ObisCode = "0.0.94.91.12.255"
+                            Name = "Current L3",
+                            ObisCode = "1.0.71.7.0.255",
+                            Unit = "Amp"
                         },
                         new
                         {
@@ -268,8 +283,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Cumulative Billing Count",
-                            ObisCode = "0.0.0.1.0.255"
+                            Name = "Active Power",
+                            ObisCode = "1.0.1.7.0.255",
+                            Unit = "kW"
                         },
                         new
                         {
@@ -277,8 +293,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Cumulative Energy – kVAh (Export)",
-                            ObisCode = "1.0.10.8.0.255"
+                            Name = "Reactive Power",
+                            ObisCode = "1.0.3.7.0.255",
+                            Unit = "kvar"
                         },
                         new
                         {
@@ -286,8 +303,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Cumulative Energy (kVAh)",
-                            ObisCode = "1.0.9.8.0.255"
+                            Name = "Apparent Power",
+                            ObisCode = "1.0.9.7.0.255",
+                            Unit = "kVA"
                         },
                         new
                         {
@@ -295,8 +313,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Cumulative Energy (kvarh) – Lag",
-                            ObisCode = "1.0.5.8.0.255"
+                            Name = "L1 PF",
+                            ObisCode = "1.0.33.7.0.255",
+                            Unit = ""
                         },
                         new
                         {
@@ -304,8 +323,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Cumulative Energy (kvarh) – Lead",
-                            ObisCode = "1.0.8.8.0.255"
+                            Name = "L2 PF",
+                            ObisCode = "1.0.53.7.0.255",
+                            Unit = ""
                         },
                         new
                         {
@@ -313,8 +333,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Cumulative Energy (kWh)",
-                            ObisCode = "1.0.1.8.0.255"
+                            Name = "L3 PF",
+                            ObisCode = "1.0.73.7.0.255",
+                            Unit = ""
                         },
                         new
                         {
@@ -322,8 +343,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Cumulative Energy (kWh) – Export",
-                            ObisCode = "1.0.2.8.0.255"
+                            Name = "Meter Category",
+                            ObisCode = "0.0.94.91.11.255",
+                            Unit = ""
                         },
                         new
                         {
@@ -331,8 +353,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Cumulative Power Failure Duration",
-                            ObisCode = "0.0.94.91.8.255"
+                            Name = "CT Rating",
+                            ObisCode = "0.0.94.91.12.255",
+                            Unit = ""
                         },
                         new
                         {
@@ -340,8 +363,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Cumulative Programming Count",
-                            ObisCode = "0.0.96.2.0.255"
+                            Name = "Activity Calendar",
+                            ObisCode = "0.0.13.0.0.255",
+                            Unit = ""
                         },
                         new
                         {
@@ -349,8 +373,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Cumulative Tamper Count",
-                            ObisCode = "0.0.94.91.0.255"
+                            Name = "Billing Script Table",
+                            ObisCode = "0.0.10.0.1.255",
+                            Unit = ""
                         },
                         new
                         {
@@ -358,8 +383,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Current – IB",
-                            ObisCode = "1.0.71.7.0.255"
+                            Name = "Billing Schedule",
+                            ObisCode = "0.0.15.0.0.255",
+                            Unit = ""
                         },
                         new
                         {
@@ -367,8 +393,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Current – IR",
-                            ObisCode = "1.0.31.7.0.255"
+                            Name = "Association LN",
+                            ObisCode = "0.0.40.0.2.255",
+                            Unit = ""
                         },
                         new
                         {
@@ -376,8 +403,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Current – IY",
-                            ObisCode = "1.0.51.7.0.255"
+                            Name = "TCP/UDP Setup",
+                            ObisCode = "0.0.25.0.0.255",
+                            Unit = ""
                         },
                         new
                         {
@@ -385,8 +413,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Current Related Event Code",
-                            ObisCode = "0.0.96.11.1.255"
+                            Name = "IPv4 Setup",
+                            ObisCode = "0.0.25.1.0.255",
+                            Unit = ""
                         },
                         new
                         {
@@ -394,8 +423,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Power Failure Related Event Code",
-                            ObisCode = "0.0.96.11.2.255"
+                            Name = "MAC Address",
+                            ObisCode = "0.0.25.2.0.255",
+                            Unit = ""
                         },
                         new
                         {
@@ -404,7 +434,8 @@ namespace PQM.Infrastructure.Migrations
                             IsActive = true,
                             IsDeleted = false,
                             Name = "Profile Capture Period",
-                            ObisCode = "1.0.0.8.4.255"
+                            ObisCode = "1.0.0.8.4.255",
+                            Unit = ""
                         },
                         new
                         {
@@ -412,8 +443,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "PT Power Fail Tamper Events",
-                            ObisCode = "1.0.128.7.90.255"
+                            Name = "Daily Capture Period",
+                            ObisCode = "1.0.0.8.5.255",
+                            Unit = ""
                         },
                         new
                         {
@@ -421,8 +453,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Reset Type",
-                            ObisCode = "0.128.153.128.128.255"
+                            Name = "Billing Count",
+                            ObisCode = "0.0.0.1.0.255",
+                            Unit = ""
                         },
                         new
                         {
@@ -430,8 +463,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Signed Active Power – kW",
-                            ObisCode = "1.0.1.7.0.255"
+                            Name = "Current Related Event",
+                            ObisCode = "0.0.96.11.1.255",
+                            Unit = ""
                         },
                         new
                         {
@@ -439,8 +473,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Signed Power Factor – B Phase",
-                            ObisCode = "1.0.73.7.0.255"
+                            Name = "Power Failure Event",
+                            ObisCode = "0.0.96.11.2.255",
+                            Unit = ""
                         },
                         new
                         {
@@ -448,8 +483,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Signed Power Factor – R Phase",
-                            ObisCode = "1.0.33.7.0.255"
+                            Name = "Transaction Event",
+                            ObisCode = "0.0.96.11.3.255",
+                            Unit = ""
                         },
                         new
                         {
@@ -457,8 +493,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Signed Power Factor – Y Phase",
-                            ObisCode = "1.0.53.7.0.255"
+                            Name = "Cumulative Tamper Count",
+                            ObisCode = "0.0.94.91.0.255",
+                            Unit = ""
                         },
                         new
                         {
@@ -466,8 +503,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Signed Reactive Power – kvar",
-                            ObisCode = "1.0.3.7.0.255"
+                            Name = "PT Power Fail Tamper Events",
+                            ObisCode = "1.0.128.7.90.255",
+                            Unit = ""
                         },
                         new
                         {
@@ -475,8 +513,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Single Action Schedule for Billing Dates",
-                            ObisCode = "0.0.15.0.0.255"
+                            Name = "Cumulative Power Failure Duration",
+                            ObisCode = "0.0.94.91.8.255",
+                            Unit = "seconds"
                         },
                         new
                         {
@@ -484,8 +523,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "TCP/UDP Setup",
-                            ObisCode = "0.0.25.0.0.255"
+                            Name = "Programming Count",
+                            ObisCode = "0.0.96.2.0.255",
+                            Unit = ""
                         },
                         new
                         {
@@ -493,8 +533,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "TCP/UDP Setup IPv4 Address",
-                            ObisCode = "0.0.25.1.0.255"
+                            Name = "Accuracy Test Start",
+                            ObisCode = "0.128.162.0.128.255",
+                            Unit = ""
                         },
                         new
                         {
@@ -502,8 +543,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "TCP/UDP Setup MAC Address",
-                            ObisCode = "0.0.25.2.0.255"
+                            Name = "Accuracy Test Stop",
+                            ObisCode = "0.128.162.1.128.255",
+                            Unit = ""
                         },
                         new
                         {
@@ -511,8 +553,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Transaction Related Event Code",
-                            ObisCode = "0.0.96.11.3.255"
+                            Name = "Reset Type",
+                            ObisCode = "0.128.153.128.128.255",
+                            Unit = ""
                         },
                         new
                         {
@@ -520,8 +563,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Voltage – VBN",
-                            ObisCode = "1.0.72.7.0.255"
+                            Name = "CMRI Reset",
+                            ObisCode = "0.128.154.128.128.255",
+                            Unit = ""
                         },
                         new
                         {
@@ -529,17 +573,9 @@ namespace PQM.Infrastructure.Migrations
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Voltage – VRN",
-                            ObisCode = "1.0.32.7.0.255"
-                        },
-                        new
-                        {
-                            Id = 43,
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            Name = "Voltage – VYN",
-                            ObisCode = "1.0.52.7.0.255"
+                            Name = "CMRI Reset (Manufacturer Specific)",
+                            ObisCode = "0.128.185.4.128.128.255",
+                            Unit = ""
                         });
                 });
 

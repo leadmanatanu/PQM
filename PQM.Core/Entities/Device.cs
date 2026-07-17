@@ -6,6 +6,7 @@ namespace PQM.Core.Entities
     {
         [Key]
         public int Id { get; set; }
+        public int? UserId { get; set; }
         public required string Name { get; set; }
         public required string IP { get; set; }
         public int PORT { get; set; }

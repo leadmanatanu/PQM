@@ -1,0 +1,4 @@
+7/16/2026 5:03:39 AM Connecting to DLMS meter Test DLMS Meter at 103.83.106.174:4005
+7/16/2026 5:03:44 AM Error while reading DLMS data of Test DLMS Meter. Error: No connection could be made because the target machine actively refused it.
+7/16/2026 5:04:13 AM Connecting to DLMS meter Test DLMS Meter at 103.83.106.174:4059
+7/16/2026 5:04:15 AM Error while reading DLMS data of Test DLMS Meter. Error: No connection could be made because the target machine actively refused it.

@@ -1,9 +1,11 @@
-using PQM.Server.Models;
 using Microsoft.AspNetCore.Mvc;
-using PQM.Core.IRepositories;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using PQM.Core.Entities;
-using System.DirectoryServices.Protocols;
-using PQM.Infrastructure.Repositories;
+using PQM.Infrastructure;
+using PQM.Server.Models;
+using System;
+using System.Linq;
 
 namespace PQM.Server.Controllers
 {
@@ -11,21 +13,22 @@ namespace PQM.Server.Controllers
     [Route("api/[controller]")]
     public class ParameterController : ControllerBase
     {
-        public APIResponse _apiResponse;
-        private readonly IParameterService _parameterService;
-        private readonly ILogger<DeviceLogController> _logger;
+        private readonly APIResponse _apiResponse = new();
+        private readonly ILogger<ParameterController> _logger;
+        private readonly string _connectionString;
 
-        public ParameterController(ILogger<DeviceLogController> logger, IParameterService parameterService)
+        public ParameterController(ILogger<ParameterController> logger, IConfiguration configuration)
         {
-            _apiResponse = new APIResponse();
             _logger = logger;
-            _parameterService = parameterService;
+            _connectionString = configuration.GetConnectionString("DefaultConnection") 
+                ?? throw new InvalidOperationException("Connection string not found.");
         }
 
-        [HttpGet(Name = "GetParameters")]
+        [HttpGet]
         public ActionResult Get()
         {
-            var data = _parameterService.GetParameters().ToList();
+            using var db = new DataContext(_connectionString);
+            var data = db.Parameter.Where(p => p.IsActive && !p.IsDeleted).ToList();
             _apiResponse.Status = true;
             _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
             _apiResponse.Data = data;
@@ -37,7 +40,12 @@ namespace PQM.Server.Controllers
         {
             try
             {
-                var data = _parameterService.GetParameters(id).ToList();
+                using var db = new DataContext(_connectionString);
+                var data = db.Parameter.FirstOrDefault(p => p.Id == id && p.IsActive && !p.IsDeleted);
+                if (data == null)
+                {
+                    return NotFound(new { error = "Parameter not found." });
+                }
                 _apiResponse.Status = true;
                 _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
                 _apiResponse.Data = data;

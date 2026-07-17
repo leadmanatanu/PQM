@@ -9,6 +9,7 @@ namespace PQM.Core.Entities
     {
         [Key]
         public long Id { get; set; }
+        public int DeviceId { get; set; }
         public int ParameterId { get; set; }
         public string? Value { get; set; } = null!;
         public DateTime Timestamp { get; set; }

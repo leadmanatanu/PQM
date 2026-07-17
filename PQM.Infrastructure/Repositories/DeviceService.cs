@@ -1,4 +1,4 @@
-﻿using PQM.Core.Entities;
+using PQM.Core.Entities;
 using PQM.Core.IRepositories;
 
 namespace PQM.Infrastructure.Repositories
@@ -32,6 +32,7 @@ namespace PQM.Infrastructure.Repositories
                 return false;
             }
             deviceData.Name = device.Name;
+            deviceData.UserId = device.UserId;
             deviceData.SerialNumber = device.SerialNumber;
             deviceData.ConsumerNumber = device.ConsumerNumber;
             deviceData.IP = device.IP;

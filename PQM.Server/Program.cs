@@ -20,20 +20,7 @@ builder.Services.AddTransient<IDeviceService>(_ =>
 
 builder.Services.AddSingleton<PQM.Infrastructure.Services.DLMSSessionManager>();
 
-builder.Services.AddTransient<IDeviceLogService>(_ =>
-    new DeviceLogService(connectionString));
 
-builder.Services.AddTransient<IParameterService>(_ =>
-    new ParameterService(connectionString));
-
-builder.Services.AddScoped<DeviceParameterService>(_ =>
-    new DeviceParameterService(connectionString));
-
-builder.Services.AddTransient<IFTPSettingService>(_ =>
-    new FTPSettingService(connectionString));
-
-builder.Services.AddTransient<IEventLogService>(_ =>
-    new EventLogService(connectionString));
 
 builder.Services.AddTransient<ISFTPService>(_ =>
     new SFTPService());
@@ -70,18 +57,34 @@ using (var scope = app.Services.CreateScope())
 
 app.UseCors("AllowReactApp");
 app.UseDefaultFiles();
-app.MapStaticAssets();
+app.UseStaticFiles();
 
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.UseSwaggerUI(options =>
+    {
+        options.SwaggerEndpoint("/openapi/v1.json", "PQM API v1");
+    });
 }
 
 app.UseHttpsRedirection();
 app.UseAuthorization();
 
-app.MapControllers();
-app.MapHub<PQM.Server.Hubs.MeterHub>("/hubs/meter");
-app.MapFallbackToFile("/index.html");
+try
+{
+    app.MapControllers();
+    app.MapHub<PQM.Server.Hubs.MeterHub>("/hubs/meter");
+    app.MapFallbackToFile("/index.html");
 
-app.Run();
+    app.Run();
+}
+catch (System.Reflection.ReflectionTypeLoadException ex)
+{
+    Console.WriteLine("=== REFLECTION TYPE LOAD EXCEPTION ===");
+    foreach (var le in ex.LoaderExceptions)
+    {
+        Console.WriteLine($"[LoaderException]: {le?.Message}");
+    }
+    throw;
+}

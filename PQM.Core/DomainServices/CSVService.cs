@@ -7,17 +7,16 @@ using PQM.Core.IRepositories;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace PQM.Core.DomainServices
 {
     public class CSVService : ICSVService
     {
-        public List<DeviceLog> ReadCSVData(int deviceId, string csvFilePath, List<string> mappedParatmeter)
+        public List<ParameterValue> ReadCSVData(int deviceId, string csvFilePath, List<string> mappedParameter)
         {
-            List<DeviceLog> logList = new List<DeviceLog>();
+            List<ParameterValue> logList = new List<ParameterValue>();
             using (TextFieldParser parser = new TextFieldParser(csvFilePath))
             {
                 parser.TextFieldType = FieldType.Delimited;
@@ -39,32 +38,19 @@ namespace PQM.Core.DomainServices
                         if (counter == 0)
                         {
                             lstAllHeader.Add(field);
-                            if (mappedParatmeter.Contains(field)) // pick mapped parameters of device
+                            if (mappedParameter.Contains(field))
                             {
                                 lstHeader.Add(field);
                             }
                         }
                         else
                         {
-                            if (innerCounter == 0) // pick DateStamp
+                            if (innerCounter == 0)
                             {
                                 dateStamp = Convert.ToDateTime(field);
-                                //dateStamp = DateTime.ParseExact(field, "dd-MM-yyyy", CultureInfo.InvariantCulture);
                             }
                             else
                             {
-                                //This logic works if csv file order is sequential eg. 1,2,3,4 etc
-                                //if (lstHeader.Contains(innerCounter.ToString()))
-                                //{
-                                //    DeviceLog log = new DeviceLog();
-                                //    log.DateStamp = dateStamp;
-                                //    log.DeviceId = deviceId;
-                                //    log.ParameterId = innerCounter;
-                                //    log.Value = field;
-                                //    logList.Add(log);
-                                //}
-
-                                //This logic will work for all types order
                                 string header = lstAllHeader[innerCounter];
                                 if (matchedHeaderCounter > lstHeader.Count - 1)
                                     break;
@@ -72,9 +58,9 @@ namespace PQM.Core.DomainServices
                                 if (header == matchedHeader)
                                 {
                                     matchedHeaderCounter++;
-                                    DeviceLog log = new DeviceLog
+                                    ParameterValue log = new ParameterValue
                                     {
-                                        DateStamp = dateStamp,
+                                        Timestamp = dateStamp,
                                         DeviceId = deviceId,
                                         ParameterId = Convert.ToInt32(matchedHeader),
                                         Value = field
@@ -91,46 +77,44 @@ namespace PQM.Core.DomainServices
             return logList;
         }
 
-        public List<EventLog> ReadEventLog(int deviceId, string eventType, string csvFilePath)
+        public List<Event> ReadEventLog(int deviceId, string eventType, string csvFilePath)
         {
             using var reader = new StreamReader(csvFilePath);
             using var csv = new CsvReader(reader, new CsvConfiguration(CultureInfo.InvariantCulture)
             {
-                MissingFieldFound = null,   // ignore missing fields
-                HeaderValidated = null      // don't validate headers against class
+                MissingFieldFound = null,
+                HeaderValidated = null
             });
 
             return eventType switch
             {
-                nameof(EventType.dip) => MapEvents<DipEvent>(csv, deviceId, eventType, (src, dst) => dst.Min_Voltage = src.Min_Voltage),
+                nameof(EventType.dip) => MapEvents<DipEvent>(csv, deviceId, eventType, (src, dst) => dst.Value += $", Min_Voltage: {src.Min_Voltage}"),
                 nameof(EventType.interrupt) => MapEvents<InterruptEvent>(csv, deviceId, eventType),
-                nameof(EventType.rvc) => MapEvents<RVCEvent>(csv, deviceId, eventType, (src, dst) => { dst.UMAX = src.UMAX; dst.USS = src.USS; }),
-                nameof(EventType.swell) => MapEvents<SwellEvent>(csv, deviceId, eventType, (src, dst) => dst.Max_Voltage = src.Max_Voltage),
-                nameof(EventType.shortflicker) or nameof(EventType.longflicker) => MapEvents<FlickerEvent>(csv, deviceId, eventType, (src, dst) => { dst.Date = src.Date; dst.A = src.A; dst.B = src.B; dst.C = src.C; }),
-                _ => new List<EventLog>()
+                nameof(EventType.rvc) => MapEvents<RVCEvent>(csv, deviceId, eventType, (src, dst) => dst.Value += $", UMAX: {src.UMAX}, USS: {src.USS}"),
+                nameof(EventType.swell) => MapEvents<SwellEvent>(csv, deviceId, eventType, (src, dst) => dst.Value += $", Max_Voltage: {src.Max_Voltage}"),
+                nameof(EventType.shortflicker) or nameof(EventType.longflicker) => MapEvents<FlickerEvent>(csv, deviceId, eventType, (src, dst) => dst.Value += $", Date: {src.Date}, A: {src.A}, B: {src.B}, C: {src.C}"),
+                _ => new List<Event>()
             };
         }
 
-        private List<EventLog> MapEvents<T>(CsvReader csv, int deviceId, string eventType, Action<T, EventLog>? extraMapping = null)
+        private List<Event> MapEvents<T>(CsvReader csv, int deviceId, string eventType, Action<T, Event>? extraMapping = null)
             where T : IBaseEvent
         {
-            var list = new List<EventLog>();
+            var list = new List<Event>();
+            int parameterId = eventType.Contains("flicker") ? 31 : 32;
 
             foreach (var item in csv.GetRecords<T>())
             {
-                var log = new EventLog
+                var ev = new Event
                 {
                     DeviceId = deviceId,
-                    EventType = eventType,
-                    CreatedDate = DateTime.UtcNow,
-                    Start_Time = item.Start_Time,
-                    End_Time = item.End_Time,
-                    Phase = item.Phase,
-                    Duration = item.Duration
+                    ParameterId = parameterId,
+                    Timestamp = item.Start_Time ?? DateTime.UtcNow,
+                    Value = $"Type: {eventType}, Phase: {item.Phase}, Duration: {item.Duration}, Start: {item.Start_Time}, End: {item.End_Time}"
                 };
 
-                extraMapping?.Invoke(item, log);
-                list.Add(log);
+                extraMapping?.Invoke(item, ev);
+                list.Add(ev);
             }
 
             return list;

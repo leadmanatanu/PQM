@@ -4,31 +4,19 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <SpaRoot>..\pqm.client</SpaRoot>
-    <SpaProxyLaunchCommand>npm run dev</SpaProxyLaunchCommand>
-    <SpaProxyServerUrl>http://localhost:3000</SpaProxyServerUrl>
-	<SpaStaticFilesRoot>$(SpaRoot)\.next\static\</SpaStaticFilesRoot>
-	<!-- Determine wwwroot dir: PublishDir if publishing, else ProjectDir for local build -->
-	<WwwRootDir Condition="'$(PublishDir)' != ''">$(PublishDir)wwwroot</WwwRootDir>
-	<WwwRootDir Condition="'$(WwwRootDir)' == ''">$(ProjectDir)wwwroot</WwwRootDir>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.0" />
-    <PackageReference Include="Microsoft.AspNetCore.SpaProxy">
-      <Version>9.*-*</Version>
-    </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.0">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
     <PackageReference Include="System.DirectoryServices.Protocols" Version="10.0.9" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\pqm.client\pqm.client.esproj">
-      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
-    </ProjectReference>
     <ProjectReference Include="..\PQM.Core\PQM.Core.csproj" />
     <ProjectReference Include="..\PQM.Infrastructure\PQM.Infrastructure.csproj" />
   </ItemGroup>
@@ -45,37 +33,5 @@
     <None Include="D:\Projects\Compac\PQM\PQM.Server\.editorconfig" />
   </ItemGroup>
 
-	<!-- Clean and create wwwroot -->
-	<Target Name="PrepareWwwroot" BeforeTargets="BuildNext">
-		<RemoveDir Directories="$(WwwRootDir)" Condition="Exists('$(WwwRootDir)')" />
-		<MakeDir Directories="$(WwwRootDir)" />
-	</Target>
-
-	<!-- Build Next.js / React once -->
-	<Target Name="BuildNext" BeforeTargets="PrepareForPublish">
-		<Exec WorkingDirectory="$(SpaRoot)" Command="npm install" />
-		<Exec WorkingDirectory="$(SpaRoot)" Command="npm run build" />
-	</Target>
-
-	<!-- Copy Next.js or React files -->
-	<Target Name="CopySpaFiles" AfterTargets="BuildNext">
-		<ItemGroup>
-			<NextFiles Include="$(SpaRoot)\.next\static\**\*" Condition="Exists('$(SpaRoot)\.next\static')" />
-			<PublicFiles Include="$(SpaRoot)\public\**\*" Condition="Exists('$(SpaRoot)\public')" />
-			<ReactDistFiles Include="$(SpaRoot)\build\**\*" Condition="Exists('$(SpaRoot)\build')" />
-		</ItemGroup>
-
-		<Message Text="Copying SPA files to $(WwwRootDir)" Importance="High" />
-
-		<Copy SourceFiles="@(NextFiles)" DestinationFiles="@(NextFiles->'$(WwwRootDir)\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
-
-		<Copy SourceFiles="@(PublicFiles)" DestinationFiles="@(PublicFiles->'$(WwwRootDir)\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
-
-		<Copy SourceFiles="@(ReactDistFiles)" DestinationFiles="@(ReactDistFiles->'$(WwwRootDir)\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
-	</Target>
-
-	<Target Name="RemoveWwwRootAfterPublish" AfterTargets="Publish">
-		<RemoveDir Directories="$(PublishDir)wwwroot" Condition="Exists('$(PublishDir)wwwroot')" />
-	</Target>
 
 </Project>
