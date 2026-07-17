@@ -363,4 +363,7 @@ MigrationBackup/
 FodyWeavers.xsd
 
 # Exclude frontend project from backend repo tracking
-pqm.client/
+pqm.client/
+PQM.Console/
+PQM.Console.slnx
+

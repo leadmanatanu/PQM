@@ -1,2 +1,0 @@
-6/24/2026 2:19:40 PM Connecting to DLMS meter Test Meter 1 at 192.168.0.3:4059
-6/24/2026 2:20:04 PM Error while reading DLMS data of Test Meter 1. Error: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond.
