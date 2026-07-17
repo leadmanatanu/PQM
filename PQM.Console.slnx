@@ -1,5 +1,0 @@
-<Solution>
-  <Project Path="PQM.Console/PQM.Console.csproj" />
-  <Project Path="PQM.Core/PQM.Core.csproj" />
-  <Project Path="PQM.Infrastructure/PQM.Infrastructure.csproj" />
-</Solution>
