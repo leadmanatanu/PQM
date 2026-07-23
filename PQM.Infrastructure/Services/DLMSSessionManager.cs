@@ -13,7 +13,7 @@ namespace PQM.Infrastructure.Services
                 return reader;
             return null;
         }
-
+        
         public DLMSReader Connect(
             int deviceId,
             string ipAddress,

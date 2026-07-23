@@ -21,7 +21,7 @@ namespace PQM.Server.Controllers
         public EventController(ILogger<EventController> logger, IConfiguration configuration)
         {
             _logger = logger;
-            _connectionString = configuration.GetConnectionString("DefaultConnection") 
+            _connectionString = configuration.GetConnectionString("DefaultConnection")
                 ?? throw new InvalidOperationException("Connection string not found.");
         }
 
@@ -29,7 +29,12 @@ namespace PQM.Server.Controllers
         public ActionResult Get()
         {
             using var db = new DataContext(_connectionString);
-            var data = db.Event.OrderByDescending(x => x.Timestamp).Take(100).ToList();
+            // Rerouted from legacy db.Event (dropped table) to db.DeviceEvents.
+            // EventTime is the actual meter-recorded event timestamp — correct to sort by.
+            var data = db.DeviceEvents
+                .OrderByDescending(x => x.EventTime)
+                .Take(100)
+                .ToList();
             _apiResponse.Status = true;
             _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
             _apiResponse.Data = data;
@@ -39,6 +44,8 @@ namespace PQM.Server.Controllers
         [HttpPost]
         public ActionResult Post([FromBody] List<Event> events)
         {
+            // Write path retained for backward compatibility (legacy bridge).
+            // New sync logic writes directly via the infrastructure layer, not this endpoint.
             try
             {
                 if (events == null || events.Count == 0)
@@ -73,7 +80,12 @@ namespace PQM.Server.Controllers
             try
             {
                 using var db = new DataContext(_connectionString);
-                var query = from ev in db.Event
+
+                // Rerouted from legacy db.Event to db.DeviceEvents.
+                // DateStamp = ev.EventTime: this is the actual timestamp recorded by the meter
+                // for the event (not the sync-execution time), so it is correct to expose as
+                // the "when did this event occur" display value per the display contract.
+                var query = from ev in db.DeviceEvents
                             join d in db.Device on ev.DeviceId equals d.Id
                             join p in db.Parameter on ev.ParameterId equals p.Id
                             where ev.DeviceId == searchParams.DeviceId
@@ -83,8 +95,8 @@ namespace PQM.Server.Controllers
                                 DeviceId = ev.DeviceId,
                                 DeviceName = d.Name,
                                 ParameterName = p.Name,
-                                Value = ev.Value ?? "",
-                                DateStamp = ev.Timestamp
+                                Value = ev.RawValue ?? "",
+                                DateStamp = ev.EventTime
                             };
 
                 if (searchParams.StartDate != default)

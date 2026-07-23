@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PQM.Infrastructure;
 
@@ -11,9 +12,11 @@ using PQM.Infrastructure;
 namespace PQM.Infrastructure.Migrations
 {
     [DbContext(typeof(DataContext))]
-    partial class DataContextModelSnapshot : ModelSnapshot
+    [Migration("20260723062757_AddNewDLMSSyncEntities")]
+    partial class AddNewDLMSSyncEntities
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -146,48 +149,6 @@ namespace PQM.Infrastructure.Migrations
                     b.HasIndex("DeviceId");
 
                     b.ToTable("DeviceConnectionEvents");
-                });
-
-            modelBuilder.Entity("PQM.Core.Entities.DeviceEvent", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<int>("DeviceId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("EventCode")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("EventTime")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("EventType")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("ParameterId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("RawClock")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("RawValue")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("ReadTime")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DeviceId");
-
-                    b.HasIndex("ParameterId");
-
-                    b.ToTable("DeviceEvent", (string)null);
                 });
 
             modelBuilder.Entity("PQM.Core.Entities.DeviceLatestReading", b =>
@@ -368,7 +329,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 1,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 663, DateTimeKind.Utc).AddTicks(9189),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 871, DateTimeKind.Utc).AddTicks(6834),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -382,7 +343,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 2,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1720),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(955),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -396,7 +357,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 3,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1725),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(975),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -410,7 +371,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 4,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1727),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(977),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -424,7 +385,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 5,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1842),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(979),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -438,7 +399,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 6,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1844),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(981),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -452,7 +413,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 7,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1863),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(983),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -466,7 +427,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 8,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1865),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1042),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -480,7 +441,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 9,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1866),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1044),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -494,7 +455,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 10,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1868),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1045),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -508,7 +469,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 11,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1870),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1047),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -522,7 +483,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 12,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1871),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1049),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -536,7 +497,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 13,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1873),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1050),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -550,7 +511,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 14,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1875),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1052),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -564,7 +525,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 15,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1877),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1054),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -578,7 +539,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 16,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1879),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1055),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -592,7 +553,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 17,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1880),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1057),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -606,7 +567,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 18,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1882),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1078),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -620,7 +581,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 19,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1884),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1080),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -634,7 +595,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 20,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1886),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1081),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -648,7 +609,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 21,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1905),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1083),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -662,7 +623,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 22,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1907),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1084),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -676,7 +637,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 23,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1909),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1085),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -690,7 +651,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 24,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1910),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1087),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -704,7 +665,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 25,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1912),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1088),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -718,7 +679,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 26,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1914),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1090),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -732,7 +693,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 27,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1916),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1091),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -746,7 +707,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 28,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1917),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1095),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -760,7 +721,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 29,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1919),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1097),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -774,7 +735,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 30,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1921),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1098),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -788,7 +749,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 31,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1923),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1100),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -802,7 +763,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 32,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1924),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1101),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -816,7 +777,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 33,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1926),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1103),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -830,7 +791,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 34,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1928),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1123),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -844,7 +805,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 35,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1930),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1125),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -858,7 +819,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 36,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1931),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1126),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -872,7 +833,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 37,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1934),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1128),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -886,7 +847,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 38,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1936),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1129),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -900,7 +861,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 39,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1938),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1131),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -914,7 +875,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 40,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1940),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1132),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -928,7 +889,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 41,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1941),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1134),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -942,7 +903,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 42,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1943),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1135),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -956,7 +917,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 43,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1945),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1137),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -970,7 +931,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 44,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1946),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1139),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -984,7 +945,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 45,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1948),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1140),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -998,7 +959,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 46,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1959),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1142),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -1012,7 +973,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 47,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1961),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1155),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -1026,7 +987,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 48,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1962),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1157),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -1040,7 +1001,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 49,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1964),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1158),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -1054,7 +1015,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 50,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1966),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1160),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -1068,7 +1029,7 @@ namespace PQM.Infrastructure.Migrations
                         new
                         {
                             Id = 51,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1968),
+                            CreatedAt = new DateTime(2026, 7, 23, 6, 27, 52, 874, DateTimeKind.Utc).AddTicks(1166),
                             CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             IsActive = true,
                             IsDeleted = false,
@@ -1232,25 +1193,6 @@ namespace PQM.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Device");
-                });
-
-            modelBuilder.Entity("PQM.Core.Entities.DeviceEvent", b =>
-                {
-                    b.HasOne("PQM.Core.Entities.Device", "Device")
-                        .WithMany()
-                        .HasForeignKey("DeviceId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("PQM.Core.Entities.Parameter", "Parameter")
-                        .WithMany()
-                        .HasForeignKey("ParameterId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Device");
-
-                    b.Navigation("Parameter");
                 });
 
             modelBuilder.Entity("PQM.Core.Entities.DeviceLatestReading", b =>

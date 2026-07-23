@@ -7,10 +7,16 @@ namespace PQM.Core.Entities
     {
         [Key]
         public int Id { get; set; }
+        public int ProfileId { get; set; }
         public required string Name { get; set; }
         public string? ObisCode { get; set; }
+        public string? Description { get; set; }
+        public string? DataType { get; set; }
         public string? ObjectType { get; set; }
         public string? Attribute3 { get; set; }
+        public int? AttributeIndex { get; set; }
+        public bool IsHistorical { get; set; } = true;
+        public bool IsVisible { get; set; } = true;
         public int? Scaler { get; set; }
         public string? Unit { get; set; }
         public bool IsActive { get; set; }
@@ -21,5 +27,10 @@ namespace PQM.Core.Entities
         public int? ModifiedId { get; set; }
         [NotMapped]
         public bool IsSelected { get; set; }
+        public string TypeName { get; set; } = "ABT";
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+        public virtual Profile? Profile { get; set; }
+        public virtual ICollection<ReadingValue> ReadingValues { get; set; } = new List<ReadingValue>();
     }
 }

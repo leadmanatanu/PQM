@@ -37,6 +37,12 @@ export function AddDeviceForm({
     const [txtConsumerNo, setTxtConsumerNo] = React.useState('');
     const [txtSerialNo, setTxtSerialNo] = React.useState('');
     const [txtFtpFolder, setTxtFtpFolder] = React.useState('');
+    const [txtClientAddress, setTxtClientAddress] = React.useState('16');
+    const [txtServerAddress, setTxtServerAddress] = React.useState('1');
+    const [txtAuthentication, setTxtAuthentication] = React.useState('None');
+    const [txtPassword, setTxtPassword] = React.useState('');
+    const [txtTimeout, setTxtTimeout] = React.useState('30000');
+    const [txtTypeName, setTxtTypeName] = React.useState<'ABT' | 'PQ'>('ABT');
 
     const [errors, setErrors] = React.useState({
         name: '',
@@ -45,6 +51,9 @@ export function AddDeviceForm({
         ftpFolder: '',
         ip: '',
         port: '',
+        clientAddress: '',
+        serverAddress: '',
+        timeout: '',
         general: '',
     });
 
@@ -57,6 +66,12 @@ export function AddDeviceForm({
             setTxtSerialNo(editingDevice.serialNumber || '');
             setTxtFtpFolder(editingDevice.ftpFolder || '');
             setSelectedValue(editingDevice.isActive ? '1' : '0'); // normalize
+            setTxtClientAddress(String(editingDevice.clientAddress ?? 16));
+            setTxtServerAddress(String(editingDevice.serverAddress ?? 1));
+            setTxtAuthentication(editingDevice.authentication || 'None');
+            setTxtPassword(editingDevice.password || '');
+            setTxtTimeout(String(editingDevice.timeout ?? 30000));
+            setTxtTypeName((editingDevice.typeName as 'ABT' | 'PQ') || 'ABT');
         } else {
             setTxtName('');
             setTxtIP('');
@@ -65,6 +80,12 @@ export function AddDeviceForm({
             setTxtSerialNo('');
             setTxtFtpFolder('');
             setSelectedValue('1');
+            setTxtClientAddress('16');
+            setTxtServerAddress('1');
+            setTxtAuthentication('None');
+            setTxtPassword('');
+            setTxtTimeout('30000');
+            setTxtTypeName('ABT');
             setErrors({
                 name: '',
                 serialNo: '',
@@ -72,6 +93,9 @@ export function AddDeviceForm({
                 ftpFolder: '',
                 ip: '',
                 port: '',
+                clientAddress: '',
+                serverAddress: '',
+                timeout: '',
                 general: '',
             });
         }
@@ -115,6 +139,31 @@ export function AddDeviceForm({
         setErrors((prev) => ({ ...prev, ftpFolder: '', general: '' }));
     };
 
+    const handleClientAddressChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        setTxtClientAddress(event.target.value);
+        setErrors((prev) => ({ ...prev, clientAddress: '', general: '' }));
+    };
+
+    const handleServerAddressChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        setTxtServerAddress(event.target.value);
+        setErrors((prev) => ({ ...prev, serverAddress: '', general: '' }));
+    };
+
+    const handleAuthenticationChange = (event: SelectChangeEvent<string>) => {
+        setTxtAuthentication(event.target.value);
+        setErrors((prev) => ({ ...prev, general: '' }));
+    };
+
+    const handlePasswordChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        setTxtPassword(event.target.value);
+        setErrors((prev) => ({ ...prev, general: '' }));
+    };
+
+    const handleTimeoutChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        setTxtTimeout(event.target.value);
+        setErrors((prev) => ({ ...prev, timeout: '', general: '' }));
+    };
+
     // ---- Validation ----
     const validateForm = (): boolean => {
         const newErrors = {
@@ -124,6 +173,9 @@ export function AddDeviceForm({
             ftpFolder: '',
             ip: '',
             port: '',
+            clientAddress: '',
+            serverAddress: '',
+            timeout: '',
             general: '',
         };
         let isValid = true;
@@ -167,6 +219,33 @@ export function AddDeviceForm({
             isValid = false;
         }
 
+        const clientAddrNum = parseInt(txtClientAddress, 10);
+        if (!txtClientAddress.trim()) {
+            newErrors.clientAddress = 'Client address is required';
+            isValid = false;
+        } else if (isNaN(clientAddrNum) || clientAddrNum < 0) {
+            newErrors.clientAddress = 'Must be a non-negative number';
+            isValid = false;
+        }
+
+        const serverAddrNum = parseInt(txtServerAddress, 10);
+        if (!txtServerAddress.trim()) {
+            newErrors.serverAddress = 'Server address is required';
+            isValid = false;
+        } else if (isNaN(serverAddrNum) || serverAddrNum < 0) {
+            newErrors.serverAddress = 'Must be a non-negative number';
+            isValid = false;
+        }
+
+        const timeoutNum = parseInt(txtTimeout, 10);
+        if (!txtTimeout.trim()) {
+            newErrors.timeout = 'Timeout is required';
+            isValid = false;
+        } else if (isNaN(timeoutNum) || timeoutNum < 100) {
+            newErrors.timeout = 'Timeout must be at least 100ms';
+            isValid = false;
+        }
+
         setErrors(newErrors);
         return isValid;
     };
@@ -185,6 +264,12 @@ export function AddDeviceForm({
             consumerNumber: txtConsumerNo,
             serialNumber: txtSerialNo,
             ftpFolder: txtFtpFolder,
+            clientAddress: Number(txtClientAddress),
+            serverAddress: Number(txtServerAddress),
+            authentication: txtAuthentication,
+            password: txtPassword,
+            timeout: Number(txtTimeout),
+            typeName: txtTypeName,
         };
 
         try {
@@ -210,6 +295,12 @@ export function AddDeviceForm({
             setTxtConsumerNo('');
             setTxtSerialNo('');
             setTxtFtpFolder('');
+            setTxtClientAddress('16');
+            setTxtServerAddress('1');
+            setTxtAuthentication('None');
+            setTxtPassword('');
+            setTxtTimeout('30000');
+            setTxtTypeName('ABT');
             setErrors({
                 name: '',
                 serialNo: '',
@@ -217,6 +308,9 @@ export function AddDeviceForm({
                 ftpFolder: '',
                 ip: '',
                 port: '',
+                clientAddress: '',
+                serverAddress: '',
+                timeout: '',
                 general: '',
             });
             setEditingDevice(null);
@@ -235,6 +329,11 @@ export function AddDeviceForm({
         setTxtConsumerNo('');
         setTxtSerialNo('');
         setTxtFtpFolder('');
+        setTxtClientAddress('16');
+        setTxtServerAddress('1');
+        setTxtAuthentication('None');
+        setTxtPassword('');
+        setTxtTimeout('30000');
         setErrors({
             name: '',
             serialNo: '',
@@ -242,6 +341,9 @@ export function AddDeviceForm({
             ftpFolder: '',
             ip: '',
             port: '',
+            clientAddress: '',
+            serverAddress: '',
+            timeout: '',
             general: '',
         });
         setEditingDevice(null);
@@ -322,6 +424,21 @@ export function AddDeviceForm({
                             </Select>
                         </FormControl>
 
+                        <FormControl fullWidth>
+                            <InputLabel id="metertype-label">Meter Type</InputLabel>
+                            <Select
+                                labelId="metertype-label"
+                                id="metertype"
+                                name="metertype"
+                                value={txtTypeName}
+                                label="Meter Type"
+                                onChange={(e) => setTxtTypeName(e.target.value as 'ABT' | 'PQ')}
+                            >
+                                <MenuItem value="ABT">ABT</MenuItem>
+                                <MenuItem value="PQ">PQ</MenuItem>
+                            </Select>
+                        </FormControl>
+
                         <FormControl fullWidth error={!!errors.ip}>
                             <InputLabel>IP</InputLabel>
                             <OutlinedInput
@@ -344,6 +461,76 @@ export function AddDeviceForm({
                                 onChange={handlePortChange}
                             />
                             {errors.port && <FormHelperText>{errors.port}</FormHelperText>}
+                        </FormControl>
+
+                        {/* ---- DLMS Connection Configuration ---- */}
+                        <Stack direction="row" spacing={2}>
+                            <FormControl fullWidth error={!!errors.clientAddress}>
+                                <InputLabel>Client Address</InputLabel>
+                                <OutlinedInput
+                                    label="Client Address"
+                                    name="clientAddress"
+                                    type="number"
+                                    value={txtClientAddress}
+                                    onChange={handleClientAddressChange}
+                                />
+                                {errors.clientAddress && <FormHelperText>{errors.clientAddress}</FormHelperText>}
+                            </FormControl>
+                            <FormControl fullWidth error={!!errors.serverAddress}>
+                                <InputLabel>Server Address</InputLabel>
+                                <OutlinedInput
+                                    label="Server Address"
+                                    name="serverAddress"
+                                    type="number"
+                                    value={txtServerAddress}
+                                    onChange={handleServerAddressChange}
+                                />
+                                {errors.serverAddress && <FormHelperText>{errors.serverAddress}</FormHelperText>}
+                            </FormControl>
+                        </Stack>
+
+                        <FormControl fullWidth>
+                            <InputLabel id="auth-label">Authentication</InputLabel>
+                            <Select
+                                labelId="auth-label"
+                                id="authentication"
+                                name="authentication"
+                                value={txtAuthentication}
+                                label="Authentication"
+                                onChange={handleAuthenticationChange}
+                            >
+                                <MenuItem value="None">None</MenuItem>
+                                <MenuItem value="Low">Low (Password)</MenuItem>
+                                <MenuItem value="High">High (HLS)</MenuItem>
+                                <MenuItem value="HighGmac">High GMAC</MenuItem>
+                                <MenuItem value="HighSha256">High SHA-256</MenuItem>
+                                <MenuItem value="HighEcdsa">High ECDSA</MenuItem>
+                            </Select>
+                        </FormControl>
+
+                        {txtAuthentication !== 'None' && (
+                            <FormControl fullWidth>
+                                <InputLabel>Password</InputLabel>
+                                <OutlinedInput
+                                    label="Password"
+                                    name="password"
+                                    type="password"
+                                    value={txtPassword}
+                                    onChange={handlePasswordChange}
+                                />
+                            </FormControl>
+                        )}
+
+                        <FormControl fullWidth error={!!errors.timeout}>
+                            <InputLabel>Timeout (ms)</InputLabel>
+                            <OutlinedInput
+                                label="Timeout (ms)"
+                                name="timeout"
+                                type="number"
+                                value={txtTimeout}
+                                onChange={handleTimeoutChange}
+                            />
+                            {errors.timeout && <FormHelperText>{errors.timeout}</FormHelperText>}
                         </FormControl>
 
                         {errors.general && <FormHelperText error>

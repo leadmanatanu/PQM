@@ -25,10 +25,22 @@ namespace PQM.Server.Controllers
         }
 
         [HttpGet]
-        public ActionResult Get()
+        public ActionResult Get([FromQuery] int? deviceId)
         {
             using var db = new DataContext(_connectionString);
-            var data = db.Parameter.Where(p => p.IsActive && !p.IsDeleted).ToList();
+            var query = db.Parameter.Where(p => p.IsActive && !p.IsDeleted);
+
+            if (deviceId.HasValue)
+            {
+                var device = db.Device.FirstOrDefault(d => d.Id == deviceId.Value && !d.IsDeleted);
+                if (device != null)
+                {
+                    var deviceType = string.IsNullOrEmpty(device.TypeName) ? "ABT" : device.TypeName;
+                    query = query.Where(p => p.TypeName == deviceType);
+                }
+            }
+
+            var data = query.ToList();
             _apiResponse.Status = true;
             _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
             _apiResponse.Data = data;

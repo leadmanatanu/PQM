@@ -1093,6 +1093,10 @@ namespace PQM.Infrastructure.Services
             {
                 Eop = eop,
                 Count = _client.GetFrameSize(rd),
+                // KNOWN BUG: AllData = true causes GXNet.Receive() to block for the full
+                // WaitTime even after a complete frame has already arrived, instead of
+                // returning immediately. Fixed in DlmsMeterReader.cs (the batch/sync reader) —
+                // apply the same fix here if this class is ever reactivated for live use.
                 AllData = true,
                 WaitTime = WaitTime,
             };
