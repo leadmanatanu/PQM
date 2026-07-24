@@ -8,5 +8,6 @@ namespace PQM.Core.IRepositories
         bool UpdateDevice(Device device);
         IQueryable<Device> GetDevices();
         bool UpdateLastSync(int id, DateTime syncDate);
+        bool DeleteDevice(int id);
     }
 }

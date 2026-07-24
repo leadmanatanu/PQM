@@ -45,6 +45,23 @@ namespace PQM.Infrastructure.Repositories
             deviceData.Password = device.Password;
             deviceData.Timeout = device.Timeout;
             deviceData.TypeName = device.TypeName;
+            deviceData.TimeZoneId = device.TimeZoneId;
+            deviceData.MeterTypeId = device.MeterTypeId;
+            deviceData.ModifiedDate = DateTime.UtcNow;
+            dbContext.Device.Update(deviceData);
+            dbContext.SaveChanges();
+            return true;
+        }
+
+        public bool DeleteDevice(int id)
+        {
+            DataContext dbContext = new DataContext(this._connectionString);
+            var deviceData = dbContext.Device.FirstOrDefault(x => x.Id == id);
+            if (deviceData == null)
+            {
+                return false;
+            }
+            deviceData.IsDeleted = true;
             deviceData.ModifiedDate = DateTime.UtcNow;
             dbContext.Device.Update(deviceData);
             dbContext.SaveChanges();

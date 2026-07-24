@@ -71,7 +71,7 @@ namespace PQM.Infrastructure.Services
         private static readonly ConcurrentDictionary<string, DateTime> _meterLastDisconnect
             = new ConcurrentDictionary<string, DateTime>();
 
-        private const int MeterCooldownSeconds = 35;
+        private const int MeterCooldownSeconds = 5;
 
         public GXDLMSObjectCollection Objects => _client.Objects;
 
@@ -116,7 +116,7 @@ namespace PQM.Infrastructure.Services
             // ServerAddress: use Device.ServerAddress if set, fall back to 1.
             var serverAddress = (device.ServerAddress ?? 1);
 
-            _client = new GXDLMSClient
+            _client = new GXDLMSClient(true)
             {
                 UseLogicalNameReferencing = true,
 
@@ -135,9 +135,6 @@ namespace PQM.Infrastructure.Services
                 // Conformance flags required for selective access (range/entry reads)
                 // and standard Get requests. Keep these exactly as in the prototype —
                 // changing them can silently break selective access on some meters.
-                ProposedConformance =
-                    Conformance.BlockTransferWithGetOrRead | Conformance.Get | Conformance.SelectiveAccess,
-
                 MaxReceivePDUSize = 1024
             };
 
@@ -163,7 +160,7 @@ namespace PQM.Infrastructure.Services
         // CONNECT
         // =========================================================
 
-        public async SysTask ConnectAsync()
+        public async SysTask ConnectAsync(System.Threading.CancellationToken cancellationToken = default)
         {
             try
             {
@@ -183,35 +180,20 @@ namespace PQM.Infrastructure.Services
                     {
                         var waitMs = (int)((MeterCooldownSeconds - elapsed) * 1000);
                         Console.WriteLine($"[COOLDOWN] Meter {meterKey} disconnected {elapsed:F0}s ago. Waiting {waitMs}ms before reconnecting...");
-                        await System.Threading.Tasks.Task.Delay(waitMs);
+                        await System.Threading.Tasks.Task.Delay(waitMs, cancellationToken);
                     }
                 }
-                // Retry media open up to 3 times with 2-second delay between attempts.
-                int connectRetries = 3;
+
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // Retry connection up to 2 times with a short 3-second delay on failure.
+                int connectRetries = 2;
                 while (connectRetries > 0)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     try
                     {
-                        int openRetries = 3;
-                        while (openRetries > 0)
-                        {
-                            try
-                            {
-                                _media.Open();
-                                break;
-                            }
-                            catch (Exception ex)
-                            {
-                                openRetries--;
-                                if (openRetries == 0)
-                                {
-                                    if (_verboseLogging)
-                                        Console.WriteLine($"[OPEN ERROR] {ex}");
-                                    throw;
-                                }
-                                await System.Threading.Tasks.Task.Delay(2000);
-                            }
-                        }
+                        _media.Open();
 
                         var aarqRequests = _client.AARQRequest();
 
@@ -225,7 +207,8 @@ namespace PQM.Infrastructure.Services
 
                         foreach (var request in aarqRequests)
                         {
-                            var reply = await SendAndReceiveAsync(request);
+                            cancellationToken.ThrowIfCancellationRequested();
+                            var reply = await SendAndReceiveAsync(request, cancellationToken);
                             if (reply.Error != 0)
                                 throw new InvalidOperationException($"Meter rejected AARQ. Error Code: {reply.Error}");
 
@@ -234,16 +217,16 @@ namespace PQM.Infrastructure.Services
                             _client.ParseAAREResponse(buffer);
                         }
 
-                        break; // Connection succeeded!
+                        break; // Connection & association succeeded!
                     }
-                    catch (Exception ex) when (connectRetries > 1)
+                    catch (Exception ex) when (connectRetries > 1 && !cancellationToken.IsCancellationRequested)
                     {
                         connectRetries--;
                         if (_verboseLogging)
-                            Console.WriteLine($"[CONNECT RETRY] Connection attempt failed ({ex.Message}), retrying in 5 seconds...");
+                            Console.WriteLine($"[CONNECT RETRY] Connection attempt failed ({ex.Message}), retrying in 3 seconds...");
 
                         try { _media.Close(); } catch { }
-                        await System.Threading.Tasks.Task.Delay(5000);
+                        await System.Threading.Tasks.Task.Delay(3000, cancellationToken);
                     }
                 }
 
@@ -267,9 +250,10 @@ namespace PQM.Infrastructure.Services
         // ASSOCIATION VIEW
         // =========================================================
 
-        public async System.Threading.Tasks.Task<IReadOnlyList<string>> ReadAssociationViewAsync()
+        public async System.Threading.Tasks.Task<IReadOnlyList<string>> ReadAssociationViewAsync(System.Threading.CancellationToken cancellationToken = default)
         {
             EnsureConnected();
+            cancellationToken.ThrowIfCancellationRequested();
 
             var requests = _client.GetObjectsRequest();
             GXReplyData? finalReply = null;
@@ -277,7 +261,8 @@ namespace PQM.Infrastructure.Services
 
             foreach (var request in requests)
             {
-                finalReply = await SendAndReceiveAsync(request);
+                cancellationToken.ThrowIfCancellationRequested();
+                finalReply = await SendAndReceiveAsync(request, cancellationToken);
                 totalBytesReceived += _lastRequestBytesReceived;
             }
 
@@ -295,7 +280,10 @@ namespace PQM.Infrastructure.Services
 
             var result = new List<string>();
             foreach (var obj in _client.Objects)
-                result.Add($"{obj.LogicalName} | {obj.GetType().Name}");
+            {
+                if (obj.ObjectType == ObjectType.ProfileGeneric)
+                    result.Add(obj.LogicalName);
+            }
 
             return result;
         }
@@ -339,15 +327,22 @@ namespace PQM.Infrastructure.Services
         // READ SINGLE OBJECT
         // =========================================================
 
-        public async System.Threading.Tasks.Task<object?> ReadObjectAsync(GXDLMSObject obj, int attributeIndex = 2)
+        public async System.Threading.Tasks.Task<object?> ReadObjectAsync(
+            GXDLMSObject obj,
+            int attributeIndex = 2,
+            System.Threading.CancellationToken cancellationToken = default)
         {
             EnsureConnected();
+            cancellationToken.ThrowIfCancellationRequested();
 
             var requests = _client.Read(obj, attributeIndex);
             GXReplyData? reply = null;
 
             foreach (var request in requests)
-                reply = await SendAndReceiveAsync(request);
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                reply = await SendAndReceiveAsync(request, cancellationToken);
+            }
 
             if (reply == null)
                 return null;
@@ -368,17 +363,24 @@ namespace PQM.Infrastructure.Services
         // READ CAPTURE OBJECTS (attribute 3)
         // =========================================================
 
-        public async System.Threading.Tasks.Task<IReadOnlyList<ProfileColumnInfo>> ReadCaptureObjectsAsync(GXDLMSProfileGeneric profile)
+        public async System.Threading.Tasks.Task<IReadOnlyList<ProfileColumnInfo>> ReadCaptureObjectsAsync(
+            GXDLMSProfileGeneric profile,
+            System.Threading.CancellationToken cancellationToken = default)
         {
             EnsureConnected();
+            cancellationToken.ThrowIfCancellationRequested();
 
             // Read CaptureObjects (attribute 3) — populates profile.CaptureObjects
-            await ReadObjectAsync(profile, 3);
+            await ReadObjectAsync(profile, 3, cancellationToken);
 
             // Read EntriesInUse (attribute 7) — needed for ReadRowsByEntry fallback
             try
             {
-                await ReadObjectAsync(profile, 7);
+                await ReadObjectAsync(profile, 7, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch
             {
@@ -405,23 +407,15 @@ namespace PQM.Infrastructure.Services
 
         // =========================================================
         // READ PROFILE ALL ENTRIES
-        //
-        // Full fallback chain:
-        //   1. ReadRowsByRange (selective access by date range — most efficient)
-        //   2. ReadRowsByEntry (full buffer by entry index — if range access fails)
-        //   3. Raw attribute-2 buffer read (last resort)
-        //
-        // startTime parameter: used in Stage 4 (incremental sync) to pass the last
-        // known watermark so only new rows are retrieved. When null, reads from 2000-01-01
-        // (effectively all history). The parameter must be wired through completely
-        // correctly here even though Stage 4 has not yet been implemented.
         // =========================================================
 
         public async System.Threading.Tasks.Task<IReadOnlyList<ProfileRow>> ReadProfileAllEntriesAsync(
             string obisCode,
-            DateTime? startTime = null)
+            DateTime? startTime = null,
+            System.Threading.CancellationToken cancellationToken = default)
         {
             EnsureConnected();
+            cancellationToken.ThrowIfCancellationRequested();
 
             var profile = _client.Objects
                 .OfType<GXDLMSProfileGeneric>()
@@ -430,7 +424,7 @@ namespace PQM.Infrastructure.Services
             if (profile == null)
                 throw new InvalidOperationException($"Profile object ({obisCode}) not found in meter objects. Call ReadAssociationViewAsync() first.");
 
-            await ReadCaptureObjectsAsync(profile);
+            await ReadCaptureObjectsAsync(profile, cancellationToken);
 
             // --- Attempt 1: Selective access by date range ---
             try
@@ -445,7 +439,10 @@ namespace PQM.Infrastructure.Services
                 GXReplyData? reply = null;
 
                 foreach (var request in requests)
-                    reply = await SendAndReceiveAsync(request);
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    reply = await SendAndReceiveAsync(request, cancellationToken);
+                }
 
                 if (reply != null && reply.Error == 0)
                 {
@@ -460,6 +457,10 @@ namespace PQM.Infrastructure.Services
                 {
                     Console.WriteLine($"[INFO] Range access for {obisCode} returned error {reply.Error}. Falling back to entry access...");
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -476,7 +477,10 @@ namespace PQM.Infrastructure.Services
                 GXReplyData? entryReply = null;
 
                 foreach (var request in entryRequests)
-                    entryReply = await SendAndReceiveAsync(request);
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    entryReply = await SendAndReceiveAsync(request, cancellationToken);
+                }
 
                 if (entryReply != null && entryReply.Error == 0)
                 {
@@ -488,14 +492,19 @@ namespace PQM.Infrastructure.Services
                     }
                 }
             }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 Console.WriteLine($"[INFO] ReadRowsByEntry failed for {obisCode}: {ex.Message}. Falling back to raw attribute-2 buffer read...");
             }
 
             // --- Attempt 3: Raw attribute-2 buffer read (last resort) ---
+            cancellationToken.ThrowIfCancellationRequested();
             Console.WriteLine($"[INFO] Fallback: reading raw attribute-2 buffer for {obisCode}...");
-            var value = await ReadObjectAsync(profile, 2);
+            var value = await ReadObjectAsync(profile, 2, cancellationToken);
             return ConvertProfileRows(value);
         }
 
@@ -512,14 +521,6 @@ namespace PQM.Infrastructure.Services
 
         // =========================================================
         // CONVERT PROFILE ROWS
-        //
-        // Converts the raw DLMS reply value (an IEnumerable of row enumerables)
-        // into typed ProfileRow objects. Each row's Timestamp is extracted from
-        // the first DateTime/GXDateTime cell found in that row's values.
-        //
-        // FIX (preserved from prototype): each row must use its OWN freshly-extracted
-        // values array — not a class-level field — otherwise all rows share the same
-        // Values reference and all but the last are empty.
         // =========================================================
 
         private static IReadOnlyList<ProfileRow> ConvertProfileRows(object? value)
@@ -554,37 +555,37 @@ namespace PQM.Infrastructure.Services
 
         // =========================================================
         // SEND AND RECEIVE
-        //
-        // Two-level implementation:
-        //   outer overload: handles multi-block (IsMoreData) loop
-        //   inner overload: sends one request, receives one frame, calls GetData
-        //
-        // CRITICAL: AllData = false in BOTH ReceiveParameters instances below.
-        // See inline comments for why. Do NOT change either back to true.
         // =========================================================
 
-        private async System.Threading.Tasks.Task<GXReplyData> SendAndReceiveAsync(byte[] request)
+        private async System.Threading.Tasks.Task<GXReplyData> SendAndReceiveAsync(
+            byte[] request,
+            System.Threading.CancellationToken cancellationToken = default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             _lastRequestBytesReceived = 0;
 
             var reply = new GXReplyData();
             var notify = new GXReplyData();
 
-            await SendAndReceiveAsync(request, reply, notify);
+            await SendAndReceiveAsync(request, reply, notify, cancellationToken);
 
-            // Multi-block loop: if the meter signals more data is coming (IsMoreData),
-            // send a ReceiverReady acknowledgement and receive the next block.
             while (reply.IsMoreData)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var nextRequest = _client.ReceiverReady(reply);
-                await SendAndReceiveAsync(nextRequest, reply, notify);
+                await SendAndReceiveAsync(nextRequest, reply, notify, cancellationToken);
             }
 
             return reply;
         }
 
-        private async SysTask SendAndReceiveAsync(byte[] request, GXReplyData reply, GXReplyData notify)
+        private async SysTask SendAndReceiveAsync(
+            byte[] request,
+            GXReplyData reply,
+            GXReplyData notify,
+            System.Threading.CancellationToken cancellationToken = default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var buffer = new GXByteBuffer();
 
             // CRITICAL: AllData = false.
@@ -762,6 +763,9 @@ namespace PQM.Infrastructure.Services
         {
             foreach (var value in values)
             {
+                if (value == null)
+                    continue;
+
                 if (value is DateTime dateTime)
                 {
                     if (dateTime.Year <= 1)
@@ -782,6 +786,34 @@ namespace PQM.Infrastructure.Services
                     if (dt.Year <= 1)
                         return null; // Invalid/wildcarded clock entry — guard
                     return dt;
+                }
+
+                if (value is byte[] bytes && bytes.Length >= 5)
+                {
+                    try
+                    {
+                        var gx = (GXDateTime)GXDLMSClient.ChangeType(bytes, DataType.DateTime);
+                        if (gx != null && gx.Value.DateTime.Year > 1)
+                            return gx.Value.DateTime;
+                    }
+                    catch
+                    {
+                        try
+                        {
+                            var gxDate = (GXDateTime)GXDLMSClient.ChangeType(bytes, DataType.Date);
+                            if (gxDate != null && gxDate.Value.DateTime.Year > 1)
+                                return gxDate.Value.DateTime;
+                        }
+                        catch { }
+                    }
+                }
+
+                if (value is not string && value is System.Collections.IEnumerable enumerable)
+                {
+                    var subValues = enumerable.Cast<object?>().ToArray();
+                    var innerTs = ExtractTimestamp(subValues);
+                    if (innerTs.HasValue)
+                        return innerTs;
                 }
             }
 
@@ -810,8 +842,19 @@ namespace PQM.Infrastructure.Services
         /// </summary>
         public async System.Threading.Tasks.Task DisconnectAsync()
         {
-            if (!_connected)
+            if (_client == null)
+            {
+                Console.WriteLine("[DISCONNECT TRACE] _client is null, nothing to disconnect. Skipping.");
+                _isAssociated = false;
+                _connected = false;
                 return;
+            }
+
+            if (!_connected)
+            {
+                _isAssociated = false;
+                return;
+            }
 
             try
             {
@@ -819,43 +862,87 @@ namespace PQM.Infrastructure.Services
                 // was successfully established.
                 if (_isAssociated)
                 {
-                    var requests = _client.ReleaseRequest();
-                    Console.WriteLine($"[RLRQ] ReleaseRequest() produced {requests?.Length ?? 0} packet(s).");
-                    if (requests != null)
+                    byte[][]? releaseReqs = null;
+                    byte[]? discReq = null;
+
+                    try { releaseReqs = _client.ReleaseRequest(); } catch (Exception ex) { Console.WriteLine($"[DISCONNECT TRACE] ReleaseRequest ex: {ex.Message}"); }
+                    try { discReq = _client.DisconnectRequest(); } catch (Exception ex) { Console.WriteLine($"[DISCONNECT TRACE] DisconnectRequest ex: {ex.Message}"); }
+
+                    Console.WriteLine($"[DISCONNECT TRACE] ReleaseRequest count: {releaseReqs?.Length ?? 0}, DisconnectRequest frame: {(discReq != null ? BitConverter.ToString(discReq) : "null")}");
+
+                    var requests = (releaseReqs != null && releaseReqs.Length > 0) 
+                        ? releaseReqs 
+                        : (discReq != null ? new[] { discReq } : Array.Empty<byte[]>());
+
+                    try
+                    {
+                        if (requests.Length == 0 && _client != null && _client.InterfaceType == InterfaceType.WRAPPER)
+                        {
+                            // Gurux ReleaseRequest() returns empty for LN WRAPPER + Low Auth.
+                            // Manually construct standard DLMS RLRQ PDU for WRAPPER mode:
+                            // Header: Ver(00 01), ClientAddress, ServerAddress, Length(00 05)
+                            // Payload: 62 03 80 01 00 (RLRQ APDU, reason: normal)
+                            byte clientHi = (byte)((_client.ClientAddress >> 8) & 0xFF);
+                            byte clientLo = (byte)(_client.ClientAddress & 0xFF);
+                            byte serverHi = (byte)((_client.ServerAddress >> 8) & 0xFF);
+                            byte serverLo = (byte)(_client.ServerAddress & 0xFF);
+
+                            byte[] customRlrq = new byte[]
+                            {
+                                0x00, 0x01,
+                                clientHi, clientLo,
+                                serverHi, serverLo,
+                                0x00, 0x05,
+                                0x62, 0x03, 0x80, 0x01, 0x00
+                            };
+
+                            requests = new[] { customRlrq };
+                            Console.WriteLine($"[DISCONNECT TRACE] Constructed custom WRAPPER RLRQ frame: {BitConverter.ToString(customRlrq)}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[DISCONNECT TRACE] Manual WRAPPER RLRQ construction/send failed: {ex.Message}");
+                    }
+
+                    if (requests != null && requests.Length > 0)
                     {
                         foreach (var request in requests)
                         {
-                            // Use SendAndReceiveAsync to wait for RLRE — ensures the
-                            // meter has fully torn down the session before socket closes.
                             try
                             {
-                                await SendAndReceiveAsync(request);
-                                Console.WriteLine($"[RLRQ] RLRE received successfully.");
+                                var reply = await SendAndReceiveAsync(request);
+                                Console.WriteLine($"[DISCONNECT TRACE] Disconnect response received! Size: {reply?.Data?.Size ?? 0}, Bytes: {(reply?.Data?.Data != null ? BitConverter.ToString(reply.Data.Data) : "null")}");
                             }
                             catch (Exception ex)
                             {
-                                Console.WriteLine($"[RLRQ] RLRE error (ignored): {ex.Message}");
+                                Console.WriteLine($"[DISCONNECT TRACE] Disconnect response error (ignored): {ex.Message}");
                             }
                         }
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Ignore disconnect errors.
+                Console.WriteLine($"[DISCONNECT TRACE] Disconnect error (ignored): {ex.Message}");
             }
             finally
             {
                 _isAssociated = false;
+                try { _media?.Close(); } catch { }
+                _connected = false;
+
+                if (_device != null)
+                {
+                    try
+                    {
+                        string key = $"{_device.IP}:{_device.PORT}";
+                        _meterLastDisconnect[key] = DateTime.UtcNow;
+                        Console.WriteLine($"[COOLDOWN] Recorded disconnect for {key} at {_meterLastDisconnect[key]:HH:mm:ss} UTC.");
+                    }
+                    catch { }
+                }
             }
-
-            _media.Close();
-            _connected = false;
-
-            // Record disconnect time for cooldown enforcement on next connect.
-            string key = $"{_device.IP}:{_device.PORT}";
-            _meterLastDisconnect[key] = DateTime.UtcNow;
-            Console.WriteLine($"[COOLDOWN] Recorded disconnect for {key} at {_meterLastDisconnect[key]:HH:mm:ss} UTC.");
         }
 
         /// <summary>
@@ -865,21 +952,31 @@ namespace PQM.Infrastructure.Services
         /// </summary>
         public void Disconnect()
         {
-            if (!_connected)
+            if (_client == null)
+            {
+                _isAssociated = false;
+                _connected = false;
                 return;
+            }
+
+            if (!_connected)
+            {
+                _isAssociated = false;
+                return;
+            }
 
             try
             {
                 if (_isAssociated)
                 {
-                    var requests = _client.ReleaseRequest();
+                    byte[][]? requests = null;
+                    try { requests = _client.ReleaseRequest(); } catch { }
                     Console.WriteLine($"[RLRQ-SYNC] ReleaseRequest() produced {requests?.Length ?? 0} packet(s) (sync path, best-effort).");
                     if (requests != null)
                     {
                         foreach (var request in requests)
                         {
-                            // Best-effort fire-and-forget — sync path only.
-                            try { _media.Send(request, null); } catch { }
+                            try { _media?.Send(request, null); } catch { }
                         }
                     }
                 }
@@ -891,15 +988,20 @@ namespace PQM.Infrastructure.Services
             finally
             {
                 _isAssociated = false;
+                try { _media?.Close(); } catch { }
+                _connected = false;
+
+                if (_device != null)
+                {
+                    try
+                    {
+                        string key = $"{_device.IP}:{_device.PORT}";
+                        _meterLastDisconnect[key] = DateTime.UtcNow;
+                        Console.WriteLine($"[COOLDOWN-SYNC] Recorded disconnect for {key} at {_meterLastDisconnect[key]:HH:mm:ss} UTC.");
+                    }
+                    catch { }
+                }
             }
-
-            _media.Close();
-            _connected = false;
-
-            // Record disconnect time for cooldown enforcement on next connect.
-            string key = $"{_device.IP}:{_device.PORT}";
-            _meterLastDisconnect[key] = DateTime.UtcNow;
-            Console.WriteLine($"[COOLDOWN-SYNC] Recorded disconnect for {key} at {_meterLastDisconnect[key]:HH:mm:ss} UTC.");
         }
 
         // =========================================================
@@ -908,8 +1010,8 @@ namespace PQM.Infrastructure.Services
 
         public void Dispose()
         {
-            Disconnect();
-            _media.Dispose();
+            try { Disconnect(); } catch { }
+            try { _media?.Dispose(); } catch { }
         }
 
         /// <summary>
@@ -919,8 +1021,8 @@ namespace PQM.Infrastructure.Services
         /// </summary>
         public async ValueTask DisposeAsync()
         {
-            await DisconnectAsync();
-            _media.Dispose();
+            try { await DisconnectAsync(); } catch { }
+            try { _media?.Dispose(); } catch { }
         }
     }
 }

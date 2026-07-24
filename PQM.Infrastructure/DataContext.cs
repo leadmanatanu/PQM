@@ -20,7 +20,6 @@ namespace PQM.Infrastructure
         public DbSet<ParameterValue> ParameterValue { get; set; } = null!;
         public DbSet<Event> Event { get; set; } = null!;
         public DbSet<DeviceConnectionEvent> DeviceConnectionEvents { get; set; } = null!;
-        public DbSet<DeviceParameterConfig> DeviceParameterConfig { get; set; } = null!;
 
         public DbSet<Profile> Profiles { get; set; } = null!;
         public DbSet<ReadingSession> ReadingSessions { get; set; } = null!;
@@ -28,6 +27,8 @@ namespace PQM.Infrastructure
         public DbSet<DeviceProfileSyncState> DeviceProfileSyncStates { get; set; } = null!;
         public DbSet<DeviceLatestReading> DeviceLatestReadings { get; set; } = null!;
         public DbSet<DeviceEvent> DeviceEvents { get; set; } = null!;
+        public DbSet<DeviceSyncHistory> DeviceSyncHistories { get; set; } = null!;
+        public DbSet<DeviceSyncSchedule> DeviceSyncSchedules { get; set; } = null!;
 
         public DataContext(string connectionString)
         {
@@ -44,6 +45,18 @@ namespace PQM.Infrastructure
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<DeviceSyncSchedule>(entity =>
+            {
+                entity.ToTable("DeviceSyncSchedule");
+                entity.HasKey(e => e.DeviceId);
+            });
+
+            modelBuilder.Entity<DeviceSyncHistory>(entity =>
+            {
+                entity.ToTable("DeviceSyncHistory");
+                entity.HasKey(e => e.Id);
+            });
 
             modelBuilder.Entity<Device>(entity =>
             {

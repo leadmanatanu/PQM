@@ -19,8 +19,6 @@ builder.Services.AddTransient<IDeviceService>(_ =>
     new DeviceService(connectionString));
 
 builder.Services.AddScoped<DataContext>(provider => new DataContext(connectionString));
-builder.Services.AddTransient<IDeviceParameterConfigRepository, DeviceParameterConfigRepository>();
-builder.Services.AddTransient<IDeviceParameterConfigService, DeviceParameterConfigService>();
 
 builder.Services.AddSingleton<PQM.Infrastructure.Services.DLMSSessionManager>();
 
@@ -36,6 +34,8 @@ builder.Services.AddTransient<PQM.Infrastructure.Services.ProfileSyncService>(sp
     new PQM.Infrastructure.Services.ProfileSyncService(
         connectionString,
         sp.GetRequiredService<ILogger<PQM.Infrastructure.Services.ProfileSyncService>>()));
+
+builder.Services.AddHostedService<PQM.Server.Services.DeviceScheduleRunnerService>();
 
 
 
@@ -85,7 +85,7 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-app.UseHttpsRedirection();
+// app.UseHttpsRedirection();
 app.UseAuthorization();
 
 try

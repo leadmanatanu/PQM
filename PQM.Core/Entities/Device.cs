@@ -7,6 +7,7 @@ namespace PQM.Core.Entities
     {
         [Key]
         public int Id { get; set; }
+        [System.ComponentModel.DataAnnotations.Schema.NotMapped]
         public int? UserId { get; set; }
         public required string Name { get; set; }
         public required string IP { get; set; }
@@ -63,8 +64,5 @@ namespace PQM.Core.Entities
         public DateTime? LastConnectionAttempt { get; set; }
         public string? LastError { get; set; }
         public string TypeName { get; set; } = "ABT";
-
-        [System.ComponentModel.DataAnnotations.Schema.NotMapped]
-        public bool IsConfigured { get; set; }
     }
 }
