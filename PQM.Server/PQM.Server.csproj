@@ -15,12 +15,7 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
     <PackageReference Include="System.DirectoryServices.Protocols" Version="10.0.9" />
   </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\PQM.Core\PQM.Core.csproj" />
-    <ProjectReference Include="..\PQM.Infrastructure\PQM.Infrastructure.csproj" />
-  </ItemGroup>
-
+	
   <ItemGroup>
     <EditorConfigFiles Remove="D:\Projects\Compac\PQM\PQM.Server\.editorconfig" />
   </ItemGroup>
@@ -31,6 +26,15 @@
 
   <ItemGroup>
     <None Include="D:\Projects\Compac\PQM\PQM.Server\.editorconfig" />
+  </ItemGroup>
+
+	<ItemGroup>
+	<ProjectReference Include="..\PQM.Core\PQM.Core.csproj" />
+		<ProjectReference Include="..\PQM.Infrastructure\PQM.Infrastructure.csproj" />
+	</ItemGroup>	
+  <ItemGroup>
+    <ProjectReference Include="..\PQM.Core\PQM.Core.csproj" />
+    <ProjectReference Include="..\PQM.Infrastructure\PQM.Infrastructure.csproj" />
   </ItemGroup>
 
 

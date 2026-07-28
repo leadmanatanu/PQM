@@ -58,11 +58,13 @@ namespace PQM.Core.Entities
         public string? Password { get; set; }
         public int? Timeout { get; set; } = 30000;
         public int? MeterTypeId { get; set; }
+
+        public MeterType MeterType { get; set; } = null!;
         public string? TimeZoneId { get; set; }
 
         public string Status { get; set; } = "Offline";
         public DateTime? LastConnectionAttempt { get; set; }
         public string? LastError { get; set; }
-        public string TypeName { get; set; } = "ABT";
+        
     }
 }

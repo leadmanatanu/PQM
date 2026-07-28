@@ -14,14 +14,6 @@ using PQM.Core.Helpers;
 
 namespace PQM.Console
 {
-    /// <summary>
-    /// Background service in PQM.Console that continuously monitors:
-    /// 1. DeviceSyncRequest table for on-demand "Sync Now" requests.
-    /// 2. DeviceSyncSchedule table for scheduled syncs.
-    ///
-    /// Executes meter synchronization via ProfileSyncService and broadcasts
-    /// real-time status changes to PQM.Server via SignalR.
-    /// </summary>
     public class DeviceConsoleRunnerService : BackgroundService
     {
         private readonly IServiceScopeFactory _scopeFactory;
@@ -135,11 +127,6 @@ namespace PQM.Console
                 }
             }
         }
-
-        // =========================================================
-        // ON-DEMAND SYNC REQUEST PROCESSING
-        // =========================================================
-
         private async Task ProcessPendingSyncRequestsAsync(CancellationToken stoppingToken)
         {
             var pendingRequests = await GetPendingSyncRequestsAsync(stoppingToken);
@@ -236,10 +223,6 @@ namespace PQM.Console
 
             await cmd.ExecuteNonQueryAsync(cancellationToken);
         }
-
-        // =========================================================
-        // SCHEDULED SYNC PROCESSING
-        // =========================================================
 
         private async Task ProcessDueSchedulesAsync(CancellationToken stoppingToken)
         {

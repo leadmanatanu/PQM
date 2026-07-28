@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting.WindowsServices;
 using Microsoft.Extensions.Logging;
 using PQM.Infrastructure;
 using PQM.Infrastructure.Services;
@@ -13,12 +14,20 @@ namespace PQM.Console
     {
         public static async Task Main(string[] args)
         {
-            System.Console.WriteLine("=================================================");
-            System.Console.WriteLine(" PQM Production Sync Runner (PQM.Console)");
-            System.Console.WriteLine(" Dedicated DLMS Meter Synchronization Process");
-            System.Console.WriteLine("=================================================");
+            // Create the Host Builder
+            var builder = Host.CreateDefaultBuilder(args);
 
-            var host = Host.CreateDefaultBuilder(args)
+            // If running as a Windows Service, enable Windows Service support.
+            // When debugging from Visual Studio, it will continue running as a console app.
+            if (!Environment.UserInteractive)
+            {
+                builder.UseWindowsService(options =>
+                {
+                    options.ServiceName = "PQM Meter Reader";
+                });
+            }
+
+            var host = builder
                 .ConfigureAppConfiguration((hostingContext, config) =>
                 {
                     config.SetBasePath(AppContext.BaseDirectory);
@@ -27,21 +36,36 @@ namespace PQM.Console
                 })
                 .ConfigureServices((hostContext, services) =>
                 {
-                    string connectionString = hostContext.Configuration.GetConnectionString("DefaultConnection")
-                        ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+                    string connectionString =
+                        hostContext.Configuration.GetConnectionString("DefaultConnection")
+                        ?? throw new InvalidOperationException(
+                            "Connection string 'DefaultConnection' not found.");
 
-                    // Register DbContext & Repositories/Services needed for DLMS Meter Sync
-                    services.AddScoped<DataContext>(sp => new DataContext(connectionString));
+                    // Register DataContext
+                    services.AddScoped<DataContext>(sp =>
+                        new DataContext(connectionString));
+
+                    // Register Profile Sync Service
                     services.AddSingleton<ProfileSyncService>(sp =>
-                        new ProfileSyncService(connectionString, sp.GetRequiredService<ILogger<ProfileSyncService>>()));
+                        new ProfileSyncService(
+                            connectionString,
+                            sp.GetRequiredService<ILogger<ProfileSyncService>>()));
 
-                    // Register Sync Runner Hosted Service
+                    // Register Background Worker
                     services.AddHostedService<DeviceConsoleRunnerService>();
                 })
                 .ConfigureLogging(logging =>
                 {
                     logging.ClearProviders();
+
+                    // Console logs while debugging
                     logging.AddConsole();
+
+                    // Event Viewer logs when running as a Windows Service
+                    logging.AddEventLog(settings =>
+                    {
+                        settings.SourceName = "PQM Meter Reader";
+                    });
                 })
                 .Build();
 

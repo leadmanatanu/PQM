@@ -289,7 +289,6 @@ namespace PQM.Server.Controllers
             }
         }
 
-        [HttpPost("{id}/sync/enable")]
         [HttpPost("/api/devices/{id}/sync/enable")]
         public async Task<IActionResult> EnableSync(int id)
         {
@@ -308,7 +307,6 @@ namespace PQM.Server.Controllers
             return Ok(_apiResponse);
         }
 
-        [HttpPost("{id}/sync/disable")]
         [HttpPost("/api/devices/{id}/sync/disable")]
         public async Task<IActionResult> DisableSync(int id)
         {
@@ -327,7 +325,6 @@ namespace PQM.Server.Controllers
             return Ok(_apiResponse);
         }
 
-        [HttpGet("{id}/sync-history")]
         [HttpGet("/api/device/{id}/sync-history")]
         public async Task<ActionResult> GetSyncHistory(int id, CancellationToken cancellationToken)
         {
@@ -425,57 +422,57 @@ namespace PQM.Server.Controllers
             }
         }
 
-        [HttpGet("schedules")]
-        public async Task<ActionResult> GetAllSchedules(CancellationToken cancellationToken)
-        {
-            try
-            {
-                var list = new List<object>();
-                using var conn = new Microsoft.Data.SqlClient.SqlConnection(_connectionString);
-                await conn.OpenAsync(cancellationToken);
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"
-                    SELECT d.Id, d.Name, d.IP, d.Status, d.LastSync, d.TimeZoneId,
-                           s.IsEnabled, s.ScheduledTime, s.RepeatMode, s.NextRunAtUtc, s.LastRunAtUtc, s.LastRunStatus
-                    FROM Devices d
-                    LEFT JOIN DeviceSyncSchedule s ON d.Id = s.DeviceId
-                    WHERE d.IsDeleted = 0 OR d.IsDeleted IS NULL";
-                using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-                while (await reader.ReadAsync(cancellationToken))
-                {
-                    bool hasSchedule = !reader.IsDBNull(6);
-                    list.Add(new
-                    {
-                        deviceId = reader.GetInt32(0),
-                        deviceName = reader.GetString(1),
-                        ip = reader.GetString(2),
-                        status = reader.IsDBNull(3) ? "Offline" : reader.GetString(3),
-                        lastSync = reader.IsDBNull(4) ? (string?)null : reader.GetDateTime(4).ToString("o"),
-                        timeZoneId = reader.IsDBNull(5) ? "India Standard Time" : reader.GetString(5),
-                        isEnabled = hasSchedule ? reader.GetBoolean(6) : false,
-                        scheduledTime = hasSchedule ? reader.GetTimeSpan(7).ToString(@"hh\:mm") : "00:00",
-                        repeatMode = hasSchedule ? reader.GetString(8) : "Daily",
-                        nextRunAtUtc = hasSchedule && !reader.IsDBNull(9) ? reader.GetDateTime(9).ToString("o") : (string?)null,
-                        lastRunAtUtc = hasSchedule && !reader.IsDBNull(10) ? reader.GetDateTime(10).ToString("o") : (string?)null,
-                        lastRunStatus = hasSchedule && !reader.IsDBNull(11) ? reader.GetString(11) : (string?)null
-                    });
-                }
+        //[HttpGet("schedules")]
+        //public async Task<ActionResult> GetAllSchedules(CancellationToken cancellationToken)
+        //{
+        //    try
+        //    {
+        //        var list = new List<object>();
+        //        using var conn = new Microsoft.Data.SqlClient.SqlConnection(_connectionString);
+        //        await conn.OpenAsync(cancellationToken);
+        //        using var cmd = conn.CreateCommand();
+        //        cmd.CommandText = @"
+        //            SELECT d.Id, d.Name, d.IP, d.Status, d.LastSync, d.TimeZoneId,
+        //                   s.IsEnabled, s.ScheduledTime, s.RepeatMode, s.NextRunAtUtc, s.LastRunAtUtc, s.LastRunStatus
+        //            FROM Devices d
+        //            LEFT JOIN DeviceSyncSchedule s ON d.Id = s.DeviceId
+        //            WHERE d.IsDeleted = 0 OR d.IsDeleted IS NULL";
+        //        using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        //        while (await reader.ReadAsync(cancellationToken))
+        //        {
+        //            bool hasSchedule = !reader.IsDBNull(6);
+        //            list.Add(new
+        //            {
+        //                deviceId = reader.GetInt32(0),
+        //                deviceName = reader.GetString(1),
+        //                ip = reader.GetString(2),
+        //                status = reader.IsDBNull(3) ? "Offline" : reader.GetString(3),
+        //                lastSync = reader.IsDBNull(4) ? (string?)null : reader.GetDateTime(4).ToString("o"),
+        //                timeZoneId = reader.IsDBNull(5) ? "India Standard Time" : reader.GetString(5),
+        //                isEnabled = hasSchedule ? reader.GetBoolean(6) : false,
+        //                scheduledTime = hasSchedule ? reader.GetTimeSpan(7).ToString(@"hh\:mm") : "00:00",
+        //                repeatMode = hasSchedule ? reader.GetString(8) : "Daily",
+        //                nextRunAtUtc = hasSchedule && !reader.IsDBNull(9) ? reader.GetDateTime(9).ToString("o") : (string?)null,
+        //                lastRunAtUtc = hasSchedule && !reader.IsDBNull(10) ? reader.GetDateTime(10).ToString("o") : (string?)null,
+        //                lastRunStatus = hasSchedule && !reader.IsDBNull(11) ? reader.GetString(11) : (string?)null
+        //            });
+        //        }
 
-                _apiResponse.Status = true;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-                _apiResponse.Data = list;
-                _apiResponse.Errors.Clear();
-                return Ok(_apiResponse);
-            }
-            catch (Exception ex)
-            {
-                _apiResponse.Status = false;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
-                _apiResponse.Data = null;
-                _apiResponse.Errors = new List<string> { ex.Message };
-                return Ok(_apiResponse);
-            }
-        }
+        //        _apiResponse.Status = true;
+        //        _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
+        //        _apiResponse.Data = list;
+        //        _apiResponse.Errors.Clear();
+        //        return Ok(_apiResponse);
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        _apiResponse.Status = false;
+        //        _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
+        //        _apiResponse.Data = null;
+        //        _apiResponse.Errors = new List<string> { ex.Message };
+        //        return Ok(_apiResponse);
+        //    }
+        //}
 
         public class UpdateScheduleRequest
         {

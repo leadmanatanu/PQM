@@ -66,6 +66,11 @@ namespace PQM.Infrastructure
                 entity.Property(e => e.PORT).HasColumnName("PORT");
             });
 
+            modelBuilder.Entity<Device>()
+             .HasOne(d => d.MeterType)
+             .WithMany(mt => mt.Devices)
+             .HasForeignKey(d => d.MeterTypeId);
+
             modelBuilder.Entity<Profile>(entity =>
             {
                 entity.ToTable("Profiles");
