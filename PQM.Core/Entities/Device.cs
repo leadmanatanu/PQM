@@ -22,9 +22,9 @@ namespace PQM.Core.Entities
         public int? ModifiedId { get; set; }
         public DateTime? LastSync { get; set; }
 
-        public int? ClientAddress { get; set; } = 16;
-        public int? ServerAddress { get; set; } = 1;
-        public int? AuthenticationTypeId { get; set; } = 0;
+        public int? ClientAddress { get; set; } 
+        public int? ServerAddress { get; set; } 
+        public int? AuthenticationTypeId { get; set; } 
 
         [System.ComponentModel.DataAnnotations.Schema.NotMapped]
         public string? Authentication

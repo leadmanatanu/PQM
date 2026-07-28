@@ -5,7 +5,7 @@ namespace PQM.Core.Entities
         public long Id { get; set; }
         public long? SessionId { get; set; }
         public int? ParameterId { get; set; }
-        public string? Value { get; set; }
+        public required string Value { get; set; }
         public string? RawValue { get; set; }
         public double? ValueNumeric { get; set; }
 

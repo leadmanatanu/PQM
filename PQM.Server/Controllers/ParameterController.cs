@@ -27,37 +27,28 @@ namespace PQM.Server.Controllers
         [HttpGet]
         public ActionResult Get([FromQuery] int? deviceId)
         {
-            using var db = new DataContext(_connectionString);
-            var query = db.Parameter.Where(p => p.IsActive && !p.IsDeleted);
-
-            if (deviceId.HasValue)
-            {
-                var device = db.Device.FirstOrDefault(d => d.Id == deviceId.Value && !d.IsDeleted);
-                if (device != null)
-                {
-                    var deviceType = string.IsNullOrEmpty(device.TypeName) ? "ABT" : device.TypeName;
-                    query = query.Where(p => p.TypeName == deviceType);
-                }
-            }
-
-            var data = query.ToList();
-            _apiResponse.Status = true;
-            _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-            _apiResponse.Data = data;
-            return Ok(_apiResponse);
-        }
-
-        [HttpGet("{id}")]
-        public ActionResult Get(int id)
-        {
             try
             {
                 using var db = new DataContext(_connectionString);
-                var data = db.Parameter.FirstOrDefault(p => p.Id == id && p.IsActive && !p.IsDeleted);
-                if (data == null)
-                {
-                    return NotFound(new { error = "Parameter not found." });
-                }
+                var data = db.Parameter
+                    .Where(p => p.IsVisible)
+                    .Select(p => new
+                    {
+                        p.Id,
+                        p.ProfileId,
+                        p.Name,
+                        p.ObisCode,
+                        p.Description,
+                        p.Unit,
+                        p.DataType,
+                        p.ObjectType,
+                        p.AttributeIndex,
+                        p.IsHistorical,
+                        p.IsVisible,
+                        p.Scaler
+                    })
+                    .ToList();
+
                 _apiResponse.Status = true;
                 _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
                 _apiResponse.Data = data;
@@ -72,5 +63,7 @@ namespace PQM.Server.Controllers
                 return Ok(_apiResponse);
             }
         }
+
+
     }
 }

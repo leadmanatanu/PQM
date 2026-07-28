@@ -170,35 +170,7 @@ namespace PQM.Server.Controllers
             }
         }
 
-        [HttpGet("{id}/status")]
-        public ActionResult GetStatus(int id)
-        {
-            var device = _deviceService.GetDevices().FirstOrDefault(x => x.Id == id);
-            if (device == null)
-            {
-                return NotFound(new { error = "Device not found." });
-            }
-            return Ok(new
-            {
-                status = device.Status,
-                lastConnectionAttempt = device.LastConnectionAttempt,
-                lastError = device.LastError
-            });
-        }
 
-        [HttpGet("{id}/last-sync")]
-        public ActionResult GetLastSync(int id)
-        {
-            var device = _deviceService.GetDevices().FirstOrDefault(x => x.Id == id);
-            if (device == null)
-            {
-                return NotFound(new { error = "Device not found." });
-            }
-            return Ok(new
-            {
-                lastSync = device.LastSync
-            });
-        }
 
         [HttpGet("{id}/events")]
         public ActionResult GetEvents(int id)
@@ -253,7 +225,7 @@ namespace PQM.Server.Controllers
                             ParameterId = x.ParameterId,
                             ParameterName = p.Name,
                             ObisCode = p.ObisCode ?? "",
-                            Value = x.Value ?? "",
+                            Value = ValueFormatter.CleanValue(x.Value),
                             Timestamp = x.UpdatedAt     // labeled "LAST SYNC DATE" in frontend
                         })
                     .ToList();
@@ -269,192 +241,52 @@ namespace PQM.Server.Controllers
             }
         }
 
-        [HttpPost("{id}/discover-parameters")]
-        public IActionResult DiscoverParameters(int id, [FromQuery] string? objectType)
-        {
-            using var db = new DataContext(_connectionString);
-            var parameters = db.Parameter
-                .Where(p => p.IsActive && !p.IsDeleted)
-                .ToList();
 
-            var results = parameters.Select(p => new
-            {
-                Name = p.Name,
-                ObisCode = p.ObisCode,
-                ObjectType = p.ObjectType,
-                Value = db.ParameterValue
-                    .Where(pv => pv.DeviceId == id && pv.ParameterId == p.Id)
-                    .OrderByDescending(pv => pv.Timestamp)
-                    .Select(pv => pv.Value)
-                    .FirstOrDefault() ?? ""
-            }).ToList();
-
-            _apiResponse.Status = true;
-            _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-            _apiResponse.Data = results;
-            return Ok(_apiResponse);
-        }
-
-        [HttpPost("{id}/read-parameter/{parameterId}")]
-        public IActionResult ReadParameter(int id, int parameterId)
-        {
-            using var db = new DataContext(_connectionString);
-            var param = db.Parameter.FirstOrDefault(p => p.Id == parameterId);
-            var latest = db.ParameterValue
-                .Where(pv => pv.DeviceId == id && pv.ParameterId == parameterId)
-                .OrderByDescending(pv => pv.Timestamp)
-                .FirstOrDefault();
-
-            _apiResponse.Status = true;
-            _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-            _apiResponse.Data = latest?.Value ?? "";
-            return Ok(_apiResponse);
-        }
-
-        [HttpPost("{id}/read-object/{objectId}")]
-        public IActionResult ReadObject(int id, int objectId)
-        {
-            using var db = new DataContext(_connectionString);
-            var param = db.Parameter.FirstOrDefault(p => p.Id == objectId);
-            var latest = db.ParameterValue
-                .Where(pv => pv.DeviceId == id && pv.ParameterId == objectId)
-                .OrderByDescending(pv => pv.Timestamp)
-                .FirstOrDefault();
-
-            var results = new List<object>
-            {
-                new
-                {
-                    Id = latest?.Id ?? 0,
-                    ObjectId = objectId,
-                    ParameterId = objectId,
-                    AttributeId = 2,
-                    Name = param?.Name ?? "Unknown",
-                    DataType = param?.ObjectType ?? "Register",
-                    AccessType = "Read",
-                    Value = latest?.Value ?? "",
-                    Timestamp = latest?.Timestamp ?? DateTime.UtcNow
-                }
-            };
-
-            _apiResponse.Status = true;
-            _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-            _apiResponse.Data = results;
-            return Ok(_apiResponse);
-        }
-
-        [HttpPost("{id}/read-objects")]
-        public IActionResult ReadObjects(int id, [FromBody] List<int> objectIds)
-        {
-            if (objectIds == null || !objectIds.Any())
-            {
-                return Error("No object IDs provided", System.Net.HttpStatusCode.BadRequest);
-            }
-
-            using var db = new DataContext(_connectionString);
-            var results = new List<object>();
-
-            foreach (var objectId in objectIds)
-            {
-                var param = db.Parameter.FirstOrDefault(p => p.Id == objectId);
-                var latest = db.ParameterValue
-                    .Where(pv => pv.DeviceId == id && pv.ParameterId == objectId)
-                    .OrderByDescending(pv => pv.Timestamp)
-                    .FirstOrDefault();
-
-                results.Add(new
-                {
-                    Id = latest?.Id ?? 0,
-                    ObjectId = objectId,
-                    ParameterId = objectId,
-                    AttributeId = 2,
-                    Name = param?.Name ?? "Unknown",
-                    DataType = param?.ObjectType ?? "Register",
-                    AccessType = "Read",
-                    Value = latest?.Value ?? "",
-                    Timestamp = latest?.Timestamp ?? DateTime.UtcNow
-                });
-            }
-
-            _apiResponse.Status = true;
-            _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-            _apiResponse.Data = results;
-            return Ok(_apiResponse);
-        }
-
-        public class WriteObjectRequest
-        {
-            public required string ObisCode { get; set; }
-            public required string Value { get; set; }
-            public int AttributeId { get; set; } = 2;
-        }
-
-        [HttpPost("{id}/write-object")]
-        public IActionResult WriteObject(int id, [FromBody] WriteObjectRequest request)
-        {
-            // decoupled stub - actual writing should be handled asynchronously or logged.
-            _apiResponse.Status = true;
-            _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-            _apiResponse.Data = "Write simulated successfully in database-driven mode";
-            return Ok(_apiResponse);
-        }
 
         [HttpPost("{id}/sync/now")]
-        [HttpPost("/api/devices/{id}/sync/now")]
-        public async Task<IActionResult> SyncNow(
-            int id,
-            [FromServices] ProfileSyncService syncService,
-            [FromServices] IHubContext<DeviceHub> hubContext)
+        public async Task<IActionResult> SyncNow(int id)
         {
-            if (syncService.IsDeviceSyncing(id))
+            try
             {
-                return Conflict(new
+                using var conn = new Microsoft.Data.SqlClient.SqlConnection(_connectionString);
+                await conn.OpenAsync();
+
+                // Check if device exists
+                using (var checkCmd = conn.CreateCommand())
                 {
-                    status = false,
-                    message = $"Sync is already in progress for device {id}."
-                });
+                    checkCmd.CommandText = "SELECT Id FROM Devices WHERE Id = @id AND (IsDeleted = 0 OR IsDeleted IS NULL)";
+                    checkCmd.Parameters.AddWithValue("@id", id);
+                    var exists = await checkCmd.ExecuteScalarAsync();
+                    if (exists == null)
+                    {
+                        return NotFound(new { error = $"Device {id} not found." });
+                    }
+                }
+
+                // Insert on-demand request into DeviceSyncRequest queue table
+                using (var insertCmd = conn.CreateCommand())
+                {
+                    insertCmd.CommandText = @"
+                        INSERT INTO DeviceSyncRequest (DeviceId, RequestedAt, Status)
+                        VALUES (@deviceId, SYSUTCDATETIME(), 'Pending')";
+                    insertCmd.Parameters.AddWithValue("@deviceId", id);
+                    await insertCmd.ExecuteNonQueryAsync();
+                }
+
+                _apiResponse.Status = true;
+                _apiResponse.StatusCode = System.Net.HttpStatusCode.Accepted;
+                _apiResponse.Data = $"Sync request queued for device {id}. PQM.Console will process it shortly.";
+                return Accepted(_apiResponse);
             }
-
-            // Trigger background async sync for this device
-            _ = Task.Run(async () =>
+            catch (Exception ex)
             {
-                string finalStatus = "Error";
-                string? finalError = "Sync failed";
-                try
-                {
-                    await hubContext.Clients.All.SendAsync("DeviceStatusChanged", new
-                    {
-                        deviceId = id,
-                        status = "Syncing",
-                        lastSync = (string?)null,
-                        lastError = (string?)null
-                    });
-
-                    var result = await syncService.SyncDeviceAllProfilesAsync(id);
-                    finalStatus = result.Success ? "Online" : "Error";
-                    finalError = result.ErrorMessage;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error executing out-of-band sync for device {DeviceId}.", id);
-                    finalError = ex.Message;
-                }
-                finally
-                {
-                    await hubContext.Clients.All.SendAsync("DeviceStatusChanged", new
-                    {
-                        deviceId = id,
-                        status = finalStatus,
-                        lastSync = DateTime.UtcNow.ToString("o"),
-                        lastError = finalError
-                    });
-                }
-            });
-
-            _apiResponse.Status = true;
-            _apiResponse.StatusCode = System.Net.HttpStatusCode.Accepted;
-            _apiResponse.Data = $"Sync initiated for device {id}. Real-time progress will stream over SignalR.";
-            return Accepted(_apiResponse);
+                _logger.LogError(ex, "Error queueing sync request for device {DeviceId}.", id);
+                _apiResponse.Status = false;
+                _apiResponse.StatusCode = System.Net.HttpStatusCode.InternalServerError;
+                _apiResponse.Data = null;
+                _apiResponse.Errors = new List<string> { ex.Message };
+                return Ok(_apiResponse);
+            }
         }
 
         [HttpPost("{id}/sync/enable")]
@@ -686,7 +518,7 @@ namespace PQM.Server.Controllers
 
                 DateTime nowUtc = DateTime.UtcNow;
                 DateTime? nextRunAtUtc = request.IsEnabled
-                    ? PQM.Server.Services.DeviceScheduleRunnerService.ComputeNextRunAtUtc(ts, timeZoneId, nowUtc)
+                    ? PQM.Core.Helpers.ScheduleHelper.ComputeNextRunAtUtc(ts, timeZoneId, nowUtc)
                     : null;
 
                 using (var upsertCmd = conn.CreateCommand())

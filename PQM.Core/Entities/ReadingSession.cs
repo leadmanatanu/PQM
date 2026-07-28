@@ -6,8 +6,8 @@ namespace PQM.Core.Entities
     public class ReadingSession
     {
         public long Id { get; set; }
-        public int? DeviceId { get; set; }
-        public int? ProfileId { get; set; }
+        public int DeviceId { get; set; }
+        public int ProfileId { get; set; }
         public DateTime? ReadTime { get; set; }
         public DateTime? EntryTimestampUtc { get; set; }
 

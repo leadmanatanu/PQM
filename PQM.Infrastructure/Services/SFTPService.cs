@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 
-namespace PQM.Core.DomainServices
+namespace PQM.Infrastructure.Services
 {
     public class SFTPService : ISFTPService
     {

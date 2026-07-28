@@ -1,4 +1,4 @@
-using PQM.Core.DomainServices;
+using PQM.Infrastructure.Services;
 using PQM.Core.IRepositories;
 using PQM.Infrastructure.Repositories;
 using PQM.Infrastructure;
@@ -19,23 +19,6 @@ builder.Services.AddTransient<IDeviceService>(_ =>
     new DeviceService(connectionString));
 
 builder.Services.AddScoped<DataContext>(provider => new DataContext(connectionString));
-
-builder.Services.AddSingleton<PQM.Infrastructure.Services.DLMSSessionManager>();
-
-// DlmsMeterReader is stateful per-connection (holds a live GXNet socket), so it cannot
-// be registered as a scoped/singleton service. Register a factory delegate instead:
-// callers resolve Func<Device, DlmsMeterReader>, call it to create a fresh instance,
-// and are responsible for disposing it when the connection is done.
-// This matches how DLMSSessionManager creates DLMSReader instances internally.
-builder.Services.AddSingleton<Func<PQM.Core.Entities.Device, PQM.Infrastructure.Services.DlmsMeterReader>>(
-    _ => (device) => new PQM.Infrastructure.Services.DlmsMeterReader(device));
-
-builder.Services.AddTransient<PQM.Infrastructure.Services.ProfileSyncService>(sp =>
-    new PQM.Infrastructure.Services.ProfileSyncService(
-        connectionString,
-        sp.GetRequiredService<ILogger<PQM.Infrastructure.Services.ProfileSyncService>>()));
-
-builder.Services.AddHostedService<PQM.Server.Services.DeviceScheduleRunnerService>();
 
 
 

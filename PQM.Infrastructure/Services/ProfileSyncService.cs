@@ -713,7 +713,7 @@ namespace PQM.Infrastructure.Services
                                 VALUES (@sid, @pid, @val, @raw, @num)";
             cmd.Parameters.AddWithValue("@sid", sessionId);
             cmd.Parameters.AddWithValue("@pid", parameterId);
-            cmd.Parameters.AddWithValue("@val", (object?)value ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@val", (object?)ValueFormatter.CleanValue(value) ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@raw", (object?)rawValue ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@num", (object?)numericValue ?? DBNull.Value);
 
@@ -736,7 +736,7 @@ namespace PQM.Infrastructure.Services
 
             cmd.Parameters.AddWithValue("@did", deviceId);
             cmd.Parameters.AddWithValue("@pid", parameterId);
-            cmd.Parameters.AddWithValue("@val", (object?)value ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@val", (object?)ValueFormatter.CleanValue(value) ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@raw", (object?)rawValue ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@updated", updatedAt);
 

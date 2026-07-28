@@ -6,7 +6,7 @@ using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace PQM.Core.DomainServices
+namespace PQM.Infrastructure.Services
 {
     public class FtpArchiver
     {

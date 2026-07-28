@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using PQM.Core.Entities;
 using PQM.Infrastructure;
+using PQM.Infrastructure.Services;
 using PQM.Server.Models;
 using System;
 using System.Collections.Generic;
@@ -25,54 +26,7 @@ namespace PQM.Server.Controllers
                 ?? throw new InvalidOperationException("Connection string not found.");
         }
 
-        [HttpGet]
-        public ActionResult Get()
-        {
-            using var db = new DataContext(_connectionString);
-            // Rerouted from legacy db.Event (dropped table) to db.DeviceEvents.
-            // EventTime is the actual meter-recorded event timestamp — correct to sort by.
-            var data = db.DeviceEvents
-                .OrderByDescending(x => x.EventTime)
-                .Take(100)
-                .ToList();
-            _apiResponse.Status = true;
-            _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-            _apiResponse.Data = data;
-            return Ok(_apiResponse);
-        }
 
-        [HttpPost]
-        public ActionResult Post([FromBody] List<Event> events)
-        {
-            // Write path retained for backward compatibility (legacy bridge).
-            // New sync logic writes directly via the infrastructure layer, not this endpoint.
-            try
-            {
-                if (events == null || events.Count == 0)
-                {
-                    _apiResponse.Status = false;
-                    _apiResponse.StatusCode = System.Net.HttpStatusCode.NotAcceptable;
-                    return Ok(_apiResponse);
-                }
-
-                using var db = new DataContext(_connectionString);
-                db.Event.AddRange(events);
-                db.SaveChanges();
-
-                _apiResponse.Status = true;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-                _apiResponse.Data = events.Count;
-                return Ok(_apiResponse);
-            }
-            catch (Exception ex)
-            {
-                _apiResponse.Status = false;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
-                _apiResponse.Data = null;
-                _apiResponse.Errors = new List<string> { ex.Message };
-                return Ok(_apiResponse);
-            }
-        }
 
         [HttpGet("Search")]
         public ActionResult Search([FromQuery] SearchParams searchParams)
@@ -95,7 +49,7 @@ namespace PQM.Server.Controllers
                                 DeviceId = ev.DeviceId,
                                 DeviceName = d.Name,
                                 ParameterName = p.Name,
-                                Value = ev.RawValue ?? "",
+                                Value = ValueFormatter.CleanValue(ev.RawValue),
                                 DateStamp = ev.EventTime
                             };
 

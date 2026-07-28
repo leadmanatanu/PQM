@@ -1,4 +1,6 @@
 using PQM.Core.Entities;
+using System;
+using System.Linq;
 
 namespace PQM.Core.IRepositories
 {

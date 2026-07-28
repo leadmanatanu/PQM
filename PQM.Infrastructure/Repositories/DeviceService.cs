@@ -56,7 +56,7 @@ namespace PQM.Infrastructure.Repositories
         public bool DeleteDevice(int id)
         {
             DataContext dbContext = new DataContext(this._connectionString);
-            var deviceData = dbContext.Device.FirstOrDefault(x => x.Id == id);
+            var deviceData = dbContext.Device.FirstOrDefault(x =>x.Id == id);
             if (deviceData == null)
             {
                 return false;
