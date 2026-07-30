@@ -22,7 +22,7 @@ namespace PQM.Infrastructure.Services
     {
         public static readonly Dictionary<string, string> TimeSeriesProfiles = new()
         {
-            { "1.0.99.1.0.255", "BlockLoad (15-min)" },
+            { "1.0.99.1.0.255", "Block Load" },
             { "1.0.99.2.0.255", "Daily Load" },
             { "1.0.98.1.0.255", "Billing" },
             { "0.0.99.98.0.255", "Voltage Events" },

@@ -59,7 +59,8 @@ namespace PQM.Core.Entities
         public int? Timeout { get; set; } = 30000;
         public int? MeterTypeId { get; set; }
 
-        public MeterType MeterType { get; set; } = null!;
+        [System.Text.Json.Serialization.JsonIgnore]
+        public MeterType? MeterType { get; set; }
         public string? TimeZoneId { get; set; }
 
         public string Status { get; set; } = "Offline";

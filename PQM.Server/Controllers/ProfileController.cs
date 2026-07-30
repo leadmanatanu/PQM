@@ -1,23 +1,23 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using PQM.Core.Entities;
 using PQM.Infrastructure;
 using PQM.Server.Models;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace PQM.Server.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    public class ParameterController : ControllerBase
+    public class ProfileController : ControllerBase
     {
         private readonly APIResponse _apiResponse = new();
-        private readonly ILogger<ParameterController> _logger;
+        private readonly ILogger<ProfileController> _logger;
         private readonly string _connectionString;
 
-        public ParameterController(ILogger<ParameterController> logger, IConfiguration configuration)
+        public ProfileController(ILogger<ProfileController> logger, IConfiguration configuration)
         {
             _logger = logger;
             _connectionString = configuration.GetConnectionString("DefaultConnection") 
@@ -25,39 +25,25 @@ namespace PQM.Server.Controllers
         }
 
         [HttpGet]
-        public ActionResult Get([FromQuery] int? deviceId, [FromQuery] int? profileId)
+        public ActionResult Get()
         {
             try
             {
                 using var db = new DataContext(_connectionString);
-                var query = db.Parameter.Where(p => p.IsVisible);
-
-                if (profileId.HasValue && profileId.Value > 0)
-                {
-                    query = query.Where(p => p.ProfileId == profileId.Value);
-                }
-
-                var data = query
+                var profiles = db.Profiles
                     .Select(p => new
                     {
-                        p.Id,
                         p.ProfileId,
-                        p.Name,
+                        FriendlyName = string.IsNullOrWhiteSpace(p.FriendlyName) ? p.ObisCode : p.FriendlyName,
                         p.ObisCode,
-                        p.Description,
-                        p.Unit,
-                        p.DataType,
-                        p.ObjectType,
-                        p.AttributeIndex,
-                        p.IsHistorical,
-                        p.IsVisible,
-                        p.Scaler
+                        p.Category
                     })
+                    .OrderBy(p => p.FriendlyName)
                     .ToList();
 
                 _apiResponse.Status = true;
                 _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-                _apiResponse.Data = data;
+                _apiResponse.Data = profiles;
                 return Ok(_apiResponse);
             }
             catch (Exception ex)
@@ -69,7 +55,5 @@ namespace PQM.Server.Controllers
                 return Ok(_apiResponse);
             }
         }
-
-
     }
 }

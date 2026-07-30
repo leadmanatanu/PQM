@@ -22,6 +22,23 @@ namespace PQM.Infrastructure.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("MeterType", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("MeterType");
+                });
+
             modelBuilder.Entity("PQM.Core.Entities.Device", b =>
                 {
                     b.Property<int>("Id")
@@ -101,51 +118,11 @@ namespace PQM.Infrastructure.Migrations
                     b.Property<int?>("Timeout")
                         .HasColumnType("int");
 
-                    b.Property<string>("TypeName")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int?>("UserId")
-                        .HasColumnType("int");
-
                     b.HasKey("Id");
+
+                    b.HasIndex("MeterTypeId");
 
                     b.ToTable("Devices", (string)null);
-                });
-
-            modelBuilder.Entity("PQM.Core.Entities.DeviceConnectionEvent", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("DeviceId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("ErrorDetails")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("EventType")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool>("IsResolved")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Message")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("OccurredAt")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DeviceId");
-
-                    b.ToTable("DeviceConnectionEvents");
                 });
 
             modelBuilder.Entity("PQM.Core.Entities.DeviceEvent", b =>
@@ -214,31 +191,6 @@ namespace PQM.Infrastructure.Migrations
                     b.ToTable("DeviceLatestReadings", (string)null);
                 });
 
-            modelBuilder.Entity("PQM.Core.Entities.DeviceParameterConfig", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("DeviceId")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("IsSelected")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTime>("LastModifiedDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("ParameterId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("DeviceParameterConfig");
-                });
-
             modelBuilder.Entity("PQM.Core.Entities.DeviceProfileSyncState", b =>
                 {
                     b.Property<int>("DeviceId")
@@ -263,7 +215,42 @@ namespace PQM.Infrastructure.Migrations
                     b.ToTable("DeviceProfileSyncState", (string)null);
                 });
 
-            modelBuilder.Entity("PQM.Core.Entities.Event", b =>
+            modelBuilder.Entity("PQM.Core.Entities.DeviceSyncHistory", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("DeviceId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("ProfilesRead")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("RowsWritten")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("DeviceSyncHistory", (string)null);
+                });
+
+            modelBuilder.Entity("PQM.Core.Entities.DeviceSyncRequest", b =>
                 {
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
@@ -274,18 +261,53 @@ namespace PQM.Infrastructure.Migrations
                     b.Property<int>("DeviceId")
                         .HasColumnType("int");
 
-                    b.Property<int>("ParameterId")
-                        .HasColumnType("int");
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("nvarchar(max)");
 
-                    b.Property<DateTime>("Timestamp")
+                    b.Property<DateTime>("RequestedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("Value")
+                    b.Property<string>("Status")
+                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
 
-                    b.ToTable("Event");
+                    b.HasIndex("DeviceId");
+
+                    b.ToTable("DeviceSyncRequests");
+                });
+
+            modelBuilder.Entity("PQM.Core.Entities.DeviceSyncSchedule", b =>
+                {
+                    b.Property<int>("DeviceId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("DeviceId"));
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("LastRunAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("LastRunStatus")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("NextRunAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RepeatMode")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<TimeSpan>("ScheduledTime")
+                        .HasColumnType("time");
+
+                    b.HasKey("DeviceId");
+
+                    b.ToTable("DeviceSyncSchedule", (string)null);
                 });
 
             modelBuilder.Entity("PQM.Core.Entities.Parameter", b =>
@@ -351,10 +373,6 @@ namespace PQM.Infrastructure.Migrations
                     b.Property<int?>("Scaler")
                         .HasColumnType("int");
 
-                    b.Property<string>("TypeName")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<string>("Unit")
                         .HasColumnType("nvarchar(max)");
 
@@ -363,747 +381,6 @@ namespace PQM.Infrastructure.Migrations
                     b.HasIndex("ProfileId");
 
                     b.ToTable("Parameters", (string)null);
-
-                    b.HasData(
-                        new
-                        {
-                            Id = 1,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 663, DateTimeKind.Utc).AddTicks(9189),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Accuracy Test Start",
-                            ObisCode = "0.128.162.0.128.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 2,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1720),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Accuracy Test Stop",
-                            ObisCode = "0.128.162.1.128.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 3,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1725),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Activity Calendar",
-                            ObisCode = "0.0.13.0.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 4,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1727),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Apparent Power – kVA",
-                            ObisCode = "1.0.9.7.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 5,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1842),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Association LN Meter Reader",
-                            ObisCode = "0.0.40.0.2.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 6,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1844),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Available Billing Periods",
-                            ObisCode = "0.0.0.1.1.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 7,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1863),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Billing Date",
-                            ObisCode = "0.0.0.1.2.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 8,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1865),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Billing Period Script Table",
-                            ObisCode = "0.0.10.0.1.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 9,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1866),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Capture Period of Daily Load Profile",
-                            ObisCode = "1.0.0.8.5.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 10,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1868),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Category",
-                            ObisCode = "0.0.94.91.11.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 11,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1870),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "CMRI Reset",
-                            ObisCode = "0.128.154.128.128.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 12,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1871),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "CT Rating",
-                            ObisCode = "0.0.94.91.12.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 13,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1873),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Cumulative Billing Count",
-                            ObisCode = "0.0.0.1.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 14,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1875),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Cumulative Energy – kVAh (Export)",
-                            ObisCode = "1.0.10.8.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 15,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1877),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Cumulative Energy (kVAh)",
-                            ObisCode = "1.0.9.8.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 16,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1879),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Cumulative Energy (kvarh) – Lag",
-                            ObisCode = "1.0.5.8.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 17,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1880),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Cumulative Energy (kvarh) – Lead",
-                            ObisCode = "1.0.8.8.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 18,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1882),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Cumulative Energy (kWh)",
-                            ObisCode = "1.0.1.8.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 19,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1884),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Cumulative Energy (kWh) – Export",
-                            ObisCode = "1.0.2.8.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 20,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1886),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Cumulative Power Failure Duration",
-                            ObisCode = "0.0.94.91.8.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 21,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1905),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Cumulative Programming Count",
-                            ObisCode = "0.0.96.2.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 22,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1907),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Cumulative Tamper Count",
-                            ObisCode = "0.0.94.91.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 23,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1909),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Current – IB",
-                            ObisCode = "1.0.71.7.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 24,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1910),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Current – IR",
-                            ObisCode = "1.0.31.7.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 25,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1912),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Current – IY",
-                            ObisCode = "1.0.51.7.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 26,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1914),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Current Related Event Code",
-                            ObisCode = "0.0.96.11.1.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 27,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1916),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Power Failure Related Event Code",
-                            ObisCode = "0.0.96.11.2.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 28,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1917),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Profile Capture Period",
-                            ObisCode = "1.0.0.8.4.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 29,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1919),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "PT Power Fail Tamper Events",
-                            ObisCode = "1.0.128.7.90.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 30,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1921),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Reset Type",
-                            ObisCode = "0.128.153.128.128.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 31,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1923),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Signed Active Power – kW",
-                            ObisCode = "1.0.1.7.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 32,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1924),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Signed Power Factor – B Phase",
-                            ObisCode = "1.0.73.7.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 33,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1926),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Signed Power Factor – R Phase",
-                            ObisCode = "1.0.33.7.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 34,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1928),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Signed Power Factor – Y Phase",
-                            ObisCode = "1.0.53.7.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 35,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1930),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Signed Reactive Power – kvar",
-                            ObisCode = "1.0.3.7.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 36,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1931),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Single Action Schedule for Billing Dates",
-                            ObisCode = "0.0.15.0.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 37,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1934),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "TCP/UDP Setup",
-                            ObisCode = "0.0.25.0.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 38,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1936),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "TCP/UDP Setup IPv4 Address",
-                            ObisCode = "0.0.25.1.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 39,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1938),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "TCP/UDP Setup MAC Address",
-                            ObisCode = "0.0.25.2.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 40,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1940),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Transaction Related Event Code",
-                            ObisCode = "0.0.96.11.3.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 41,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1941),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Voltage – VBN",
-                            ObisCode = "1.0.72.7.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 42,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1943),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Voltage – VRN",
-                            ObisCode = "1.0.32.7.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 43,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1945),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Voltage – VYN",
-                            ObisCode = "1.0.52.7.0.255",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 44,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1946),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Voltage L1",
-                            ObisCode = "1.0.32.7.0.251",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 45,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1948),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Voltage L2",
-                            ObisCode = "1.0.52.7.0.251",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 46,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1959),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Current L1",
-                            ObisCode = "1.0.31.7.0.251",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 47,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1961),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Active Power",
-                            ObisCode = "1.0.1.7.0.251",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 48,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1962),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Billing Energy",
-                            ObisCode = "1.0.9.8.0.251",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 49,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1964),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Import Energy",
-                            ObisCode = "1.0.1.8.0.251",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 50,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1966),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Export Energy",
-                            ObisCode = "1.0.2.8.0.251",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        },
-                        new
-                        {
-                            Id = 51,
-                            CreatedAt = new DateTime(2026, 7, 23, 6, 39, 43, 664, DateTimeKind.Utc).AddTicks(1968),
-                            CreatedDate = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            IsActive = true,
-                            IsDeleted = false,
-                            IsHistorical = true,
-                            IsVisible = true,
-                            Name = "Maximum Demand",
-                            ObisCode = "1.0.9.6.0.251",
-                            ProfileId = 0,
-                            TypeName = "ABT"
-                        });
-                });
-
-            modelBuilder.Entity("PQM.Core.Entities.ParameterValue", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<int>("DeviceId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("ParameterId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("Timestamp")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Value")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("ParameterValue");
                 });
 
             modelBuilder.Entity("PQM.Core.Entities.Profile", b =>
@@ -1138,14 +415,14 @@ namespace PQM.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
-                    b.Property<int?>("DeviceId")
+                    b.Property<int>("DeviceId")
                         .HasColumnType("int");
 
                     b.Property<DateTime?>("EntryTimestampUtc")
                         .HasColumnType("datetime2")
                         .HasColumnName("EntryTimestampUtc");
 
-                    b.Property<int?>("ProfileId")
+                    b.Property<int>("ProfileId")
                         .HasColumnType("int");
 
                     b.Property<DateTime?>("ReadTime")
@@ -1181,6 +458,7 @@ namespace PQM.Infrastructure.Migrations
                         .HasColumnType("bigint");
 
                     b.Property<string>("Value")
+                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<double?>("ValueNumeric")
@@ -1223,15 +501,13 @@ namespace PQM.Infrastructure.Migrations
                     b.ToTable("User");
                 });
 
-            modelBuilder.Entity("PQM.Core.Entities.DeviceConnectionEvent", b =>
+            modelBuilder.Entity("PQM.Core.Entities.Device", b =>
                 {
-                    b.HasOne("PQM.Core.Entities.Device", "Device")
-                        .WithMany()
-                        .HasForeignKey("DeviceId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                    b.HasOne("MeterType", "MeterType")
+                        .WithMany("Devices")
+                        .HasForeignKey("MeterTypeId");
 
-                    b.Navigation("Device");
+                    b.Navigation("MeterType");
                 });
 
             modelBuilder.Entity("PQM.Core.Entities.DeviceEvent", b =>
@@ -1291,6 +567,17 @@ namespace PQM.Infrastructure.Migrations
                     b.Navigation("Profile");
                 });
 
+            modelBuilder.Entity("PQM.Core.Entities.DeviceSyncRequest", b =>
+                {
+                    b.HasOne("PQM.Core.Entities.Device", "Device")
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Device");
+                });
+
             modelBuilder.Entity("PQM.Core.Entities.Parameter", b =>
                 {
                     b.HasOne("PQM.Core.Entities.Profile", "Profile")
@@ -1306,11 +593,15 @@ namespace PQM.Infrastructure.Migrations
                 {
                     b.HasOne("PQM.Core.Entities.Device", "Device")
                         .WithMany()
-                        .HasForeignKey("DeviceId");
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.HasOne("PQM.Core.Entities.Profile", "Profile")
                         .WithMany()
-                        .HasForeignKey("ProfileId");
+                        .HasForeignKey("ProfileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("Device");
 
@@ -1330,6 +621,11 @@ namespace PQM.Infrastructure.Migrations
                     b.Navigation("Parameter");
 
                     b.Navigation("Session");
+                });
+
+            modelBuilder.Entity("MeterType", b =>
+                {
+                    b.Navigation("Devices");
                 });
 
             modelBuilder.Entity("PQM.Core.Entities.Parameter", b =>

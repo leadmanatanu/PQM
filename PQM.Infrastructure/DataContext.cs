@@ -13,11 +13,11 @@ namespace PQM.Infrastructure
 {
     public class DataContext : DbContext
     {
-        private readonly string _connectionString;
+        private readonly string? _connectionString;
         public DbSet<User> User { get; set; } = null!;
         public DbSet<Device> Device { get; set; } = null!;
         public DbSet<Parameter> Parameter { get; set; } = null!;
-        public DbSet<DeviceConnectionEvent> DeviceConnectionEvents { get; set; } = null!;
+
 
         public DbSet<Profile> Profiles { get; set; } = null!;
         public DbSet<ReadingSession> ReadingSessions { get; set; } = null!;
@@ -29,6 +29,10 @@ namespace PQM.Infrastructure
         public DbSet<DeviceSyncSchedule> DeviceSyncSchedules { get; set; } = null!;
         public DbSet<DeviceSyncRequest> DeviceSyncRequests { get; set; } = null!;
 
+        public DataContext(DbContextOptions<DataContext> options) : base(options)
+        {
+        }
+
         public DataContext(string connectionString)
         {
             _connectionString = connectionString;
@@ -38,8 +42,12 @@ namespace PQM.Infrastructure
         {
             base.OnConfiguring(optionsBuilder);
 
-            optionsBuilder.UseSqlServer(_connectionString);
+            if (!optionsBuilder.IsConfigured && !string.IsNullOrEmpty(_connectionString))
+            {
+                optionsBuilder.UseSqlServer(_connectionString);
+            }
         }
+
 
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
