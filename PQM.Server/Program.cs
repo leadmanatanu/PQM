@@ -1,12 +1,18 @@
 using PQM.Infrastructure.Services;
 using PQM.Core.IRepositories;
+using PQM.Core.Interfaces.Repositories;
 using PQM.Infrastructure.Repositories;
 using PQM.Infrastructure;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+builder.Services.AddControllers().AddJsonOptions(options =>
+{
+    options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+});
+
 builder.Services.AddOpenApi();
 
 var connectionString =
@@ -19,14 +25,7 @@ builder.Services.AddTransient<IDeviceService>(_ =>
     new DeviceService(connectionString));
 
 builder.Services.AddScoped<DataContext>(provider => new DataContext(connectionString));
-
-
-
-builder.Services.AddTransient<ISFTPService>(_ =>
-    new SFTPService());
-
-builder.Services.AddTransient<ICSVService>(_ =>
-    new CSVService());
+builder.Services.AddScoped<IDeviceRepository, DeviceRepository>();
 
 builder.Services.AddSignalR();
 
@@ -41,7 +40,7 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Auto-apply any pending EF Core migrations on startup (creates EventStatusMapping table etc.)
+// Auto-apply any pending EF Core migrations on startup
 using (var scope = app.Services.CreateScope())
 {
     try
@@ -53,6 +52,26 @@ using (var scope = app.Services.CreateScope())
     {
         Console.WriteLine($"[Startup] Migration error (non-fatal): {ex.Message}");
     }
+}
+
+// Auto-start PQMMeterReader Windows Service if currently stopped
+try
+{
+    if (OperatingSystem.IsWindows())
+    {
+        using var sc = new System.ServiceProcess.ServiceController("PQMMeterReader");
+        if (sc.Status == System.ServiceProcess.ServiceControllerStatus.Stopped ||
+            sc.Status == System.ServiceProcess.ServiceControllerStatus.StopPending)
+        {
+            Console.WriteLine("[Startup] PQMMeterReader Windows service is stopped. Attempting auto-start...");
+            sc.Start();
+            Console.WriteLine("[Startup] PQMMeterReader service start command sent successfully.");
+        }
+    }
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[Startup] Note on PQMMeterReader Windows service auto-start: {ex.Message}");
 }
 
 app.UseCors("AllowReactApp");

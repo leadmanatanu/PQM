@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -6,6 +7,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using PQM.Infrastructure;
 using PQM.Infrastructure.Services;
+using Serilog;
 
 namespace PQM.Console
 {
@@ -13,39 +15,74 @@ namespace PQM.Console
     {
         public static async Task Main(string[] args)
         {
-            System.Console.WriteLine("=================================================");
-            System.Console.WriteLine(" PQM Production Sync Runner (PQM.Console)");
-            System.Console.WriteLine(" Dedicated DLMS Meter Synchronization Process");
-            System.Console.WriteLine("=================================================");
+            string logDirectory = @"C:\PQM\Logs";
+            if (!Directory.Exists(logDirectory))
+            {
+                Directory.CreateDirectory(logDirectory);
+            }
 
-            var host = Host.CreateDefaultBuilder(args)
-                .ConfigureAppConfiguration((hostingContext, config) =>
-                {
-                    config.SetBasePath(AppContext.BaseDirectory);
-                    config.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
-                    config.AddEnvironmentVariables();
-                })
-                .ConfigureServices((hostContext, services) =>
-                {
-                    string connectionString = hostContext.Configuration.GetConnectionString("DefaultConnection")
-                        ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+            Log.Logger = new LoggerConfiguration()
+                .MinimumLevel.Information()
+                .WriteTo.Console()
+                .WriteTo.File(
+                    path: Path.Combine(logDirectory, "console-.log"),
+                    rollingInterval: RollingInterval.Day,
+                    retainedFileCountLimit: 30,
+                    outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} {Level:u3}] {Message:lj}{NewLine}{Exception}"
+                )
+                .CreateLogger();
 
-                    // Register DbContext & Repositories/Services needed for DLMS Meter Sync
-                    services.AddScoped<DataContext>(sp => new DataContext(connectionString));
-                    services.AddSingleton<ProfileSyncService>(sp =>
-                        new ProfileSyncService(connectionString, sp.GetRequiredService<ILogger<ProfileSyncService>>()));
+            try
+            {
+                Log.Information("[PQM.Console] Starting PQM Meter Reader host...");
 
-                    // Register Sync Runner Hosted Service
-                    services.AddHostedService<DeviceConsoleRunnerService>();
-                })
-                .ConfigureLogging(logging =>
-                {
-                    logging.ClearProviders();
-                    logging.AddConsole();
-                })
-                .Build();
+                var host = Host.CreateDefaultBuilder(args)
+                    .UseWindowsService(options =>
+                    {
+                        options.ServiceName = "PQM Meter Reader";
+                    })
+                    .UseSerilog()
+                    .ConfigureAppConfiguration((hostingContext, config) =>
+                    {
+                        config.SetBasePath(AppContext.BaseDirectory);
+                        config.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+                        config.AddEnvironmentVariables();
+                    })
+                    .ConfigureServices((hostContext, services) =>
+                    {
+                        string connectionString =
+                            hostContext.Configuration.GetConnectionString("DefaultConnection")
+                            ?? throw new InvalidOperationException(
+                                "Connection string 'DefaultConnection' not found.");
 
-            await host.RunAsync();
+                        int meterCooldown = hostContext.Configuration.GetValue<int>("DlmsSettings:MeterCooldownSeconds", 8);
+                        DlmsMeterReader.DefaultMeterCooldownSeconds = meterCooldown > 0 ? meterCooldown : 8;
+
+                        // Register DataContext
+                        services.AddScoped<DataContext>(sp =>
+                            new DataContext(connectionString));
+
+                        // Register Profile Sync Service
+                        services.AddSingleton<ProfileSyncService>(sp =>
+                            new ProfileSyncService(
+                                connectionString,
+                                sp.GetRequiredService<ILogger<ProfileSyncService>>()));
+
+                        // Register Background Worker
+                        services.AddHostedService<DeviceConsoleRunnerService>();
+                    })
+                    .Build();
+
+                await host.RunAsync();
+            }
+            catch (Exception ex)
+            {
+                Log.Fatal(ex, "[PQM.Console] Host terminated unexpectedly.");
+            }
+            finally
+            {
+                Log.CloseAndFlush();
+            }
         }
     }
 }

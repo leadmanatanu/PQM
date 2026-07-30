@@ -14,14 +14,6 @@ using PQM.Core.Helpers;
 
 namespace PQM.Console
 {
-    /// <summary>
-    /// Background service in PQM.Console that continuously monitors:
-    /// 1. DeviceSyncRequest table for on-demand "Sync Now" requests.
-    /// 2. DeviceSyncSchedule table for scheduled syncs.
-    ///
-    /// Executes meter synchronization via ProfileSyncService and broadcasts
-    /// real-time status changes to PQM.Server via SignalR.
-    /// </summary>
     public class DeviceConsoleRunnerService : BackgroundService
     {
         private readonly IServiceScopeFactory _scopeFactory;
@@ -46,8 +38,27 @@ namespace PQM.Console
             _serverHubUrl = configuration["ServerHubUrl"] ?? "http://localhost:5135/hubs/device";
         }
 
+        private static Mutex? _singleInstanceMutex;
+
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
+            bool createdNew = false;
+            try
+            {
+                _singleInstanceMutex = new Mutex(true, @"Global\PQMMeterReader_SingleInstance_Mutex", out createdNew);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("[PQM.Console] Exception creating single-instance mutex: {Message}. Continuing with process check.", ex.Message);
+            }
+
+            if (!createdNew)
+            {
+                System.Console.WriteLine("[PQM.Console] Another instance of PQMMeterReader / PQM.Console is already active. Exiting duplicate instance.");
+                _logger.LogWarning("[PQM.Console] Another instance of PQMMeterReader / PQM.Console is already active. Exiting duplicate instance.");
+                return;
+            }
+
             System.Console.WriteLine($"[PQM.Console] Production Sync Runner Started. Target Hub: {_serverHubUrl}");
             _logger.LogInformation("[PQM.Console] Production Sync Runner Started. Target Hub: {HubUrl}", _serverHubUrl);
 
@@ -86,14 +97,19 @@ namespace PQM.Console
                 }
             }, stoppingToken);
 
+            int tickCounter = 0;
             while (!stoppingToken.IsCancellationRequested)
             {
+                tickCounter++;
+                if (tickCounter % 12 == 1) 
+                {
+                    _logger.LogInformation("[PQM.Console] Service Heartbeat — Service active and polling. Time: {TimeUtc:yyyy-MM-dd HH:mm:ss UTC}.", DateTime.UtcNow);
+                }
+
                 try
                 {
-                    // 1. Process On-Demand Requests ("Sync Now")
                     await ProcessPendingSyncRequestsAsync(stoppingToken);
 
-                    // 2. Process Scheduled Syncs
                     await ProcessDueSchedulesAsync(stoppingToken);
                 }
                 catch (Exception ex)
@@ -135,11 +151,6 @@ namespace PQM.Console
                 }
             }
         }
-
-        // =========================================================
-        // ON-DEMAND SYNC REQUEST PROCESSING
-        // =========================================================
-
         private async Task ProcessPendingSyncRequestsAsync(CancellationToken stoppingToken)
         {
             var pendingRequests = await GetPendingSyncRequestsAsync(stoppingToken);
@@ -236,10 +247,6 @@ namespace PQM.Console
 
             await cmd.ExecuteNonQueryAsync(cancellationToken);
         }
-
-        // =========================================================
-        // SCHEDULED SYNC PROCESSING
-        // =========================================================
 
         private async Task ProcessDueSchedulesAsync(CancellationToken stoppingToken)
         {

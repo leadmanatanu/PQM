@@ -88,9 +88,9 @@ namespace PQM.Infrastructure.Services
                 _logger.LogWarning(ex, "[ProfileSyncService] Failed to insert initial DeviceSyncHistory record for Device {DeviceId}.", deviceId);
             }
 
-            // Hard 5-minute maximum cancellation timeout for per-device sweep
+            // Generous 15-minute outer safety timeout for complete per-device sweep
             using var hardCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            hardCts.CancelAfter(TimeSpan.FromMinutes(5));
+            hardCts.CancelAfter(TimeSpan.FromMinutes(15));
             var syncToken = hardCts.Token;
 
             try
@@ -124,9 +124,14 @@ namespace PQM.Infrastructure.Services
                             string obisCode = kvp.Key;
                             deviceResult.ProfilesAttempted++;
 
+                            using var profileCts = CancellationTokenSource.CreateLinkedTokenSource(syncToken);
+                            TimeSpan timeout = obisCode == "1.0.99.1.0.255" ? TimeSpan.FromMinutes(5.5) : TimeSpan.FromMinutes(3.0);
+                            profileCts.CancelAfter(timeout);
+                            var profileToken = profileCts.Token;
+
                             try
                             {
-                                var profileSyncRes = await SyncSingleProfileOnOpenReaderAsync(reader, device, obisCode, deviceTz, syncExecutionTimeUtc, syncToken);
+                                var profileSyncRes = await SyncSingleProfileOnOpenReaderAsync(reader, device, obisCode, deviceTz, syncExecutionTimeUtc, profileToken);
                                 deviceResult.ProfileResults[obisCode] = profileSyncRes;
 
                                 if (profileSyncRes.Success)
@@ -137,10 +142,19 @@ namespace PQM.Infrastructure.Services
                                     deviceResult.TotalRowsSkipped += profileSyncRes.RowsSkipped;
                                 }
                             }
+                            catch (OperationCanceledException) when (profileCts.IsCancellationRequested && !syncToken.IsCancellationRequested)
+                            {
+                                _logger.LogWarning("[ProfileSyncService] Profile '{ObisCode}' timed out after 3 minutes for Device {DeviceId}. Continuing remaining profiles...", obisCode, deviceId);
+                                deviceResult.ProfileResults[obisCode] = new SyncResult
+                                {
+                                    Success = false,
+                                    ErrorMessage = "Profile read timed out after 3 minutes"
+                                };
+                            }
                             catch (OperationCanceledException) when (syncToken.IsCancellationRequested)
                             {
                                 isTimedOut = true;
-                                throw; // Rethrow to outer handler
+                                throw; // Outer safety timeout
                             }
                             catch (Exception ex)
                             {
@@ -264,7 +278,49 @@ namespace PQM.Infrastructure.Services
                 return result;
             }
 
-            return await SaveReadingSessionAsync(device.Id, profileId, obisCode, isTimeSeries, deviceTz, rows, parameterMap, currentWatermarkUtc, syncExecutionTimeUtc);
+            return await SaveReadingSessionAsync(device.Id, profileId, obisCode, isTimeSeries, deviceTz, rows, columns, parameterMap, currentWatermarkUtc, syncExecutionTimeUtc);
+        }
+
+        private async Task<int> GetOrCreateParameterForColumnAsync(
+            SqlConnection conn,
+            SqlTransaction tx,
+            int profileId,
+            int colIndex,
+            IReadOnlyList<ProfileColumnInfo> columns)
+        {
+            string obis = (colIndex < columns.Count && !string.IsNullOrEmpty(columns[colIndex].LogicalName))
+                ? columns[colIndex].LogicalName
+                : $"Param_{profileId}_{colIndex}";
+
+            string name = (colIndex < columns.Count && !string.IsNullOrEmpty(columns[colIndex].Description))
+                ? columns[colIndex].Description
+                : obis;
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = "SELECT Id FROM Parameters WHERE ProfileId = @pid AND ObisCode = @obis";
+                cmd.Parameters.AddWithValue("@pid", profileId);
+                cmd.Parameters.AddWithValue("@obis", obis);
+                var existing = await cmd.ExecuteScalarAsync();
+                if (existing != null && existing != DBNull.Value)
+                {
+                    return Convert.ToInt32(existing);
+                }
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = @"INSERT INTO Parameters (ProfileId, Name, ObisCode, AttributeIndex, IsHistorical, IsVisible, CreatedAt)
+                                    VALUES (@pid, @name, @obis, 2, 1, 1, GETUTCDATE());
+                                    SELECT SCOPE_IDENTITY();";
+                cmd.Parameters.AddWithValue("@pid", profileId);
+                cmd.Parameters.AddWithValue("@name", name);
+                cmd.Parameters.AddWithValue("@obis", obis);
+                var newId = await cmd.ExecuteScalarAsync();
+                return Convert.ToInt32(newId);
+            }
         }
 
         private async Task UpdateDeviceStatusInDbAsync(int deviceId, string status, DateTime lastSyncUtc, string? lastError)
@@ -385,7 +441,7 @@ namespace PQM.Infrastructure.Services
                 var parameterMap = await EnsureParametersAsync(profileId, columns);
                 DateTime syncExecutionTimeUtc = DateTime.UtcNow;
 
-                return await SaveReadingSessionAsync(deviceId, profileId, obisCode, isTimeSeries, deviceTz, rows, parameterMap, currentWatermarkUtc, syncExecutionTimeUtc);
+                return await SaveReadingSessionAsync(deviceId, profileId, obisCode, isTimeSeries, deviceTz, rows, columns, parameterMap, currentWatermarkUtc, syncExecutionTimeUtc);
             }
             catch (Exception ex)
             {
@@ -403,6 +459,7 @@ namespace PQM.Infrastructure.Services
             bool isTimeSeries,
             TimeZoneInfo deviceTz,
             IReadOnlyList<ProfileRow> rows,
+            IReadOnlyList<ProfileColumnInfo> columns,
             Dictionary<int, int> parameterMap,
             DateTime? currentWatermarkUtc,
             DateTime syncExecutionTimeUtc)
@@ -455,8 +512,16 @@ namespace PQM.Infrastructure.Services
 
                         for (int cIdx = 0; cIdx < row.Values.Count; cIdx++)
                         {
-                            int parameterId = parameterMap.ContainsKey(cIdx) ? parameterMap[cIdx] : 0;
-                            if (parameterId == 0) continue;
+                            int parameterId = 0;
+                            if (parameterMap.TryGetValue(cIdx, out int pid) && pid > 0)
+                            {
+                                parameterId = pid;
+                            }
+                            else
+                            {
+                                parameterId = await GetOrCreateParameterForColumnAsync(conn, tx, profileId, cIdx, columns);
+                                parameterMap[cIdx] = parameterId;
+                            }
 
                             var cellObj = row.Values[cIdx];
                             string formattedVal = ValueFormatter.FormatValue(cellObj);
@@ -683,7 +748,8 @@ namespace PQM.Infrastructure.Services
             using var rdr = await cmd.ExecuteReaderAsync();
             while (await rdr.ReadAsync())
             {
-                set.Add(rdr.GetDateTime(0));
+                var dt = rdr.GetDateTime(0);
+                set.Add(DateTime.SpecifyKind(dt, DateTimeKind.Utc));
             }
 
             return set;

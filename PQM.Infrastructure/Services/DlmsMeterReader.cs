@@ -71,7 +71,13 @@ namespace PQM.Infrastructure.Services
         private static readonly ConcurrentDictionary<string, DateTime> _meterLastDisconnect
             = new ConcurrentDictionary<string, DateTime>();
 
-        private const int MeterCooldownSeconds = 5;
+        /// <summary>
+        /// Default conservative 8-second settling cooldown between sessions on the same meter.
+        /// Configurable via appsettings.json (DlmsSettings:MeterCooldownSeconds).
+        /// Value chosen conservatively to ensure DLMS meter firmware association layers reset.
+        /// </summary>
+        public static int DefaultMeterCooldownSeconds { get; set; } = 8;
+        private readonly int _meterCooldownSeconds;
 
         public GXDLMSObjectCollection Objects => _client.Objects;
 
@@ -88,10 +94,11 @@ namespace PQM.Infrastructure.Services
         ///   When true, traces every sent/received frame byte to Console. Useful for
         ///   diagnosing protocol issues; disable in production.
         /// </param>
-        public DlmsMeterReader(Device device, bool verboseLogging = false)
+        public DlmsMeterReader(Device device, bool verboseLogging = false, int meterCooldownSeconds = 0)
         {
             _device = device;
             _verboseLogging = verboseLogging;
+            _meterCooldownSeconds = meterCooldownSeconds > 0 ? meterCooldownSeconds : DefaultMeterCooldownSeconds;
             _connected = false;
             _isAssociated = false;
 
@@ -176,10 +183,11 @@ namespace PQM.Infrastructure.Services
                 if (_meterLastDisconnect.TryGetValue(meterKey, out var lastDisconnectUtc))
                 {
                     var elapsed = (DateTime.UtcNow - lastDisconnectUtc).TotalSeconds;
-                    if (elapsed < MeterCooldownSeconds)
+                    int targetCooldown = _meterCooldownSeconds > 0 ? _meterCooldownSeconds : DefaultMeterCooldownSeconds;
+                    if (elapsed < targetCooldown)
                     {
-                        var waitMs = (int)((MeterCooldownSeconds - elapsed) * 1000);
-                        Console.WriteLine($"[COOLDOWN] Meter {meterKey} disconnected {elapsed:F0}s ago. Waiting {waitMs}ms before reconnecting...");
+                        var waitMs = (int)((targetCooldown - elapsed) * 1000);
+                        Console.WriteLine($"[COOLDOWN] Meter {meterKey} disconnected {elapsed:F1}s ago. Waiting {waitMs}ms before reconnecting (cooldown = {targetCooldown}s)...");
                         await System.Threading.Tasks.Task.Delay(waitMs, cancellationToken);
                     }
                 }
@@ -447,11 +455,8 @@ namespace PQM.Infrastructure.Services
                 if (reply != null && reply.Error == 0)
                 {
                     var rows = ConvertProfileRows(reply.Value);
-                    if (rows.Count > 0)
-                    {
-                        Console.WriteLine($"[ReadProfileAllEntriesAsync] Range access succeeded for {obisCode}: {rows.Count} rows.");
-                        return rows;
-                    }
+                    Console.WriteLine($"[ReadProfileAllEntriesAsync] Range access succeeded for {obisCode}: {rows.Count} rows.");
+                    return rows;
                 }
                 else if (reply != null && reply.Error != 0)
                 {
@@ -768,14 +773,14 @@ namespace PQM.Infrastructure.Services
 
                 if (value is DateTime dateTime)
                 {
-                    if (dateTime.Year <= 1)
-                        return null; // Invalid/wildcarded clock entry — guard
+                    if (dateTime.Year <= 1 || dateTime.Year >= 9999)
+                        return null; // Invalid/wildcarded clock entry guard (e.g. Year 0 or 9999-12-31 unspecified)
                     return dateTime;
                 }
 
                 if (value is DateTimeOffset dateTimeOffset)
                 {
-                    if (dateTimeOffset.Year <= 1)
+                    if (dateTimeOffset.Year <= 1 || dateTimeOffset.Year >= 9999)
                         return null;
                     return dateTimeOffset.DateTime;
                 }
@@ -783,8 +788,8 @@ namespace PQM.Infrastructure.Services
                 if (value is GXDateTime gxDateTime)
                 {
                     var dt = gxDateTime.Value.DateTime;
-                    if (dt.Year <= 1)
-                        return null; // Invalid/wildcarded clock entry — guard
+                    if (dt.Year <= 1 || dt.Year >= 9999)
+                        return null; // Invalid/wildcarded clock entry guard
                     return dt;
                 }
 
@@ -793,7 +798,7 @@ namespace PQM.Infrastructure.Services
                     try
                     {
                         var gx = (GXDateTime)GXDLMSClient.ChangeType(bytes, DataType.DateTime);
-                        if (gx != null && gx.Value.DateTime.Year > 1)
+                        if (gx != null && gx.Value.DateTime.Year > 1 && gx.Value.DateTime.Year < 9999)
                             return gx.Value.DateTime;
                     }
                     catch
@@ -801,7 +806,7 @@ namespace PQM.Infrastructure.Services
                         try
                         {
                             var gxDate = (GXDateTime)GXDLMSClient.ChangeType(bytes, DataType.Date);
-                            if (gxDate != null && gxDate.Value.DateTime.Year > 1)
+                            if (gxDate != null && gxDate.Value.DateTime.Year > 1 && gxDate.Value.DateTime.Year < 9999)
                                 return gxDate.Value.DateTime;
                         }
                         catch { }

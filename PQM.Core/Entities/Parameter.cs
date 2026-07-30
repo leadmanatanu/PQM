@@ -27,7 +27,6 @@ namespace PQM.Core.Entities
         public int? ModifiedId { get; set; }
         [NotMapped]
         public bool IsSelected { get; set; }
-        public string TypeName { get; set; } = "ABT";
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public virtual Profile? Profile { get; set; }

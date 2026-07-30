@@ -1,6 +1,7 @@
 using PQM.Core.Entities;
 using PQM.Core.IRepositories;
-
+using Microsoft.EntityFrameworkCore;
+using PQM.Core.DTOs;
 namespace PQM.Infrastructure.Repositories
 {
     public class DeviceService : IDeviceService
@@ -18,10 +19,38 @@ namespace PQM.Infrastructure.Repositories
             dbContext.SaveChanges();
             return device.Id;
         }
-        public IQueryable<Device> GetDevices()
+
+
+        public IQueryable<DeviceDto> GetDevices()
         {
             DataContext dbContext = new DataContext(this._connectionString);
-            return dbContext.Device.Where(x => !x.IsDeleted);
+
+            return dbContext.Device
+                .Include(d => d.MeterType)
+                .Where(x => !x.IsDeleted)
+                .Select(d => new DeviceDto
+                {
+                    Id = d.Id,
+                    Name = d.Name,
+
+                    MeterTypeId = d.MeterTypeId,
+
+                    MeterTypeName = d.MeterType != null
+                        ? d.MeterType.Name
+                        : null,
+
+                    IP = d.IP,
+                    PORT = d.PORT,
+
+                    SerialNumber = d.SerialNumber,
+                    ConsumerNumber = d.ConsumerNumber,
+
+                    IsActive = d.IsActive,
+
+                    Status = d.Status,
+
+                    LastSync = d.LastSync
+                });
         }
         public bool UpdateDevice(Device device)
         {
@@ -44,7 +73,6 @@ namespace PQM.Infrastructure.Repositories
             deviceData.Authentication = device.Authentication;
             deviceData.Password = device.Password;
             deviceData.Timeout = device.Timeout;
-            deviceData.TypeName = device.TypeName;
             deviceData.TimeZoneId = device.TimeZoneId;
             deviceData.MeterTypeId = device.MeterTypeId;
             deviceData.ModifiedDate = DateTime.UtcNow;
