@@ -13,18 +13,13 @@ namespace PQM.Core.Entities
         public string? Description { get; set; }
         public string? DataType { get; set; }
         public string? ObjectType { get; set; }
-        public string? Attribute3 { get; set; }
         public int? AttributeIndex { get; set; }
         public bool IsHistorical { get; set; } = true;
         public bool IsVisible { get; set; } = true;
         public int? Scaler { get; set; }
+        public int? UnitCode { get; set; }
         public string? Unit { get; set; }
-        public bool IsActive { get; set; }
-        public bool IsDeleted { get; set; }
-        public DateTime CreatedDate { get; set; }
-        public int? CreatedId { get; set; }
-        public DateTime? ModifiedDate { get; set; }
-        public int? ModifiedId { get; set; }
+        public string? AggregationType { get; set; }
         [NotMapped]
         public bool IsSelected { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

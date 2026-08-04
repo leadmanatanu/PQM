@@ -15,9 +15,12 @@ namespace PQM.Infrastructure.Services
         public string ObjectType { get; set; } = string.Empty;
         public int AttributeIndex { get; set; }
         public string Description { get; set; } = string.Empty;
+        public int? Scaler { get; set; }
+        public int? UnitCode { get; set; }
+        public string? Unit { get; set; }
 
         public override string ToString() =>
-            $"Column {Index} | OBIS: {LogicalName} | Attribute: {AttributeIndex} | Type: {ObjectType} | Description: {Description}";
+            $"Column {Index} | OBIS: {LogicalName} | Attribute: {AttributeIndex} | Type: {ObjectType} | Scaler: {Scaler} | Unit: {Unit} | Description: {Description}";
     }
 
     /// <summary>

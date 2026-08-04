@@ -37,10 +37,10 @@ namespace PQM.Console
                 Log.Information("[PQM.Console] Starting PQM Meter Reader host...");
 
                 var host = Host.CreateDefaultBuilder(args)
-                    .UseWindowsService(options =>
-                    {
-                        options.ServiceName = "PQM Meter Reader";
-                    })
+                    //.UseWindowsService(options =>
+                    //{
+                    //    options.ServiceName = "PQM Meter Reader";
+                    //})
                     .UseSerilog()
                     .ConfigureAppConfiguration((hostingContext, config) =>
                     {

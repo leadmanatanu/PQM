@@ -41,6 +41,7 @@ namespace PQM.Infrastructure.Services
     public class ProfileSyncService
     {
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, byte> _activeDeviceSyncs = new();
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> _lockAcquiredTimes = new();
 
         private readonly string _connectionString;
         private readonly ILogger<ProfileSyncService> _logger;
@@ -52,9 +53,48 @@ namespace PQM.Infrastructure.Services
         }
 
         /// <summary>
-        /// Checks whether a sync is currently in progress for the specified device.
+        /// Checks whether a sync or scan is currently in progress for the specified device.
         /// </summary>
-        public bool IsDeviceSyncing(int deviceId) => _activeDeviceSyncs.ContainsKey(deviceId);
+        public bool IsDeviceSyncing(int deviceId) => IsLocked(deviceId);
+
+        public static bool TryAcquireLock(int deviceId)
+        {
+            if (_lockAcquiredTimes.TryGetValue(deviceId, out var acquiredAt))
+            {
+                if (DateTime.UtcNow - acquiredAt > TimeSpan.FromMinutes(5))
+                {
+                    _activeDeviceSyncs.TryRemove(deviceId, out _);
+                    _lockAcquiredTimes.TryRemove(deviceId, out _);
+                }
+            }
+
+            if (_activeDeviceSyncs.TryAdd(deviceId, 1))
+            {
+                _lockAcquiredTimes[deviceId] = DateTime.UtcNow;
+                return true;
+            }
+            return false;
+        }
+
+        public static void ReleaseLock(int deviceId)
+        {
+            _activeDeviceSyncs.TryRemove(deviceId, out _);
+            _lockAcquiredTimes.TryRemove(deviceId, out _);
+        }
+
+        public static bool IsLocked(int deviceId)
+        {
+            if (_lockAcquiredTimes.TryGetValue(deviceId, out var acquiredAt))
+            {
+                if (DateTime.UtcNow - acquiredAt > TimeSpan.FromMinutes(5))
+                {
+                    _activeDeviceSyncs.TryRemove(deviceId, out _);
+                    _lockAcquiredTimes.TryRemove(deviceId, out _);
+                    return false;
+                }
+            }
+            return _activeDeviceSyncs.ContainsKey(deviceId);
+        }
 
         /// <summary>
         /// Executes a full multi-profile sweep for a device under a SINGLE DlmsMeterReader connection/session.
@@ -64,7 +104,7 @@ namespace PQM.Infrastructure.Services
         {
             var deviceResult = new DeviceSyncResult { DeviceId = deviceId };
 
-            if (!_activeDeviceSyncs.TryAdd(deviceId, 1))
+            if (!TryAcquireLock(deviceId))
             {
                 deviceResult.Success = false;
                 deviceResult.AlreadyInProgress = true;
@@ -88,9 +128,9 @@ namespace PQM.Infrastructure.Services
                 _logger.LogWarning(ex, "[ProfileSyncService] Failed to insert initial DeviceSyncHistory record for Device {DeviceId}.", deviceId);
             }
 
-            // Generous 15-minute outer safety timeout for complete per-device sweep
+            // Generous 45-minute outer safety timeout for complete per-device sweep
             using var hardCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            hardCts.CancelAfter(TimeSpan.FromMinutes(15));
+            hardCts.CancelAfter(TimeSpan.FromMinutes(45));
             var syncToken = hardCts.Token;
 
             try
@@ -125,7 +165,12 @@ namespace PQM.Infrastructure.Services
                             deviceResult.ProfilesAttempted++;
 
                             using var profileCts = CancellationTokenSource.CreateLinkedTokenSource(syncToken);
-                            TimeSpan timeout = obisCode == "1.0.99.1.0.255" ? TimeSpan.FromMinutes(5.5) : TimeSpan.FromMinutes(3.0);
+                            TimeSpan timeout = obisCode switch
+                            {
+                                "1.0.99.1.0.255" => TimeSpan.FromMinutes(30), // Block Load Profile
+                                "1.0.99.2.0.255" => TimeSpan.FromMinutes(15), // Daily Load Profile
+                                _ => TimeSpan.FromMinutes(10)
+                            };
                             profileCts.CancelAfter(timeout);
                             var profileToken = profileCts.Token;
 
@@ -144,11 +189,11 @@ namespace PQM.Infrastructure.Services
                             }
                             catch (OperationCanceledException) when (profileCts.IsCancellationRequested && !syncToken.IsCancellationRequested)
                             {
-                                _logger.LogWarning("[ProfileSyncService] Profile '{ObisCode}' timed out after 3 minutes for Device {DeviceId}. Continuing remaining profiles...", obisCode, deviceId);
+                                _logger.LogWarning("[ProfileSyncService] Profile '{ObisCode}' timed out after {Minutes} minutes for Device {DeviceId}. Continuing remaining profiles...", obisCode, Math.Round(timeout.TotalMinutes), deviceId);
                                 deviceResult.ProfileResults[obisCode] = new SyncResult
                                 {
                                     Success = false,
-                                    ErrorMessage = "Profile read timed out after 3 minutes"
+                                    ErrorMessage = $"Profile read timed out after {Math.Round(timeout.TotalMinutes)} minutes"
                                 };
                             }
                             catch (OperationCanceledException) when (syncToken.IsCancellationRequested)
@@ -225,7 +270,7 @@ namespace PQM.Infrastructure.Services
                     }
                 }
 
-                _activeDeviceSyncs.TryRemove(deviceId, out _);
+                ReleaseLock(deviceId);
                 _logger.LogInformation("[ProfileSyncService] Concurrency lock RELEASED for Device {DeviceId}.", deviceId);
             }
         }
@@ -711,19 +756,39 @@ namespace PQM.Infrastructure.Services
                 if (existingParams.TryGetValue(obis, out int paramId))
                 {
                     map[i] = paramId;
+
+                    // Update metadata if Scaler/Unit was previously missing
+                    if (col.Scaler.HasValue || col.UnitCode.HasValue || !string.IsNullOrEmpty(col.Unit))
+                    {
+                        using var updateCmd = conn.CreateCommand();
+                        updateCmd.CommandText = @"
+                            UPDATE Parameters
+                            SET Scaler = ISNULL(Scaler, @scaler),
+                                UnitCode = ISNULL(UnitCode, @unitCode),
+                                Unit = ISNULL(Unit, @unit)
+                            WHERE Id = @id AND (Scaler IS NULL OR Unit IS NULL OR UnitCode IS NULL);";
+                        updateCmd.Parameters.AddWithValue("@scaler", (object?)col.Scaler ?? DBNull.Value);
+                        updateCmd.Parameters.AddWithValue("@unitCode", (object?)col.UnitCode ?? DBNull.Value);
+                        updateCmd.Parameters.AddWithValue("@unit", (object?)col.Unit ?? DBNull.Value);
+                        updateCmd.Parameters.AddWithValue("@id", paramId);
+                        await updateCmd.ExecuteNonQueryAsync();
+                    }
                 }
                 else
                 {
-                    // Create missing Parameter
+                    // Create missing Parameter with full DLMS metadata
                     using var cmd = conn.CreateCommand();
-                    cmd.CommandText = @"INSERT INTO Parameters (ProfileId, Name, ObisCode, ObjectType, AttributeIndex, IsHistorical, IsVisible, CreatedAt)
-                                        VALUES (@pid, @name, @obis, @objType, @attrIdx, 1, 1, GETUTCDATE());
+                    cmd.CommandText = @"INSERT INTO Parameters (ProfileId, Name, ObisCode, ObjectType, AttributeIndex, Scaler, UnitCode, Unit, IsHistorical, IsVisible, CreatedAt)
+                                        VALUES (@pid, @name, @obis, @objType, @attrIdx, @scaler, @unitCode, @unit, 1, 1, GETUTCDATE());
                                         SELECT SCOPE_IDENTITY();";
                     cmd.Parameters.AddWithValue("@pid", profileId);
                     cmd.Parameters.AddWithValue("@name", obis);
                     cmd.Parameters.AddWithValue("@obis", obis);
                     cmd.Parameters.AddWithValue("@objType", (object?)col.ObjectType ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@attrIdx", col.AttributeIndex);
+                    cmd.Parameters.AddWithValue("@scaler", (object?)col.Scaler ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@unitCode", (object?)col.UnitCode ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@unit", (object?)col.Unit ?? DBNull.Value);
 
                     var newId = await cmd.ExecuteScalarAsync();
                     int newParamId = Convert.ToInt32(newId);
