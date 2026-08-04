@@ -9,7 +9,7 @@ using System.Text.Json.Serialization;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers().AddJsonOptions(options =>
-{
+{   
     options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
 });
 
@@ -26,7 +26,6 @@ builder.Services.AddTransient<IDeviceService>(_ =>
 
 builder.Services.AddScoped<DataContext>(provider => new DataContext(connectionString));
 builder.Services.AddScoped<IDeviceRepository, DeviceRepository>();
-
 builder.Services.AddSignalR();
 
 builder.Services.AddCors(options =>

@@ -77,7 +77,7 @@ BEGIN
         [ModifiedDate] [datetime2](7) NULL,
         [ModifiedId] [int] NULL,
         [LastSync] [datetime2](7) NULL,
-        [ClientAddress] [int] NULL DEFAULT 16,
+        [ClientAddress] [int] NULL DEFAULT 32, -- Default 32 for DLMS Meter Reader access (16 for Public/Management)
         [Password] [nvarchar](max) NULL,
         [ServerAddress] [int] NULL DEFAULT 1,
         [Timeout] [int] NULL DEFAULT 30000,

@@ -123,11 +123,20 @@ namespace PQM.Infrastructure.Services
             // ServerAddress: use Device.ServerAddress if set, fall back to 1.
             var serverAddress = (device.ServerAddress ?? 1);
 
+            // ClientAddress: Default to 16 for Authentication.None, but auto-correct to 32
+            // for Low/High authentication if left at unconfigured/default 16, preventing meter AARQ rejection.
+            int clientAddress = device.ClientAddress ?? (authEnum != Authentication.None ? 32 : 16);
+            if (authEnum != Authentication.None && clientAddress == 16)
+            {
+                Console.WriteLine($"[DLMS_SAFETY] Device {device.Id} ('{device.Name}') is configured with {authEnum} auth but ClientAddress=16 (Public). Auto-correcting to ClientAddress=32 for DLMS session.");
+                clientAddress = 32;
+            }
+
             _client = new GXDLMSClient(true)
             {
                 UseLogicalNameReferencing = true,
 
-                ClientAddress = device.ClientAddress ?? 16,
+                ClientAddress = clientAddress,
 
                 ServerAddress = serverAddress,
 
@@ -201,8 +210,9 @@ namespace PQM.Infrastructure.Services
                     cancellationToken.ThrowIfCancellationRequested();
                     try
                     {
-                        _media.Open();
+                        Console.WriteLine($"[DIAGNOSTIC_CONNECT] Device={_device.Id} ('{_device.Name}'), IP={_device.IP}:{_device.PORT}, ClientAddr={_client.ClientAddress}, ServerAddr={_client.ServerAddress}, Auth={_client.Authentication} (TypeId={_device.AuthenticationTypeId}), PW_Len={_client.Password?.Length ?? 0}");
 
+                        _media.Open();
                         var aarqRequests = _client.AARQRequest();
 
                         if (_verboseLogging)
@@ -358,6 +368,11 @@ namespace PQM.Infrastructure.Services
             return _client.UpdateValue(obj, attributeIndex, reply.Value);
         }
 
+        public GXDLMSObject? FindObjectByObis(string obisCode)
+        {
+            return _client.Objects.FirstOrDefault(o => o.LogicalName == obisCode);
+        }
+
         // =========================================================
         // GET PROFILE OBJECTS
         // =========================================================
@@ -400,12 +415,50 @@ namespace PQM.Infrastructure.Services
 
             foreach (var captureObject in profile.CaptureObjects)
             {
+                var targetObj = captureObject.Key;
+                int? scaler = null;
+                int? unitCode = null;
+                string? unitStr = null;
+
+                if (targetObj is GXDLMSRegister reg)
+                {
+                    try
+                    {
+                        // Attribute 3 contains Scaler and Unit metadata
+                        await ReadObjectAsync(reg, 3, cancellationToken);
+                        scaler = Convert.ToInt32(reg.Scaler);
+                        unitCode = (int)reg.Unit;
+                        unitStr = reg.Unit != Unit.None ? reg.Unit.ToString() : null;
+                    }
+                    catch
+                    {
+                        // Fallback if attribute 3 is not supported by meter for this specific register
+                    }
+                }
+                else if (targetObj is GXDLMSDemandRegister demandReg)
+                {
+                    try
+                    {
+                        await ReadObjectAsync(demandReg, 3, cancellationToken);
+                        scaler = Convert.ToInt32(demandReg.Scaler);
+                        unitCode = (int)demandReg.Unit;
+                        unitStr = demandReg.Unit != Unit.None ? demandReg.Unit.ToString() : null;
+                    }
+                    catch
+                    {
+                        // Fallback if attribute 3 is not supported
+                    }
+                }
+
                 result.Add(new ProfileColumnInfo
                 {
                     Index = index++,
-                    LogicalName = captureObject.Key.LogicalName,
-                    ObjectType = captureObject.Key.GetType().Name,
+                    LogicalName = targetObj.LogicalName,
+                    ObjectType = targetObj.GetType().Name,
                     AttributeIndex = captureObject.Value?.AttributeIndex ?? 2,
+                    Scaler = scaler,
+                    UnitCode = unitCode,
+                    Unit = unitStr,
                     Description = string.Empty
                 });
             }
@@ -450,6 +503,11 @@ namespace PQM.Infrastructure.Services
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     reply = await SendAndReceiveAsync(request, cancellationToken);
+                    if (reply != null && reply.Error != 0)
+                    {
+                        Console.WriteLine($"[INFO] Range access request for {obisCode} returned DLMS error {reply.Error}. Breaking range read...");
+                        break;
+                    }
                 }
 
                 if (reply != null && reply.Error == 0)
@@ -473,7 +531,7 @@ namespace PQM.Infrastructure.Services
             }
 
             // --- Attempt 2: ReadRowsByEntry (full buffer by entry index) ---
-            uint entryCount = profile.EntriesInUse;
+            uint entryCount = profile.EntriesInUse > 0 ? profile.EntriesInUse : 100;
             Console.WriteLine($"[INFO] Reading {obisCode} by entry index (1 to {entryCount})...");
 
             try
@@ -870,8 +928,11 @@ namespace PQM.Infrastructure.Services
                     byte[][]? releaseReqs = null;
                     byte[]? discReq = null;
 
-                    try { releaseReqs = _client.ReleaseRequest(); } catch (Exception ex) { Console.WriteLine($"[DISCONNECT TRACE] ReleaseRequest ex: {ex.Message}"); }
-                    try { discReq = _client.DisconnectRequest(); } catch (Exception ex) { Console.WriteLine($"[DISCONNECT TRACE] DisconnectRequest ex: {ex.Message}"); }
+                    if (_client != null && _client.InterfaceType != InterfaceType.WRAPPER)
+                    {
+                        try { releaseReqs = _client.ReleaseRequest(); } catch (Exception ex) { Console.WriteLine($"[DISCONNECT TRACE] ReleaseRequest ex: {ex.Message}"); }
+                        try { discReq = _client.DisconnectRequest(); } catch (Exception ex) { Console.WriteLine($"[DISCONNECT TRACE] DisconnectRequest ex: {ex.Message}"); }
+                    }
 
                     Console.WriteLine($"[DISCONNECT TRACE] ReleaseRequest count: {releaseReqs?.Length ?? 0}, DisconnectRequest frame: {(discReq != null ? BitConverter.ToString(discReq) : "null")}");
 

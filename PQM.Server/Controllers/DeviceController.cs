@@ -6,8 +6,10 @@ using PQM.Core.IRepositories;
 using PQM.Core.Interfaces.Repositories;
 using PQM.Infrastructure;
 using PQM.Server.Models;
+using PQM.Infrastructure.Services;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -208,6 +210,146 @@ namespace PQM.Server.Controllers
                     _apiResponse.Errors.Clear();
                     return Ok(_apiResponse);
                 }
+            }
+            catch (Exception ex)
+            {
+                _apiResponse.Status = false;
+                _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
+                _apiResponse.Data = null;
+                _apiResponse.Errors = new List<string> { ex.Message };
+                return Ok(_apiResponse);
+            }
+        }
+
+        public class DeviceScanRequest
+        {
+            public int? ProfileId { get; set; }
+            public List<int>? ParameterIds { get; set; }
+        }
+
+        /// <summary>
+        /// Submits a live scan request. Returns a scanRequestId immediately.
+        /// PQM.Console picks up the request, executes it against the meter, and stores results.
+        /// Poll GET /api/device/{id}/scan/result/{scanRequestId} for completion.
+        ///
+        /// ARCHITECTURAL NOTE: This endpoint intentionally does NOT open a DlmsMeterReader
+        /// connection directly. All DLMS/meter communication is owned exclusively by PQM.Console
+        /// so that PQM.Server restarts cannot interrupt in-progress connections, and so that
+        /// scan and scheduled-sync operations are serialized through a single process.
+        /// Do NOT add direct DlmsMeterReader calls back to this controller.
+        /// </summary>
+        [HttpPost("{id:int}/scan")]
+        public async Task<ActionResult> ScanDevice(int id, [FromBody] DeviceScanRequest? request, CancellationToken cancellationToken)
+        {
+            try
+            {
+                // Verify device exists
+                using var conn = new Microsoft.Data.SqlClient.SqlConnection(_connectionString);
+                await conn.OpenAsync(cancellationToken);
+
+                using (var checkCmd = conn.CreateCommand())
+                {
+                    checkCmd.CommandText = "SELECT COUNT(1) FROM Devices WHERE Id = @id AND (IsDeleted = 0 OR IsDeleted IS NULL)";
+                    checkCmd.Parameters.AddWithValue("@id", id);
+                    var count = Convert.ToInt32(await checkCmd.ExecuteScalarAsync(cancellationToken));
+                    if (count == 0)
+                        return NotFound(new { error = $"Device {id} not found." });
+                }
+
+                // Serialize ParameterIds as JSON for storage
+                string? paramIdsJson = null;
+                if (request?.ParameterIds != null && request.ParameterIds.Count > 0)
+                    paramIdsJson = System.Text.Json.JsonSerializer.Serialize(request.ParameterIds);
+
+                long scanRequestId;
+                using (var insertCmd = conn.CreateCommand())
+                {
+                    insertCmd.CommandText = @"
+                        INSERT INTO DeviceScanRequest (DeviceId, ProfileId, ParameterIds, Status, RequestedAt)
+                        VALUES (@deviceId, @profileId, @paramIds, 'Pending', GETUTCDATE());
+                        SELECT SCOPE_IDENTITY();";
+                    insertCmd.Parameters.AddWithValue("@deviceId", id);
+                    insertCmd.Parameters.AddWithValue("@profileId", (object?)(request?.ProfileId) ?? DBNull.Value);
+                    insertCmd.Parameters.AddWithValue("@paramIds", (object?)paramIdsJson ?? DBNull.Value);
+                    scanRequestId = Convert.ToInt64(await insertCmd.ExecuteScalarAsync(cancellationToken));
+                }
+
+                _logger.LogInformation("[DeviceController] Live scan queued for Device {DeviceId} — ScanRequestId={ScanRequestId}.", id, scanRequestId);
+
+                _apiResponse.Status = true;
+                _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
+                _apiResponse.Data = new { scanRequestId, deviceId = id, status = "Pending" };
+                _apiResponse.Errors.Clear();
+                return Ok(_apiResponse);
+            }
+            catch (Exception ex)
+            {
+                _apiResponse.Status = false;
+                _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
+                _apiResponse.Data = null;
+                _apiResponse.Errors = new List<string> { ex.Message };
+                return Ok(_apiResponse);
+            }
+        }
+
+        /// <summary>
+        /// Polls the result of a previously submitted scan request.
+        /// Returns status: Pending | Processing | Completed | Failed.
+        /// When Completed, the data field contains scannedAt + items[].
+        /// </summary>
+        [HttpGet("{id:int}/scan/result/{scanRequestId:long}")]
+        public async Task<ActionResult> GetScanResult(int id, long scanRequestId, CancellationToken cancellationToken)
+        {
+            try
+            {
+                using var conn = new Microsoft.Data.SqlClient.SqlConnection(_connectionString);
+                await conn.OpenAsync(cancellationToken);
+
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    SELECT Status, ResultJson, ErrorMessage
+                    FROM DeviceScanRequest
+                    WHERE Id = @id AND DeviceId = @deviceId";
+                cmd.Parameters.AddWithValue("@id", scanRequestId);
+                cmd.Parameters.AddWithValue("@deviceId", id);
+
+                using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+                if (!await reader.ReadAsync(cancellationToken))
+                    return NotFound(new { error = $"Scan request {scanRequestId} not found for device {id}." });
+
+                string status = reader.GetString(0);
+                string? resultJson = reader.IsDBNull(1) ? null : reader.GetString(1);
+                string? errorMessage = reader.IsDBNull(2) ? null : reader.GetString(2);
+
+                if (status == "Completed" && resultJson != null)
+                {
+                    var resultData = System.Text.Json.JsonSerializer.Deserialize<object>(resultJson);
+                    _apiResponse.Status = true;
+                    _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
+                    _apiResponse.Data = resultData;
+                    _apiResponse.Errors.Clear();
+                    return Ok(_apiResponse);
+                }
+
+                if (status == "Failed")
+                {
+                    bool isConcurrency = errorMessage?.Contains("already syncing") == true ||
+                                        errorMessage?.Contains("already scanning") == true;
+                    _apiResponse.Status = false;
+                    _apiResponse.StatusCode = isConcurrency
+                        ? System.Net.HttpStatusCode.Conflict
+                        : System.Net.HttpStatusCode.BadRequest;
+                    _apiResponse.Data = null;
+                    _apiResponse.Errors = new List<string> { errorMessage ?? "Scan failed." };
+                    return isConcurrency ? StatusCode(409, _apiResponse) : Ok(_apiResponse);
+                }
+
+                // Still Pending or Processing
+                _apiResponse.Status = true;
+                _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
+                _apiResponse.Data = new { scanRequestId, deviceId = id, status };
+                _apiResponse.Errors.Clear();
+                return Ok(_apiResponse);
             }
             catch (Exception ex)
             {
