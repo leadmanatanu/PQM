@@ -9,7 +9,7 @@ namespace PQM.Infrastructure
     {
         public DataContext CreateDbContext(string[] args)
         {
-            string connectionString = "Data Source=DESKTOP-K586V53\\MSSQLSERVER01;Initial Catalog=PQM;Integrated Security=True;TrustServerCertificate=True";
+            string connectionString = "Server=localhost;Database=PQM;Integrated Security=True;TrustServerCertificate=True;";
 
             try
             {

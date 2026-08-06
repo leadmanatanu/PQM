@@ -15,13 +15,12 @@ namespace PQM.Server.Controllers
     {
         private readonly APIResponse _apiResponse = new();
         private readonly ILogger<ParameterController> _logger;
-        private readonly string _connectionString;
+        private readonly DataContext _db;
 
-        public ParameterController(ILogger<ParameterController> logger, IConfiguration configuration)
+        public ParameterController(ILogger<ParameterController> logger, DataContext db)
         {
             _logger = logger;
-            _connectionString = configuration.GetConnectionString("DefaultConnection") 
-                ?? throw new InvalidOperationException("Connection string not found.");
+            _db = db ?? throw new ArgumentNullException(nameof(db));
         }
 
         [HttpGet]
@@ -29,8 +28,7 @@ namespace PQM.Server.Controllers
         {
             try
             {
-                using var db = new DataContext(_connectionString);
-                var query = db.Parameter.Where(p => p.IsVisible);
+                var query = _db.Parameter.Where(p => p.IsVisible);
 
                 if (profileId.HasValue && profileId.Value > 0)
                 {

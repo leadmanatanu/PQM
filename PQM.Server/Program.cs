@@ -1,5 +1,4 @@
 using PQM.Infrastructure.Services;
-using PQM.Core.IRepositories;
 using PQM.Core.Interfaces.Repositories;
 using PQM.Infrastructure.Repositories;
 using PQM.Infrastructure;
@@ -21,10 +20,7 @@ var connectionString =
         "Connection string 'DefaultConnection' not found."
     );
 
-builder.Services.AddTransient<IDeviceService>(_ =>
-    new DeviceService(connectionString));
-
-builder.Services.AddScoped<DataContext>(provider => new DataContext(connectionString));
+builder.Services.AddDbContext<DataContext>(options => options.UseSqlServer(connectionString));
 builder.Services.AddScoped<IDeviceRepository, DeviceRepository>();
 builder.Services.AddSignalR();
 

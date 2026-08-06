@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using PQM.Core.Entities;
-using PQM.Core.IRepositories;
 using PQM.Core.Interfaces.Repositories;
 using PQM.Infrastructure;
 using PQM.Server.Models;
@@ -189,6 +188,30 @@ namespace PQM.Server.Controllers
                     }
                 }
 
+                // Deduplication check: return existing active request if already Pending or Processing
+                using (var existingCmd = conn.CreateCommand())
+                {
+                    existingCmd.CommandText = "SELECT TOP 1 Id, Status FROM DeviceSyncRequest WHERE DeviceId = @id AND Status IN ('Pending', 'Processing') ORDER BY RequestedAt DESC";
+                    existingCmd.Parameters.AddWithValue("@id", id);
+                    using var r = await existingCmd.ExecuteReaderAsync(cancellationToken);
+                    if (await r.ReadAsync(cancellationToken))
+                    {
+                        long existingId = r.GetInt64(0);
+                        string existingStatus = r.GetString(1);
+                        _apiResponse.Status = true;
+                        _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
+                        _apiResponse.Data = new
+                        {
+                            requestId = existingId,
+                            deviceId = id,
+                            status = existingStatus,
+                            message = $"Sync request already active (Request #{existingId}, Status: {existingStatus})."
+                        };
+                        _apiResponse.Errors.Clear();
+                        return Ok(_apiResponse);
+                    }
+                }
+
                 using (var cmd = conn.CreateCommand())
                 {
                     cmd.CommandText = @"
@@ -254,6 +277,25 @@ namespace PQM.Server.Controllers
                     var count = Convert.ToInt32(await checkCmd.ExecuteScalarAsync(cancellationToken));
                     if (count == 0)
                         return NotFound(new { error = $"Device {id} not found." });
+                }
+
+                // Deduplication check: return existing active scan if already Pending or Processing
+                using (var existingScanCmd = conn.CreateCommand())
+                {
+                    existingScanCmd.CommandText = "SELECT TOP 1 Id, Status FROM DeviceScanRequest WHERE DeviceId = @id AND Status IN ('Pending', 'Processing') ORDER BY RequestedAt DESC";
+                    existingScanCmd.Parameters.AddWithValue("@id", id);
+                    using var r = await existingScanCmd.ExecuteReaderAsync(cancellationToken);
+                    if (await r.ReadAsync(cancellationToken))
+                    {
+                        long existingScanId = r.GetInt64(0);
+                        string existingStatus = r.GetString(1);
+                        _logger.LogInformation("[DeviceController] Live scan already active for Device {DeviceId} — ScanRequestId={ScanRequestId}, Status={Status}.", id, existingScanId, existingStatus);
+                        _apiResponse.Status = true;
+                        _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
+                        _apiResponse.Data = new { scanRequestId = existingScanId, deviceId = id, status = existingStatus };
+                        _apiResponse.Errors.Clear();
+                        return Ok(_apiResponse);
+                    }
                 }
 
                 // Serialize ParameterIds as JSON for storage

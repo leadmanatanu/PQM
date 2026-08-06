@@ -61,7 +61,7 @@ namespace PQM.Infrastructure.Services
         {
             if (_lockAcquiredTimes.TryGetValue(deviceId, out var acquiredAt))
             {
-                if (DateTime.UtcNow - acquiredAt > TimeSpan.FromMinutes(5))
+                if (DateTime.UtcNow - acquiredAt > TimeSpan.FromMinutes(45))
                 {
                     _activeDeviceSyncs.TryRemove(deviceId, out _);
                     _lockAcquiredTimes.TryRemove(deviceId, out _);
@@ -86,7 +86,7 @@ namespace PQM.Infrastructure.Services
         {
             if (_lockAcquiredTimes.TryGetValue(deviceId, out var acquiredAt))
             {
-                if (DateTime.UtcNow - acquiredAt > TimeSpan.FromMinutes(5))
+                if (DateTime.UtcNow - acquiredAt > TimeSpan.FromMinutes(45))
                 {
                     _activeDeviceSyncs.TryRemove(deviceId, out _);
                     _lockAcquiredTimes.TryRemove(deviceId, out _);
