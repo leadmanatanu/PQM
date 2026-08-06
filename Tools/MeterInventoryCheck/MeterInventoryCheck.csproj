@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>MeterInventoryCheck</AssemblyName>
+  </PropertyGroup>
+
+  <!-- Reference PQM.Infrastructure directly so we reuse DlmsMeterReader exactly
+       as the real app does — same DLMS stack, same AllData=false fix, same
+       cooldown handling, same disconnect logic. No reimplementation. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\PQM.Infrastructure\PQM.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <!-- EF Core SqlServer is pulled transitively from PQM.Infrastructure, but we
+       also need Microsoft.Data.SqlClient for the raw ADO.NET device-fetch below. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.1" />
+  </ItemGroup>
+
+</Project>
