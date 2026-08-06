@@ -39,4 +39,26 @@ namespace PQM.Infrastructure.Services
             return $"{Timestamp:yyyy-MM-dd HH:mm:ss} | {values}";
         }
     }
+
+    /// <summary>
+    /// Result of a lightweight diagnostic inventory read against a single ProfileGeneric.
+    /// Populated by DlmsMeterReader.ReadProfileInventoryAsync().
+    /// Carries only count + boundary timestamps — no row data.
+    /// </summary>
+    public sealed class ProfileInventoryResult
+    {
+        public string ObisCode { get; set; } = string.Empty;
+
+        /// <summary>EntriesInUse (attribute 7). Null if the read failed.</summary>
+        public int? EntriesInUse { get; set; }
+        public string? EntriesInUseError { get; set; }
+
+        /// <summary>Timestamp of the first (oldest) entry in the meter's buffer.</summary>
+        public DateTime? Earliest { get; set; }
+        public string? EarliestError { get; set; }
+
+        /// <summary>Timestamp of the last (most recent) entry in the meter's buffer.</summary>
+        public DateTime? Latest { get; set; }
+        public string? LatestError { get; set; }
+    }
 }

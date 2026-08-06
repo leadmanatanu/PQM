@@ -14,24 +14,7 @@ using PQM.Server.Hubs;
 
 namespace PQM.Server.Services
 {
-    // ╔══════════════════════════════════════════════════════════════════════════════════════════╗
-    // ║  ⚠  ARCHITECTURAL CONSTRAINT — DO NOT REGISTER THIS CLASS IN Program.cs  ⚠             ║
-    // ║                                                                                        ║
-    // ║  This class is retained for reference ONLY. It must NEVER be added as a hosted service ║
-    // ║  (AddHostedService) inside PQM.Server.                                                 ║
-    // ║                                                                                        ║
-    // ║  Architectural rule: ALL meter communication (DlmsMeterReader / ProfileSyncService)    ║
-    // ║  and ALL scheduled sync execution must run exclusively inside PQM.Console.             ║
-    // ║                                                                                        ║
-    // ║  Why: PQM.Console is a separate, independent process so web server restarts or         ║
-    // ║  deploys cannot interrupt an in-progress sync. Running this inside PQM.Server breaks   ║
-    // ║  that guarantee and silently recreates a dual-scheduler race condition where two        ║
-    // ║  processes both see a due schedule and fire competing concurrent syncs for the same     ║
-    // ║  device (the bug diagnosed on 2026-08-03, records #69 and #70 in DeviceSyncHistory).   ║
-    // ║                                                                                        ║
-    // ║  If you need to trigger a sync from PQM.Server, INSERT a row into DeviceSyncRequest    ║
-    // ║  with Status='Pending' — PQM.Console's ProcessPendingSyncRequestsAsync will pick it up.║
-    // ╚══════════════════════════════════════════════════════════════════════════════════════════╝
+   
     public class DeviceScheduleRunnerService : BackgroundService
     {
         private readonly IServiceScopeFactory _scopeFactory;

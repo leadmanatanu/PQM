@@ -383,6 +383,175 @@ namespace PQM.Infrastructure.Services
         }
 
         // =========================================================
+        // READ PROFILE INVENTORY (diagnostic-only, minimal reads)
+        //
+        // Used exclusively by the MeterInventoryCheck diagnostic tool.
+        // Reads only:
+        //   • Attribute 3 (CaptureObjects)  — needed to populate schema so
+        //     ReadRowsByEntry can send the right selective-access descriptor.
+        //   • Attribute 7 (EntriesInUse)    — the total count without pulling data.
+        //   • ReadRowsByEntry(1, 1)          — the very first entry (earliest ts).
+        //   • ReadRowsByEntry(N, 1)          — the very last entry (latest ts).
+        //
+        // This does NOT read the full buffer and writes NOTHING to the database.
+        // =========================================================
+
+        /// <summary>
+        /// Lightweight profile inventory: returns entry count, earliest timestamp,
+        /// and latest timestamp for a ProfileGeneric object identified by its OBIS code.
+        /// Reads the absolute minimum from the meter (attr 3 + attr 7 + 2 entry reads).
+        /// Throws if the profile is not found in the association view.
+        /// </summary>
+        public async System.Threading.Tasks.Task<ProfileInventoryResult> ReadProfileInventoryAsync(
+            string obisCode,
+            System.Threading.CancellationToken cancellationToken = default)
+        {
+            EnsureConnected();
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var profile = _client.Objects
+                .OfType<GXDLMSProfileGeneric>()
+                .FirstOrDefault(o => o.LogicalName == obisCode)
+                ?? throw new InvalidOperationException(
+                       $"Profile object ({obisCode}) not found in meter objects. Call ReadAssociationViewAsync() first.");
+
+            var result = new ProfileInventoryResult { ObisCode = obisCode };
+
+            // ── Attribute 3: CaptureObjects (needed before entry reads) ──────
+            await ReadObjectAsync(profile, 3, cancellationToken);
+
+            // ── Attribute 7: EntriesInUse ────────────────────────────────────
+            try
+            {
+                await ReadObjectAsync(profile, 7, cancellationToken);
+                result.EntriesInUse = (int)profile.EntriesInUse;
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                result.EntriesInUseError = ex.Message;
+            }
+
+            if (result.EntriesInUse is null or 0)
+                return result; // Can't do boundary reads without a valid count.
+
+            uint n = (uint)result.EntriesInUse.Value;
+
+            // ── First entry (index 1, count 1) ───────────────────────────────
+            try
+            {
+                var firstReqs = _client.ReadRowsByEntry(profile, 1, 1);
+                GXReplyData? firstReply = null;
+                foreach (var req in firstReqs)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    firstReply = await SendAndReceiveAsync(req, cancellationToken);
+                }
+                if (firstReply?.Error == 0 && firstReply.Value != null)
+                {
+                    var parsed = _client.UpdateValue(profile, 2, firstReply.Value);
+                    var rows = ConvertProfileRows(parsed ?? firstReply.Value);
+                    result.Earliest = rows.FirstOrDefault(r => r.Timestamp.HasValue)?.Timestamp;
+                }
+                else if (firstReply != null && firstReply.Error != 0)
+                {
+                    result.EarliestError = $"DLMS Error {firstReply.Error}";
+                }
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                result.EarliestError = ex.Message;
+            }
+
+            // ── Last entry (index N, count 1) ────────────────────────────────
+            try
+            {
+                var lastReqs = _client.ReadRowsByEntry(profile, n, 1);
+                GXReplyData? lastReply = null;
+                foreach (var req in lastReqs)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    lastReply = await SendAndReceiveAsync(req, cancellationToken);
+                }
+                if (lastReply?.Error == 0 && lastReply.Value != null)
+                {
+                    var parsed = _client.UpdateValue(profile, 2, lastReply.Value);
+                    var rows = ConvertProfileRows(parsed ?? lastReply.Value);
+                    result.Latest = rows.FirstOrDefault(r => r.Timestamp.HasValue)?.Timestamp;
+                }
+                else if (lastReply != null && lastReply.Error != 0)
+                {
+                    result.LatestError = $"DLMS Error {lastReply.Error}";
+                }
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                result.LatestError = ex.Message;
+            }
+
+            // If entry-access selective access failed for earliest/latest, try range-access fallback (Attempt 2)
+            if (!result.Earliest.HasValue || !result.Latest.HasValue)
+            {
+                try
+                {
+                    var start = new GXDateTime(new DateTime(2000, 1, 1));
+                    var end = new GXDateTime(DateTime.Now);
+                    start.Skip = DateTimeSkips.Deviation | DateTimeSkips.Status;
+                    end.Skip = DateTimeSkips.Deviation | DateTimeSkips.Status;
+
+                    var reqs = _client.ReadRowsByRange(profile, start, end);
+                    GXReplyData? rangeReply = null;
+                    foreach (var req in reqs)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        rangeReply = await SendAndReceiveAsync(req, cancellationToken);
+                        if (rangeReply != null && rangeReply.Error != 0) break;
+                    }
+
+                    if (rangeReply?.Error == 0 && rangeReply.Value != null)
+                    {
+                        var parsed = _client.UpdateValue(profile, 2, rangeReply.Value);
+                        var rows = ConvertProfileRows(parsed ?? rangeReply.Value);
+                        if (!result.Earliest.HasValue)
+                            result.Earliest = rows.FirstOrDefault(r => r.Timestamp.HasValue)?.Timestamp;
+                        if (!result.Latest.HasValue)
+                            result.Latest = rows.LastOrDefault(r => r.Timestamp.HasValue)?.Timestamp;
+                    }
+                }
+                catch (OperationCanceledException) { throw; }
+                catch { }
+            }
+
+            // Ultimate Fallback: if selective access by entry and range both failed (e.g. meter returned DLMS Error 2),
+            // call ReadProfileAllEntriesAsync which handles full buffer attribute 2 fallback.
+            if (!result.Earliest.HasValue || !result.Latest.HasValue)
+            {
+                try
+                {
+                    var allRows = await ReadProfileAllEntriesAsync(obisCode, cancellationToken: cancellationToken);
+                    if (!result.Earliest.HasValue)
+                        result.Earliest = allRows.FirstOrDefault(r => r.Timestamp.HasValue)?.Timestamp;
+                    if (!result.Latest.HasValue)
+                        result.Latest = allRows.LastOrDefault(r => r.Timestamp.HasValue)?.Timestamp;
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    if (!result.Earliest.HasValue) result.EarliestError = ex.Message;
+                    if (!result.Latest.HasValue) result.LatestError = ex.Message;
+                }
+            }
+
+            return result;
+        }
+
+        // =========================================================
+        // GET PROFILE OBJECTS
+        // =========================================================
+
+        // =========================================================
         // READ CAPTURE OBJECTS (attribute 3)
         // =========================================================
 
@@ -675,15 +844,29 @@ namespace PQM.Infrastructure.Services
                 receiveParameters.Count = 8;
             }
 
-            bool received;
-            lock (_media.Synchronous)
+            bool received = false;
+            int retries = 3;
+            while (retries > 0)
             {
-                _media.Send(request, null);
+                lock (_media.Synchronous)
+                {
+                    _media.Send(request, null);
 
-                if (_verboseLogging)
-                    Console.WriteLine($"[SEND] ({request.Length} bytes): {BitConverter.ToString(request)}");
+                    if (_verboseLogging)
+                        Console.WriteLine($"[SEND] ({request.Length} bytes): {BitConverter.ToString(request)}");
 
-                received = _media.Receive(receiveParameters);
+                    received = _media.Receive(receiveParameters);
+                }
+
+                if (received) break;
+
+                retries--;
+                if (retries > 0)
+                {
+                    if (_verboseLogging)
+                        Console.WriteLine("[RECV RETRY] No reply received. Retrying frame request...");
+                    System.Threading.Thread.Sleep(500);
+                }
             }
 
             if (receiveParameters.Reply != null)
@@ -832,14 +1015,14 @@ namespace PQM.Infrastructure.Services
                 if (value is DateTime dateTime)
                 {
                     if (dateTime.Year <= 1 || dateTime.Year >= 9999)
-                        return null; // Invalid/wildcarded clock entry guard (e.g. Year 0 or 9999-12-31 unspecified)
+                        continue; // Invalid/wildcarded clock entry guard; check next element
                     return dateTime;
                 }
 
                 if (value is DateTimeOffset dateTimeOffset)
                 {
                     if (dateTimeOffset.Year <= 1 || dateTimeOffset.Year >= 9999)
-                        return null;
+                        continue;
                     return dateTimeOffset.DateTime;
                 }
 
@@ -847,27 +1030,47 @@ namespace PQM.Infrastructure.Services
                 {
                     var dt = gxDateTime.Value.DateTime;
                     if (dt.Year <= 1 || dt.Year >= 9999)
-                        return null; // Invalid/wildcarded clock entry guard
+                        continue; // Invalid/wildcarded clock entry guard
                     return dt;
                 }
 
-                if (value is byte[] bytes && bytes.Length >= 5)
+                if (value is byte[] bytes)
                 {
-                    try
-                    {
-                        var gx = (GXDateTime)GXDLMSClient.ChangeType(bytes, DataType.DateTime);
-                        if (gx != null && gx.Value.DateTime.Year > 1 && gx.Value.DateTime.Year < 9999)
-                            return gx.Value.DateTime;
-                    }
-                    catch
+                    if (bytes.Length == 12)
                     {
                         try
                         {
-                            var gxDate = (GXDateTime)GXDLMSClient.ChangeType(bytes, DataType.Date);
-                            if (gxDate != null && gxDate.Value.DateTime.Year > 1 && gxDate.Value.DateTime.Year < 9999)
-                                return gxDate.Value.DateTime;
+                            int year = (bytes[0] << 8) | bytes[1];
+                            int month = bytes[2];
+                            int day = bytes[3];
+                            int hour = bytes[5];
+                            int minute = bytes[6];
+                            int second = bytes[7];
+                            if (year >= 2000 && year <= 2099 && month >= 1 && month <= 12 && day >= 1 && day <= 31 && hour < 24 && minute < 60 && second < 60)
+                            {
+                                return new DateTime(year, month, day, hour, minute, second);
+                            }
                         }
                         catch { }
+                    }
+                    if (bytes.Length >= 5)
+                    {
+                        try
+                        {
+                            var gx = (GXDateTime)GXDLMSClient.ChangeType(bytes, DataType.DateTime);
+                            if (gx != null && gx.Value.DateTime.Year > 1 && gx.Value.DateTime.Year < 9999)
+                                return gx.Value.DateTime;
+                        }
+                        catch
+                        {
+                            try
+                            {
+                                var gxDate = (GXDateTime)GXDLMSClient.ChangeType(bytes, DataType.Date);
+                                if (gxDate != null && gxDate.Value.DateTime.Year > 1 && gxDate.Value.DateTime.Year < 9999)
+                                    return gxDate.Value.DateTime;
+                            }
+                            catch { }
+                        }
                     }
                 }
 

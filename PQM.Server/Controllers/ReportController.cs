@@ -156,8 +156,40 @@ namespace PQM.Server.Controllers
             using var conn = new SqlConnection(_connectionString);
             conn.Open();
 
-            DateTime startDate = searchParams.StartDate != default ? searchParams.StartDate : DateTime.UtcNow.AddDays(-1);
-            DateTime endDate = searchParams.EndDate != default ? searchParams.EndDate : DateTime.UtcNow;
+            // Lookup device timezone for UTC conversion
+            TimeZoneInfo deviceTz = TimeZoneInfo.Utc;
+            if (searchParams.DeviceId > 0)
+            {
+                using var tzCmd = new SqlCommand("SELECT TimeZoneId FROM Devices WHERE Id = @Id AND IsDeleted = 0", conn);
+                tzCmd.Parameters.AddWithValue("@Id", searchParams.DeviceId);
+                var tzObj = tzCmd.ExecuteScalar();
+                if (tzObj != null && tzObj != DBNull.Value && !string.IsNullOrWhiteSpace(tzObj.ToString()))
+                {
+                    try { deviceTz = TimeZoneInfo.FindSystemTimeZoneById(tzObj.ToString()!); }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to resolve TimeZoneId {TimeZoneId} for device {DeviceId}, falling back to UTC.", tzObj, searchParams.DeviceId);
+                    }
+                }
+            }
+
+            DateTime startDate = searchParams.StartDate != default 
+                ? searchParams.StartDate 
+                : new DateTime(2000, 1, 1);
+
+            DateTime endDate = searchParams.EndDate != default 
+                ? (searchParams.EndDate.TimeOfDay == TimeSpan.Zero ? searchParams.EndDate.Date.AddDays(1).AddTicks(-1) : searchParams.EndDate)
+                : DateTime.UtcNow.AddDays(1);
+
+            var unspecifiedStart = DateTime.SpecifyKind(startDate, DateTimeKind.Unspecified);
+            DateTime startUtc = startDate.Kind == DateTimeKind.Utc
+                ? startDate
+                : TimeZoneInfo.ConvertTimeToUtc(unspecifiedStart, deviceTz);
+
+            var unspecifiedEnd = DateTime.SpecifyKind(endDate, DateTimeKind.Unspecified);
+            DateTime endUtc = endDate.Kind == DateTimeKind.Utc
+                ? endDate
+                : TimeZoneInfo.ConvertTimeToUtc(unspecifiedEnd, deviceTz);
 
             string paramIdsCsv = "";
             if (searchParams.ParameterIds != null && searchParams.ParameterIds.Count > 0)
@@ -186,8 +218,9 @@ namespace PQM.Server.Controllers
                     WHERE rs.DeviceId = @DeviceId
                       AND (@ProfileId IS NULL OR p.ProfileId = @ProfileId)
                       AND (@ObjectType IS NULL OR p.ObjectType = @ObjectType)
-                      AND rs.EntryTimestampUtc >= @StartDate
-                      AND rs.EntryTimestampUtc <= @EndDate
+                      AND (@ParamIdsCsv = '' OR p.Id IN (SELECT CAST(value AS INT) FROM STRING_SPLIT(@ParamIdsCsv, ',')))
+                      AND rs.EntryTimestampUtc >= @StartUtc
+                      AND rs.EntryTimestampUtc <= @EndUtc
                       AND rv.ValueNumeric IS NOT NULL
                 ),
                 AggregatedBuckets AS (
@@ -215,8 +248,9 @@ namespace PQM.Server.Controllers
             cmd.Parameters.AddWithValue("@DeviceId", searchParams.DeviceId);
             cmd.Parameters.AddWithValue("@ProfileId", (object?)searchParams.ProfileId ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@ObjectType", (object?)searchParams.ObjectType ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@StartDate", startDate);
-            cmd.Parameters.AddWithValue("@EndDate", endDate);
+            cmd.Parameters.AddWithValue("@ParamIdsCsv", paramIdsCsv);
+            cmd.Parameters.AddWithValue("@StartUtc", startUtc);
+            cmd.Parameters.AddWithValue("@EndUtc", endUtc);
             cmd.Parameters.AddWithValue("@IntervalMinutes", intervalMinutes);
 
             var allReadings = new List<ParameterValueSearch>();
@@ -243,13 +277,25 @@ namespace PQM.Server.Controllers
                 .ToList();
 
             int totalTimestamps = timestamps.Count;
+            if (totalTimestamps == 0)
+            {
+                return (0, new List<ParameterValueSearch>());
+            }
+
+            int validPageNumber = pageNumber;
+            if ((validPageNumber - 1) * pageSize >= totalTimestamps)
+            {
+                validPageNumber = 1;
+            }
 
             var pagedTimestamps = pageSize == int.MaxValue
                 ? timestamps
-                : timestamps.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToList();
+                : timestamps.Skip((validPageNumber - 1) * pageSize).Take(pageSize).ToList();
 
             var pagedTimestampsSet = new HashSet<DateTime>(pagedTimestamps);
-            var pagedReadings = allReadings.Where(r => r.DateStamp.HasValue && pagedTimestampsSet.Contains(r.DateStamp.Value)).ToList();
+            var pagedReadings = allReadings
+                .Where(r => r.DateStamp.HasValue && pagedTimestampsSet.Contains(r.DateStamp.Value))
+                .ToList();
 
             return (totalTimestamps, pagedReadings);
         }

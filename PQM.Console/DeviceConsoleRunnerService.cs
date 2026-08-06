@@ -260,59 +260,59 @@ namespace PQM.Console
             await cmd.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        //private async Task ProcessDueSchedulesAsync(CancellationToken stoppingToken)
-        //{
-        //    var dueSchedules = await GetDueSchedulesAsync(stoppingToken);
-        //    if (dueSchedules.Count == 0) return;
+        private async Task ProcessDueSchedulesAsync(CancellationToken stoppingToken)
+        {
+            var dueSchedules = await GetDueSchedulesAsync(stoppingToken);
+            if (dueSchedules.Count == 0) return;
 
-        //    _logger.LogInformation("[PQM.Console] Found {Count} due schedule(s) to execute.", dueSchedules.Count);
+            _logger.LogInformation("[PQM.Console] Found {Count} due schedule(s) to execute.", dueSchedules.Count);
 
-        //    // Process due schedules concurrently across different devices.
-        //    var tasks = dueSchedules.Select(async item =>
-        //    {
-        //        if (stoppingToken.IsCancellationRequested) return;
+            // Process due schedules concurrently across different devices.
+            var tasks = dueSchedules.Select(async item =>
+            {
+                if (stoppingToken.IsCancellationRequested) return;
 
-        //        using var scope = _scopeFactory.CreateScope();
-        //        var profileSyncService = scope.ServiceProvider.GetRequiredService<ProfileSyncService>();
+                using var scope = _scopeFactory.CreateScope();
+                var profileSyncService = scope.ServiceProvider.GetRequiredService<ProfileSyncService>();
 
-        //        if (profileSyncService.IsDeviceSyncing(item.DeviceId))
-        //        {
-        //            _logger.LogInformation(
-        //                "[PQM.Console] Device {DeviceId} is already syncing. Skipping scheduled run for this tick.",
-        //                item.DeviceId);
-        //            return;
-        //        }
+                if (profileSyncService.IsDeviceSyncing(item.DeviceId))
+                {
+                    _logger.LogInformation(
+                        "[PQM.Console] Device {DeviceId} is already syncing. Skipping scheduled run for this tick.",
+                        item.DeviceId);
+                    return;
+                }
 
-        //        _logger.LogInformation(
-        //            "[PQM.Console] Triggering scheduled sync for Device {DeviceId} (ScheduledTime: {ScheduledTime}, TimeZone: {TimeZoneId})...",
-        //            item.DeviceId, item.ScheduledTime, item.TimeZoneId);
+                _logger.LogInformation(
+                    "[PQM.Console] Triggering scheduled sync for Device {DeviceId} (ScheduledTime: {ScheduledTime}, TimeZone: {TimeZoneId})...",
+                    item.DeviceId, item.ScheduledTime, item.TimeZoneId);
 
-        //        // 1. Broadcast SignalR "Syncing"
-        //        await SendDeviceStatusChangedAsync(item.DeviceId, "Syncing", null, null);
+                // 1. Broadcast SignalR "Syncing"
+                await SendDeviceStatusChangedAsync(item.DeviceId, "Syncing", null, null);
 
-        //        // 2. Execute Sync
-        //        var result = await profileSyncService.SyncDeviceAllProfilesAsync(item.DeviceId, stoppingToken);
+                // 2. Execute Sync
+                var result = await profileSyncService.SyncDeviceAllProfilesAsync(item.DeviceId, stoppingToken);
 
-        //        string finalStatus = result.Success ? "Online" : "Error";
-        //        string? finalError = result.ErrorMessage;
+                string finalStatus = result.Success ? "Online" : "Error";
+                string? finalError = result.ErrorMessage;
 
-        //        // 3. Broadcast SignalR completion state
-        //        await SendDeviceStatusChangedAsync(item.DeviceId, finalStatus, DateTime.UtcNow.ToString("o"), finalError);
+                // 3. Broadcast SignalR completion state
+                await SendDeviceStatusChangedAsync(item.DeviceId, finalStatus, DateTime.UtcNow.ToString("o"), finalError);
 
-        //        // 4. Update DeviceSyncSchedule record
-        //        DateTime nowUtc = DateTime.UtcNow;
-        //        DateTime? nextRunAtUtc = ScheduleHelper.ComputeNextRunAtUtc(item.ScheduledTime, item.TimeZoneId, nowUtc);
-        //        string lastRunStatus = result.Success ? "Success" : "Failed";
+                // 4. Update DeviceSyncSchedule record
+                DateTime nowUtc = DateTime.UtcNow;
+                DateTime? nextRunAtUtc = ScheduleHelper.ComputeNextRunAtUtc(item.ScheduledTime, item.TimeZoneId, nowUtc);
+                string lastRunStatus = result.Success ? "Success" : "Failed";
 
-        //        await UpdateScheduleCompletionAsync(item.DeviceId, nowUtc, lastRunStatus, nextRunAtUtc, stoppingToken);
+                await UpdateScheduleCompletionAsync(item.DeviceId, nowUtc, lastRunStatus, nextRunAtUtc, stoppingToken);
 
-        //        _logger.LogInformation(
-        //            "[PQM.Console] Completed scheduled sync for Device {DeviceId}. Status={Status}, NextRun={NextRunAtUtc}",
-        //            item.DeviceId, lastRunStatus, nextRunAtUtc);
-        //    });
+                _logger.LogInformation(
+                    "[PQM.Console] Completed scheduled sync for Device {DeviceId}. Status={Status}, NextRun={NextRunAtUtc}",
+                    item.DeviceId, lastRunStatus, nextRunAtUtc);
+            });
 
-        //    await Task.WhenAll(tasks);
-        //}
+            await Task.WhenAll(tasks);
+        }
 
         private class DueScheduleItem
         {
@@ -369,12 +369,6 @@ namespace PQM.Console
 
             await cmd.ExecuteNonQueryAsync(cancellationToken);
         }
-
-        // ─── Live Scan Queue Processing ─────────────────────────────────────────────
-        // PQM.Console is the ONLY process that ever opens a DlmsMeterReader connection.
-        // Both scheduled syncs (via DeviceSyncRequest/DeviceSyncSchedule) and user-triggered
-        // live scans (via DeviceScanRequest) are serialized here through ProfileSyncService.TryAcquireLock,
-        // ensuring no two DLMS operations ever run concurrently for the same device.
 
         private class PendingScanItem
         {
