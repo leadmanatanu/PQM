@@ -20,7 +20,7 @@ namespace PQM.Server.Controllers
     {
         private readonly APIResponse _apiResponse = new();
         private readonly ILogger<ParameterValueController> _logger;
-        private readonly string _connectionString;
+        private readonly DataContext _db;
 
         // The "yyyy-MM-dd HH:mm:ss" format is the fixed contract enforced by
         // ValueFormatter.FormatValue in the sync infrastructure.
@@ -29,11 +29,10 @@ namespace PQM.Server.Controllers
         // OBIS code for the clock/timestamp parameter stored in ReadingValues.
         private const string ClockObisCode = "0.0.1.0.0.255";
 
-        public ParameterValueController(ILogger<ParameterValueController> logger, IConfiguration configuration)
+        public ParameterValueController(ILogger<ParameterValueController> logger, DataContext db)
         {
             _logger = logger;
-            _connectionString = configuration.GetConnectionString("DefaultConnection")
-                ?? throw new InvalidOperationException("Connection string not found.");
+            _db = db ?? throw new ArgumentNullException(nameof(db));
         }
 
         [HttpGet("Search")]
@@ -41,8 +40,6 @@ namespace PQM.Server.Controllers
         {
             try
             {
-                using var db = new DataContext(_connectionString);
-
                 // Server-side validation: Reject inverted date ranges
                 if (searchParams.StartDate != default && searchParams.EndDate != default && searchParams.StartDate > searchParams.EndDate)
                 {
@@ -59,7 +56,7 @@ namespace PQM.Server.Controllers
                 int pageSize = searchParams.PageSize > 0 ? searchParams.PageSize : 20;
 
                 // Build filtered session list & reading values
-                var (totalTimestamps, resultsList) = FetchParameterReadings(db, searchParams, pageNumber, pageSize);
+                var (totalTimestamps, resultsList) = FetchParameterReadings(_db, searchParams, pageNumber, pageSize);
 
                 var result = new ParameterValueSearchResult
                 {
@@ -87,10 +84,8 @@ namespace PQM.Server.Controllers
         {
             try
             {
-                using var db = new DataContext(_connectionString);
-
                 // Fetch ALL readings matching criteria (no pagination limit)
-                var (_, readings) = FetchParameterReadings(db, searchParams, pageNumber: 1, pageSize: int.MaxValue);
+                var (_, readings) = FetchParameterReadings(_db, searchParams, pageNumber: 1, pageSize: int.MaxValue);
 
                 // Pivot the readings: Rows = Parameters, Columns = Timestamps
                 var timestamps = readings

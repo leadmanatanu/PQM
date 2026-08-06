@@ -7,10 +7,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Data.SqlClient;
 using Microsoft.AspNetCore.SignalR.Client;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using PQM.Console.Options;
 using PQM.Infrastructure.Services;
 using PQM.Core.Helpers;
 
@@ -19,25 +20,26 @@ namespace PQM.Console
     public class DeviceConsoleRunnerService : BackgroundService
     {
         private readonly IServiceScopeFactory _scopeFactory;
-        private readonly IConfiguration _configuration;
         private readonly ILogger<DeviceConsoleRunnerService> _logger;
+        private readonly ConsoleOptions _options;
         private readonly string _connectionString;
         private readonly string _serverHubUrl;
         private HubConnection? _hubConnection;
 
         public DeviceConsoleRunnerService(
             IServiceScopeFactory scopeFactory,
-            IConfiguration configuration,
+            IOptions<ConsoleOptions> options,
             ILogger<DeviceConsoleRunnerService> logger)
         {
             _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
-            _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
 
-            _connectionString = configuration.GetConnectionString("DefaultConnection")
-                ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+            _connectionString = !string.IsNullOrWhiteSpace(_options.DefaultConnection)
+                ? _options.DefaultConnection
+                : throw new InvalidOperationException("Connection string 'DefaultConnection' not found in options.");
 
-            _serverHubUrl = configuration["ServerHubUrl"] ?? "http://localhost:5135/hubs/device";
+            _serverHubUrl = _options.ServerHubUrl;
         }
 
         //private static Mutex? _singleInstanceMutex;
@@ -158,16 +160,12 @@ namespace PQM.Console
             if (pendingRequests.Count == 0) return;
 
             // Process sync requests concurrently across different devices.
-            // ProfileSyncService.TryAcquireLock inside SyncDeviceAllProfilesAsync ensures
-            // requests for the SAME device are safely serialized without blocking OTHER devices.
+            // ProfileSyncService.TryAcquireLock ensures requests for the SAME device are safely serialized.
             var tasks = pendingRequests.Select(async req =>
             {
                 if (stoppingToken.IsCancellationRequested) return;
 
-                using var scope = _scopeFactory.CreateScope();
-                var profileSyncService = scope.ServiceProvider.GetRequiredService<ProfileSyncService>();
-
-                if (profileSyncService.IsDeviceSyncing(req.DeviceId))
+                if (!ProfileSyncService.TryAcquireLock(req.DeviceId))
                 {
                     _logger.LogInformation(
                         "[PQM.Console] Device {DeviceId} is already syncing. Skipping request {RequestId}.",
@@ -175,10 +173,12 @@ namespace PQM.Console
                     return;
                 }
 
+                using var statusCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
                 try
                 {
                     // Mark request as 'Processing'
-                    await UpdateSyncRequestStatusAsync(req.Id, "Processing", null, stoppingToken);
+                    await UpdateSyncRequestStatusAsync(req.Id, "Processing", null, statusCts.Token);
 
                     _logger.LogInformation("[PQM.Console] Executing on-demand sync for Device {DeviceId} (Request #{RequestId})...", req.DeviceId, req.Id);
 
@@ -186,6 +186,8 @@ namespace PQM.Console
                     await SendDeviceStatusChangedAsync(req.DeviceId, "Syncing", null, null);
 
                     // 2. Execute Sync
+                    using var scope = _scopeFactory.CreateScope();
+                    var profileSyncService = scope.ServiceProvider.GetRequiredService<ProfileSyncService>();
                     var result = await profileSyncService.SyncDeviceAllProfilesAsync(req.DeviceId, stoppingToken);
 
                     string finalStatus = result.Success ? "Online" : "Error";
@@ -196,7 +198,8 @@ namespace PQM.Console
 
                     // 4. Update request completion status
                     string reqFinalStatus = result.Success ? "Completed" : "Failed";
-                    await UpdateSyncRequestStatusAsync(req.Id, reqFinalStatus, finalError, stoppingToken);
+                    using var completeCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                    await UpdateSyncRequestStatusAsync(req.Id, reqFinalStatus, finalError, completeCts.Token);
 
                     _logger.LogInformation(
                         "[PQM.Console] Completed on-demand sync for Device {DeviceId}. Status={Status}",
@@ -205,7 +208,12 @@ namespace PQM.Console
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "[PQM.Console] Exception in sync request {RequestId} for Device {DeviceId}: {Message}", req.Id, req.DeviceId, ex.Message);
-                    await UpdateSyncRequestStatusAsync(req.Id, "Failed", ex.Message, stoppingToken);
+                    using var failCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                    await UpdateSyncRequestStatusAsync(req.Id, "Failed", ex.Message, failCts.Token);
+                }
+                finally
+                {
+                    ProfileSyncService.ReleaseLock(req.DeviceId);
                 }
             });
 
@@ -287,6 +295,12 @@ namespace PQM.Console
                     "[PQM.Console] Triggering scheduled sync for Device {DeviceId} (ScheduledTime: {ScheduledTime}, TimeZone: {TimeZoneId})...",
                     item.DeviceId, item.ScheduledTime, item.TimeZoneId);
 
+                // Advance NextRunAtUtc immediately when starting so subsequent 5s ticks do not re-select it
+                DateTime nowUtc = DateTime.UtcNow;
+                DateTime? nextRunAtUtc = ScheduleHelper.ComputeNextRunAtUtc(item.ScheduledTime, item.TimeZoneId, nowUtc);
+                using var advanceCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                await UpdateScheduleCompletionAsync(item.DeviceId, nowUtc, "Running", nextRunAtUtc, advanceCts.Token);
+
                 // 1. Broadcast SignalR "Syncing"
                 await SendDeviceStatusChangedAsync(item.DeviceId, "Syncing", null, null);
 
@@ -299,12 +313,10 @@ namespace PQM.Console
                 // 3. Broadcast SignalR completion state
                 await SendDeviceStatusChangedAsync(item.DeviceId, finalStatus, DateTime.UtcNow.ToString("o"), finalError);
 
-                // 4. Update DeviceSyncSchedule record
-                DateTime nowUtc = DateTime.UtcNow;
-                DateTime? nextRunAtUtc = ScheduleHelper.ComputeNextRunAtUtc(item.ScheduledTime, item.TimeZoneId, nowUtc);
+                // 4. Update DeviceSyncSchedule record with final status
                 string lastRunStatus = result.Success ? "Success" : "Failed";
-
-                await UpdateScheduleCompletionAsync(item.DeviceId, nowUtc, lastRunStatus, nextRunAtUtc, stoppingToken);
+                using var completionCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                await UpdateScheduleCompletionAsync(item.DeviceId, DateTime.UtcNow, lastRunStatus, nextRunAtUtc, completionCts.Token);
 
                 _logger.LogInformation(
                     "[PQM.Console] Completed scheduled sync for Device {DeviceId}. Status={Status}, NextRun={NextRunAtUtc}",
@@ -397,20 +409,23 @@ namespace PQM.Console
                     return;
                 }
 
-                await UpdateScanRequestStatusAsync(scan.Id, "Processing", null, null, stoppingToken);
+                using var procCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                await UpdateScanRequestStatusAsync(scan.Id, "Processing", null, null, procCts.Token);
                 _logger.LogInformation("[PQM.Console] Executing live scan for Device {DeviceId} (ScanRequest #{ScanId})...", scan.DeviceId, scan.Id);
 
                 try
                 {
                     var result = await ExecuteScanAsync(scan, stoppingToken);
                     string resultJson = JsonSerializer.Serialize(result);
-                    await UpdateScanRequestStatusAsync(scan.Id, "Completed", resultJson, null, stoppingToken);
+                    using var compCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                    await UpdateScanRequestStatusAsync(scan.Id, "Completed", resultJson, null, compCts.Token);
                     _logger.LogInformation("[PQM.Console] Completed live scan for Device {DeviceId} (ScanRequest #{ScanId}). Items={Count}", scan.DeviceId, scan.Id, (result.Items?.Count ?? 0));
                 }
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "[PQM.Console] Live scan failed for Device {DeviceId} (ScanRequest #{ScanId}).", scan.DeviceId, scan.Id);
-                    await UpdateScanRequestStatusAsync(scan.Id, "Failed", null, ex.Message, stoppingToken);
+                    using var failCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                    await UpdateScanRequestStatusAsync(scan.Id, "Failed", null, ex.Message, failCts.Token);
                 }
                 finally
                 {

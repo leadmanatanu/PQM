@@ -58,6 +58,14 @@ namespace PQM.Console
                         int meterCooldown = hostContext.Configuration.GetValue<int>("DlmsSettings:MeterCooldownSeconds", 8);
                         DlmsMeterReader.DefaultMeterCooldownSeconds = meterCooldown > 0 ? meterCooldown : 8;
 
+                        // Configure typed ConsoleOptions
+                        services.Configure<PQM.Console.Options.ConsoleOptions>(options =>
+                        {
+                            options.DefaultConnection = connectionString;
+                            options.ServerHubUrl = hostContext.Configuration["ServerHubUrl"] ?? "http://localhost:5135/hubs/device";
+                            options.MeterCooldownSeconds = DlmsMeterReader.DefaultMeterCooldownSeconds;
+                        });
+
                         // Register DataContext
                         services.AddScoped<DataContext>(sp =>
                             new DataContext(connectionString));
