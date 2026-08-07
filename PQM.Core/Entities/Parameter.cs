@@ -20,11 +20,14 @@ namespace PQM.Core.Entities
         public int? UnitCode { get; set; }
         public string? Unit { get; set; }
         public string? AggregationType { get; set; }
+        public int? MeterTypeId { get; set; } = 1;
         [NotMapped]
         public bool IsSelected { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public virtual Profile? Profile { get; set; }
+        [ForeignKey("MeterTypeId")]
+        public virtual MeterType? MeterType { get; set; }
         public virtual ICollection<ReadingValue> ReadingValues { get; set; } = new List<ReadingValue>();
     }
 }

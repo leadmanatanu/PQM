@@ -93,6 +93,11 @@ namespace PQM.Infrastructure
                 entity.HasOne(d => d.Profile)
                     .WithMany(p => p.Parameters)
                     .HasForeignKey(d => d.ProfileId);
+
+                entity.HasOne(d => d.MeterType)
+                    .WithMany(m => m.Parameters)
+                    .HasForeignKey(d => d.MeterTypeId)
+                    .OnDelete(DeleteBehavior.SetNull);
             });
 
             modelBuilder.Entity<ReadingSession>(entity =>

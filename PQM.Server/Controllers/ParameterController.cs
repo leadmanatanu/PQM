@@ -24,11 +24,35 @@ namespace PQM.Server.Controllers
         }
 
         [HttpGet]
-        public ActionResult Get([FromQuery] int? deviceId, [FromQuery] int? profileId)
+        public ActionResult Get([FromQuery] int? deviceId, [FromQuery] int? profileId, [FromQuery] int? meterTypeId)
         {
             try
             {
                 var query = _db.Parameter.Where(p => p.IsVisible);
+
+                // If deviceId is provided but meterTypeId is not, resolve meterTypeId from the device
+                if (deviceId.HasValue && deviceId.Value > 0 && !meterTypeId.HasValue)
+                {
+                    var device = _db.Device.FirstOrDefault(d => d.Id == deviceId.Value && !d.IsDeleted);
+                    if (device != null && device.MeterTypeId.HasValue)
+                    {
+                        meterTypeId = device.MeterTypeId.Value;
+                    }
+                }
+
+                // Filter parameters by MeterTypeId
+                if (meterTypeId.HasValue && meterTypeId.Value > 0)
+                {
+                    if (meterTypeId.Value == 1) // ABT
+                    {
+                        query = query.Where(p => p.MeterTypeId == 1 || p.MeterTypeId == 3 || p.MeterTypeId == null);
+                    }
+                    else if (meterTypeId.Value == 2) // PQ
+                    {
+                        query = query.Where(p => p.MeterTypeId == 2 || p.MeterTypeId == 3 || p.MeterTypeId == null);
+                    }
+                    // meterTypeId == 3 (Both) sees all parameters
+                }
 
                 if (profileId.HasValue && profileId.Value > 0)
                 {
@@ -40,6 +64,7 @@ namespace PQM.Server.Controllers
                     {
                         p.Id,
                         p.ProfileId,
+                        p.MeterTypeId,
                         p.Name,
                         p.ObisCode,
                         p.Description,

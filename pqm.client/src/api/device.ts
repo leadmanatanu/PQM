@@ -64,9 +64,11 @@ export const testFtpDetails = async (aJson: any): Promise<any | undefined> => {
 
 
 // Fetch device parameters
-export const fetchDeviceParameter = async (id: string | number): Promise<any | null> => {
+export const fetchDeviceParameter = async (id?: string | number, profileId?: string | number, meterTypeId?: string | number): Promise<any | null> => {
     try {
-        const { data } = await axios.get(`${API_URL}/Parameter/${id}`);
+        const { data } = await axios.get(`${API_URL}/Parameter`, {
+            params: { deviceId: id, profileId, meterTypeId }
+        });
         return data;
     } catch (error) {
         console.error("Error fetching device parameter:", error);

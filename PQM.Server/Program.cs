@@ -1,39 +1,66 @@
-using PQM.Infrastructure.Services;
-using PQM.Core.Interfaces.Repositories;
-using PQM.Infrastructure.Repositories;
-using PQM.Infrastructure;
-using Microsoft.EntityFrameworkCore;
+using System.IO;
 using System.Text.Json.Serialization;
+using Microsoft.EntityFrameworkCore;
+using PQM.Core.Interfaces.Repositories;
+using PQM.Infrastructure;
+using PQM.Infrastructure.Repositories;
+using PQM.Infrastructure.Services;
+using Serilog;
+using Serilog.Events;
 
-var builder = WebApplication.CreateBuilder(args);
-
-builder.Services.AddControllers().AddJsonOptions(options =>
-{   
-    options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
-});
-
-builder.Services.AddOpenApi();
-
-var connectionString =
-    builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? throw new InvalidOperationException(
-        "Connection string 'DefaultConnection' not found."
-    );
-
-builder.Services.AddDbContext<DataContext>(options => options.UseSqlServer(connectionString));
-builder.Services.AddScoped<IDeviceRepository, DeviceRepository>();
-builder.Services.AddSignalR();
-
-builder.Services.AddCors(options =>
+string logDirectory = @"C:\PQM\Logs";
+if (!Directory.Exists(logDirectory))
 {
-    options.AddPolicy("AllowReactApp", policy =>
-        policy.SetIsOriginAllowed(origin => true)
-              .AllowAnyMethod()
-              .AllowAnyHeader()
-              .AllowCredentials());
-});
+    Directory.CreateDirectory(logDirectory);
+}
 
-var app = builder.Build();
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command", LogEventLevel.Warning)
+    .WriteTo.Console()
+    .WriteTo.File(
+        path: Path.Combine(logDirectory, "server-.log"),
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 30,
+        outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} {Level:u3}] {Message:lj}{NewLine}{Exception}"
+    )
+    .CreateLogger();
+
+try
+{
+    Log.Information("[PQM.Server] Starting PQM Web API Server...");
+
+    var builder = WebApplication.CreateBuilder(args);
+    builder.Host.UseSerilog();
+
+    builder.Services.AddControllers().AddJsonOptions(options =>
+    {   
+        options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+    });
+
+    builder.Services.AddOpenApi();
+
+    var connectionString =
+        builder.Configuration.GetConnectionString("DefaultConnection")
+        ?? throw new InvalidOperationException(
+            "Connection string 'DefaultConnection' not found."
+        );
+
+    builder.Services.AddDbContext<DataContext>(options => options.UseSqlServer(connectionString));
+    builder.Services.AddScoped<IDeviceRepository, DeviceRepository>();
+    builder.Services.AddSignalR();
+
+    builder.Services.AddCors(options =>
+    {
+        options.AddPolicy("AllowReactApp", policy =>
+            policy.SetIsOriginAllowed(origin => true)
+                  .AllowAnyMethod()
+                  .AllowAnyHeader()
+                  .AllowCredentials());
+    });
+
+    var app = builder.Build();
 
 // Auto-apply any pending EF Core migrations on startup
 using (var scope = app.Services.CreateScope())
@@ -96,10 +123,20 @@ try
 }
 catch (System.Reflection.ReflectionTypeLoadException ex)
 {
-    Console.WriteLine("=== REFLECTION TYPE LOAD EXCEPTION ===");
+    Log.Fatal(ex, "[PQM.Server] ReflectionTypeLoadException on startup.");
     foreach (var le in ex.LoaderExceptions)
     {
-        Console.WriteLine($"[LoaderException]: {le?.Message}");
+        Log.Error("[LoaderException]: {Message}", le?.Message);
     }
     throw;
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "[PQM.Server] Host terminated unexpectedly.");
+    throw;
+}
+}
+finally
+{
+    Log.CloseAndFlush();
 }

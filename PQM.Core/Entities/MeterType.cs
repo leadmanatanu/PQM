@@ -1,4 +1,4 @@
-﻿using PQM.Core.Entities;
+using PQM.Core.Entities;
 
 public class MeterType
 {
@@ -8,4 +8,7 @@ public class MeterType
 
     public ICollection<Device> Devices { get; set; }
         = new List<Device>();
+
+    public ICollection<Parameter> Parameters { get; set; }
+        = new List<Parameter>();
 }
