@@ -25,9 +25,26 @@ namespace PQM.Infrastructure.Repositories
 
         public async Task<IEnumerable<Parameter>> GetVisibleParametersAsync(int? deviceId = null, CancellationToken cancellationToken = default)
         {
-            return await _db.Parameter
-                .Where(p => p.IsVisible)
-                .ToListAsync(cancellationToken);
+            var query = _db.Parameter.Where(p => p.IsVisible);
+
+            if (deviceId.HasValue && deviceId.Value > 0)
+            {
+                var device = await _db.Device.FirstOrDefaultAsync(d => d.Id == deviceId.Value && !d.IsDeleted, cancellationToken);
+                if (device != null && device.MeterTypeId.HasValue && device.MeterTypeId.Value > 0)
+                {
+                    int mtId = device.MeterTypeId.Value;
+                    if (mtId == 1) // ABT
+                    {
+                        query = query.Where(p => p.MeterTypeId == 1 || p.MeterTypeId == 3 || p.MeterTypeId == null);
+                    }
+                    else if (mtId == 2) // PQ
+                    {
+                        query = query.Where(p => p.MeterTypeId == 2 || p.MeterTypeId == 3 || p.MeterTypeId == null);
+                    }
+                }
+            }
+
+            return await query.ToListAsync(cancellationToken);
         }
 
         public async Task<IEnumerable<object>> GetDeviceLatestReadingsAsync(int deviceId, CancellationToken cancellationToken = default)
