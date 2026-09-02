@@ -7,9 +7,7 @@ namespace PQM.Core.Entities
     public class DeviceSyncSchedule
     {
         [Key]
-        [ForeignKey("Device")]
-        public int DeviceId { get; set; }
-
+        public int Id { get; set; }
         public bool IsEnabled { get; set; }
         public TimeSpan ScheduledTime { get; set; }
         public string RepeatMode { get; set; } = "Daily";

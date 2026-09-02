@@ -26,18 +26,12 @@ namespace PQM.Console
         private readonly string _serverHubUrl;
         private HubConnection? _hubConnection;
 
-        public DeviceConsoleRunnerService(
-            IServiceScopeFactory scopeFactory,
-            IOptions<ConsoleOptions> options,
-            ILogger<DeviceConsoleRunnerService> logger)
+        public DeviceConsoleRunnerService(IServiceScopeFactory scopeFactory,IOptions<ConsoleOptions> options,ILogger<DeviceConsoleRunnerService> logger)
         {
             _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
-
-            _connectionString = !string.IsNullOrWhiteSpace(_options.DefaultConnection)
-                ? _options.DefaultConnection
-                : throw new InvalidOperationException("Connection string 'DefaultConnection' not found in options.");
+            _connectionString = !string.IsNullOrWhiteSpace(_options.DefaultConnection)? _options.DefaultConnection: throw new InvalidOperationException("Connection string 'DefaultConnection' not found in options.");
 
             _serverHubUrl = _options.ServerHubUrl;
         }
@@ -112,8 +106,9 @@ namespace PQM.Console
 
                 try
                 {
-                    await ProcessPendingScanRequestsAsync(stoppingToken);
-                    await ProcessPendingSyncRequestsAsync(stoppingToken);
+                    //await ProcessPendingScanRequestsAsync(stoppingToken);
+                    //await ProcessPendingSyncRequestsAsync(stoppingToken);
+                    await ProcessDueSchedulesAsync(stoppingToken);
                 }
                 catch (Exception ex)
                 {
@@ -271,113 +266,255 @@ namespace PQM.Console
         private async Task ProcessDueSchedulesAsync(CancellationToken stoppingToken)
         {
             var dueSchedules = await GetDueSchedulesAsync(stoppingToken);
-            if (dueSchedules.Count == 0) return;
 
-            _logger.LogInformation("[PQM.Console] Found {Count} due schedule(s) to execute.", dueSchedules.Count);
+            if (dueSchedules.Count == 0)
+                return;
 
-            // Process due schedules concurrently across different devices.
-            var tasks = dueSchedules.Select(async item =>
+            _logger.LogInformation(
+                "[PQM.Console] Found {Count} due schedule(s) to execute.",
+                dueSchedules.Count);
+
+            foreach (var schedule in dueSchedules)
             {
-                if (stoppingToken.IsCancellationRequested) return;
-
-                using var scope = _scopeFactory.CreateScope();
-                var profileSyncService = scope.ServiceProvider.GetRequiredService<ProfileSyncService>();
-
-                if (profileSyncService.IsDeviceSyncing(item.DeviceId))
-                {
-                    _logger.LogInformation(
-                        "[PQM.Console] Device {DeviceId} is already syncing. Skipping scheduled run for this tick.",
-                        item.DeviceId);
+                if (stoppingToken.IsCancellationRequested)
                     return;
+
+                if (schedule.DeviceIds.Count == 0)
+                {
+                    _logger.LogWarning(
+                        "[PQM.Console] Schedule {ScheduleId} has no devices assigned.",
+                        schedule.ScheduleId);
+
+                    continue;
                 }
 
                 _logger.LogInformation(
-                    "[PQM.Console] Triggering scheduled sync for Device {DeviceId} (ScheduledTime: {ScheduledTime}, TimeZone: {TimeZoneId})...",
-                    item.DeviceId, item.ScheduledTime, item.TimeZoneId);
+                    "[PQM.Console] Executing Schedule {ScheduleId} for {DeviceCount} device(s).",
+                    schedule.ScheduleId,
+                    schedule.DeviceIds.Count);
 
-                // Advance NextRunAtUtc immediately when starting so subsequent 5s ticks do not re-select it
+                // Calculate next run ONCE for the schedule.
                 DateTime nowUtc = DateTime.UtcNow;
-                DateTime? nextRunAtUtc = ScheduleHelper.ComputeNextRunAtUtc(item.ScheduledTime, item.TimeZoneId, nowUtc);
-                using var advanceCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                await UpdateScheduleCompletionAsync(item.DeviceId, nowUtc, "Running", nextRunAtUtc, advanceCts.Token);
 
-                // 1. Broadcast SignalR "Syncing"
-                await SendDeviceStatusChangedAsync(item.DeviceId, "Syncing", null, null);
+                DateTime? nextRunAtUtc =
+                    ScheduleHelper.ComputeNextRunAtUtc(
+                        schedule.ScheduledTime,
+                        schedule.TimeZoneId,
+                        nowUtc);
 
-                // 2. Execute Sync
-                var result = await profileSyncService.SyncDeviceAllProfilesAsync(item.DeviceId, stoppingToken);
+                // Advance schedule immediately.
+                using var advanceCts =
+                    new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
-                string finalStatus = result.Success ? "Online" : "Error";
-                string? finalError = result.ErrorMessage;
+                await UpdateScheduleCompletionAsync(
+                    schedule.ScheduleId,
+                    nowUtc,
+                    "Running",
+                    nextRunAtUtc,
+                    advanceCts.Token);
 
-                // 3. Broadcast SignalR completion state
-                await SendDeviceStatusChangedAsync(item.DeviceId, finalStatus, DateTime.UtcNow.ToString("o"), finalError);
+                // Run all devices belonging to this schedule.
+                var deviceTasks = schedule.DeviceIds.Select(
+                    deviceId => ProcessScheduledDeviceAsync(
+                        deviceId,
+                        schedule.ScheduleId,
+                        stoppingToken));
 
-                // 4. Update DeviceSyncSchedule record with final status
-                string lastRunStatus = result.Success ? "Success" : "Failed";
-                using var completionCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                await UpdateScheduleCompletionAsync(item.DeviceId, DateTime.UtcNow, lastRunStatus, nextRunAtUtc, completionCts.Token);
+                await Task.WhenAll(deviceTasks);
+
+                // Mark schedule execution completed.
+                using var completionCts =
+                    new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+                await UpdateScheduleCompletionAsync(
+                    schedule.ScheduleId,
+                    DateTime.UtcNow,
+                    "Success",
+                    nextRunAtUtc,
+                    completionCts.Token);
 
                 _logger.LogInformation(
-                    "[PQM.Console] Completed scheduled sync for Device {DeviceId}. Status={Status}, NextRun={NextRunAtUtc}",
-                    item.DeviceId, lastRunStatus, nextRunAtUtc);
-            });
+                    "[PQM.Console] Completed Schedule {ScheduleId}. NextRun={NextRunAtUtc}",
+                    schedule.ScheduleId,
+                    nextRunAtUtc);
+            }
+        }
 
-            await Task.WhenAll(tasks);
+        private async Task ProcessScheduledDeviceAsync(int deviceId,int scheduleId,CancellationToken stoppingToken)
+        {
+            if (stoppingToken.IsCancellationRequested)
+                return;
+
+            using var scope = _scopeFactory.CreateScope();
+
+            var profileSyncService =
+                scope.ServiceProvider.GetRequiredService<ProfileSyncService>();
+
+            // Prevent same device from syncing twice.
+            if (!ProfileSyncService.TryAcquireLock(deviceId))
+            {
+                _logger.LogInformation(
+                    "[PQM.Console] Device {DeviceId} is already syncing. " +
+                    "Skipping scheduled run.",
+                    deviceId);
+
+                return;
+            }
+
+            try
+            {
+                _logger.LogInformation(
+                    "[PQM.Console] Schedule {ScheduleId}: Starting sync for Device {DeviceId}.",
+                    scheduleId,
+                    deviceId);
+
+                // 1. SignalR - Syncing
+                await SendDeviceStatusChangedAsync(
+                    deviceId,
+                    "Syncing",
+                    null,
+                    null);
+
+                // 2. Execute actual device sync
+                var result =
+                    await profileSyncService.SyncDeviceAllProfilesAsync(
+                        deviceId,
+                        stoppingToken);
+
+                string finalStatus =
+                    result.Success ? "Online" : "Error";
+
+                string? finalError =
+                    result.ErrorMessage;
+
+                // 3. SignalR - completed
+                await SendDeviceStatusChangedAsync(
+                    deviceId,
+                    finalStatus,
+                    DateTime.UtcNow.ToString("o"),
+                    finalError);
+
+                _logger.LogInformation(
+                    "[PQM.Console] Schedule {ScheduleId}: Device {DeviceId} completed. Status={Status}",
+                    scheduleId,
+                    deviceId,
+                    finalStatus);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "[PQM.Console] Schedule {ScheduleId}: Device {DeviceId} sync failed.",
+                    scheduleId,
+                    deviceId);
+
+                await SendDeviceStatusChangedAsync(
+                    deviceId,
+                    "Error",
+                    DateTime.UtcNow.ToString("o"),
+                    ex.Message);
+            }
+            finally
+            {
+                ProfileSyncService.ReleaseLock(deviceId);
+            }
         }
 
         private class DueScheduleItem
         {
-            public int DeviceId { get; set; }
+            public int ScheduleId { get; set; }
             public TimeSpan ScheduledTime { get; set; }
+            public string RepeatMode { get; set; } = "Daily";
             public string? TimeZoneId { get; set; }
+            public List<int> DeviceIds { get; set; } = new();
         }
 
         private async Task<List<DueScheduleItem>> GetDueSchedulesAsync(CancellationToken cancellationToken)
         {
             var list = new List<DueScheduleItem>();
+
             using var conn = new SqlConnection(_connectionString);
             await conn.OpenAsync(cancellationToken);
+
             using var cmd = conn.CreateCommand();
+
             cmd.CommandText = @"
-                SELECT s.DeviceId, s.ScheduledTime, d.TimeZoneId
-                FROM DeviceSyncSchedule s
-                INNER JOIN Devices d ON s.DeviceId = d.Id
-                WHERE s.IsEnabled = 1 
-                  AND s.NextRunAtUtc IS NOT NULL 
-                  AND s.NextRunAtUtc <= @nowUtc
-                  AND (d.IsDeleted = 0 OR d.IsDeleted IS NULL)";
+        SELECT 
+            s.Id,
+            s.ScheduledTime,
+            s.RepeatMode,
+            s.NextRunAtUtc,
+            d.Id,
+            d.TimeZoneId
+        FROM DeviceSyncSchedule s
+        INNER JOIN Devices d 
+            ON d.DeviceSyncScheduleId = s.Id
+        WHERE s.IsEnabled = 1
+          AND s.NextRunAtUtc IS NOT NULL
+          AND s.NextRunAtUtc <= @nowUtc
+          AND (d.IsDeleted = 0 OR d.IsDeleted IS NULL)
+        ORDER BY s.Id";
+
             cmd.Parameters.AddWithValue("@nowUtc", DateTime.UtcNow);
 
             using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
+            var schedules = new Dictionary<int, DueScheduleItem>();
+
             while (await reader.ReadAsync(cancellationToken))
             {
-                list.Add(new DueScheduleItem
+                int scheduleId = reader.GetInt32(0);
+
+                if (!schedules.TryGetValue(scheduleId, out var schedule))
                 {
-                    DeviceId = reader.GetInt32(0),
-                    ScheduledTime = reader.GetTimeSpan(1),
-                    TimeZoneId = reader.IsDBNull(2) ? null : reader.GetString(2)
-                });
+                    schedule = new DueScheduleItem
+                    {
+                        ScheduleId = scheduleId,
+                        ScheduledTime = reader.GetTimeSpan(1),
+                        RepeatMode = reader.IsDBNull(2)
+                            ? "Daily"
+                            : reader.GetString(2)
+                    };
+
+                    schedules.Add(scheduleId, schedule);
+                }
+
+                int deviceId = reader.GetInt32(4);
+
+                schedule.DeviceIds.Add(deviceId);
+
+                // Use device timezone.
+                if (string.IsNullOrWhiteSpace(schedule.TimeZoneId) &&
+                    !reader.IsDBNull(5))
+                {
+                    schedule.TimeZoneId = reader.GetString(5);
+                }
             }
 
-            return list;
+            return schedules.Values.ToList();
         }
 
-        private async Task UpdateScheduleCompletionAsync(int deviceId, DateTime lastRunAtUtc, string lastRunStatus, DateTime? nextRunAtUtc, CancellationToken cancellationToken)
+        private async Task UpdateScheduleCompletionAsync(int scheduleId,DateTime lastRunAtUtc,string lastRunStatus,DateTime? nextRunAtUtc,CancellationToken cancellationToken)
         {
             using var conn = new SqlConnection(_connectionString);
+
             await conn.OpenAsync(cancellationToken);
+
             using var cmd = conn.CreateCommand();
+
             cmd.CommandText = @"
-                UPDATE DeviceSyncSchedule
-                SET LastRunAtUtc = @lastRunAtUtc,
-                    LastRunStatus = @lastRunStatus,
-                    NextRunAtUtc = @nextRunAtUtc
-                WHERE DeviceId = @deviceId";
-            cmd.Parameters.AddWithValue("@deviceId", deviceId);
+        UPDATE DeviceSyncSchedule
+        SET LastRunAtUtc = @lastRunAtUtc,
+            LastRunStatus = @lastRunStatus,
+            NextRunAtUtc = @nextRunAtUtc
+        WHERE Id = @scheduleId";
+
+            cmd.Parameters.AddWithValue("@scheduleId", scheduleId);
             cmd.Parameters.AddWithValue("@lastRunAtUtc", lastRunAtUtc);
             cmd.Parameters.AddWithValue("@lastRunStatus", lastRunStatus);
-            cmd.Parameters.AddWithValue("@nextRunAtUtc", (object?)nextRunAtUtc ?? DBNull.Value);
+            cmd.Parameters.AddWithValue(
+                "@nextRunAtUtc",
+                (object?)nextRunAtUtc ?? DBNull.Value);
 
             await cmd.ExecuteNonQueryAsync(cancellationToken);
         }

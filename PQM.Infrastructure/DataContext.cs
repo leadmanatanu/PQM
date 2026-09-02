@@ -57,8 +57,14 @@ namespace PQM.Infrastructure
             modelBuilder.Entity<DeviceSyncSchedule>(entity =>
             {
                 entity.ToTable("DeviceSyncSchedule");
-                entity.HasKey(e => e.DeviceId);
+                entity.HasKey(e => e.Id);
             });
+
+            modelBuilder.Entity<Device>()
+            .HasOne<DeviceSyncSchedule>()
+            .WithMany()
+            .HasForeignKey(d => d.DeviceSyncScheduleId)
+            .OnDelete(DeleteBehavior.NoAction);
 
             modelBuilder.Entity<DeviceSyncHistory>(entity =>
             {
@@ -97,7 +103,7 @@ namespace PQM.Infrastructure
                 entity.HasOne(d => d.MeterType)
                     .WithMany(m => m.Parameters)
                     .HasForeignKey(d => d.MeterTypeId)
-                    .OnDelete(DeleteBehavior.SetNull);
+                    .OnDelete(DeleteBehavior.NoAction);
             });
 
             modelBuilder.Entity<ReadingSession>(entity =>

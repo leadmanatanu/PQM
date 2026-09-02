@@ -66,6 +66,7 @@ namespace PQM.Core.Entities
         public string Status { get; set; } = "Offline";
         public DateTime? LastConnectionAttempt { get; set; }
         public string? LastError { get; set; }
-        
+
+        public int? DeviceSyncScheduleId { get; set; }
     }
 }
