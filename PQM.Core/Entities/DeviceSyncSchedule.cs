@@ -12,5 +12,6 @@ namespace PQM.Core.Entities
         public DateTime? NextRunAtUtc { get; set; }
         public DateTime? LastRunAtUtc { get; set; }
         public string? LastRunStatus { get; set; }
+        public ICollection<Device> Devices { get; set; } = new List<Device>();
     }
 }
