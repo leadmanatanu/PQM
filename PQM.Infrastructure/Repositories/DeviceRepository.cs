@@ -146,10 +146,10 @@ namespace PQM.Infrastructure.Repositories
                 .ToListAsync(cancellationToken);
         }
 
-        public async Task<DeviceSyncSchedule?> GetScheduleAsync(int deviceId, CancellationToken cancellationToken = default)
+        public async Task<DeviceSyncSchedule?> GetScheduleAsync(CancellationToken cancellationToken = default)
         {
             return await _db.DeviceSyncSchedules
-                .FirstOrDefaultAsync(s => s.Id == deviceId, cancellationToken);
+                .FirstOrDefaultAsync(cancellationToken);
         }
 
         public async Task UpsertScheduleAsync(DeviceSyncSchedule schedule, CancellationToken cancellationToken = default)

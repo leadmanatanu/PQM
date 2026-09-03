@@ -14,6 +14,7 @@ using Microsoft.Extensions.Options;
 using PQM.Console.Options;
 using PQM.Infrastructure.Services;
 using PQM.Core.Helpers;
+using PQM.Core.DTOs;
 
 namespace PQM.Console
 {
@@ -279,21 +280,11 @@ namespace PQM.Console
                 if (stoppingToken.IsCancellationRequested)
                     return;
 
-                if (schedule.DeviceIds.Count == 0)
-                {
-                    _logger.LogWarning(
-                        "[PQM.Console] Schedule {ScheduleId} has no devices assigned.",
-                        schedule.ScheduleId);
-
-                    continue;
-                }
-
                 _logger.LogInformation(
                     "[PQM.Console] Executing Schedule {ScheduleId} for {DeviceCount} device(s).",
                     schedule.ScheduleId,
                     schedule.DeviceIds.Count);
 
-                // Calculate next run ONCE for the schedule.
                 DateTime nowUtc = DateTime.UtcNow;
 
                 DateTime? nextRunAtUtc =
@@ -302,7 +293,8 @@ namespace PQM.Console
                         schedule.TimeZoneId,
                         nowUtc);
 
-                // Advance schedule immediately.
+                // Advance schedule immediately so it is not picked again
+                // during the next 5-second polling cycle.
                 using var advanceCts =
                     new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
@@ -313,7 +305,7 @@ namespace PQM.Console
                     nextRunAtUtc,
                     advanceCts.Token);
 
-                // Run all devices belonging to this schedule.
+                // Run this schedule for ALL active devices.
                 var deviceTasks = schedule.DeviceIds.Select(
                     deviceId => ProcessScheduledDeviceAsync(
                         deviceId,
@@ -322,7 +314,6 @@ namespace PQM.Console
 
                 await Task.WhenAll(deviceTasks);
 
-                // Mark schedule execution completed.
                 using var completionCts =
                     new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
@@ -420,78 +411,79 @@ namespace PQM.Console
             }
         }
 
-        private class DueScheduleItem
-        {
-            public int ScheduleId { get; set; }
-            public TimeSpan ScheduledTime { get; set; }
-            public string RepeatMode { get; set; } = "Daily";
-            public string? TimeZoneId { get; set; }
-            public List<int> DeviceIds { get; set; } = new();
-        }
-
-        private async Task<List<DueScheduleItem>> GetDueSchedulesAsync(CancellationToken cancellationToken)
+        private async Task<List<DueScheduleItem>> GetDueSchedulesAsync(
+    CancellationToken cancellationToken)
         {
             var list = new List<DueScheduleItem>();
 
             using var conn = new SqlConnection(_connectionString);
             await conn.OpenAsync(cancellationToken);
 
-            using var cmd = conn.CreateCommand();
+            // Get all due global schedules.
+            using var scheduleCmd = conn.CreateCommand();
 
-            cmd.CommandText = @"
-        SELECT 
-            s.Id,
-            s.ScheduledTime,
-            s.RepeatMode,
-            s.NextRunAtUtc,
-            d.Id,
-            d.TimeZoneId
-        FROM DeviceSyncSchedule s
-        INNER JOIN Devices d 
-            ON d.DeviceSyncScheduleId = s.Id
-        WHERE s.IsEnabled = 1
-          AND s.NextRunAtUtc IS NOT NULL
-          AND s.NextRunAtUtc <= @nowUtc
-          AND (d.IsDeleted = 0 OR d.IsDeleted IS NULL)
-        ORDER BY s.Id";
+            scheduleCmd.CommandText = @"
+        SELECT
+            Id,
+            ScheduledTime,
+            RepeatMode
+        FROM DeviceSyncSchedule
+        WHERE IsEnabled = 1
+          AND NextRunAtUtc IS NOT NULL
+          AND NextRunAtUtc <= @nowUtc
+        ORDER BY Id";
 
-            cmd.Parameters.AddWithValue("@nowUtc", DateTime.UtcNow);
+            scheduleCmd.Parameters.AddWithValue(
+                "@nowUtc",
+                DateTime.UtcNow);
 
-            using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            using var scheduleReader =
+                await scheduleCmd.ExecuteReaderAsync(cancellationToken);
 
-            var schedules = new Dictionary<int, DueScheduleItem>();
-
-            while (await reader.ReadAsync(cancellationToken))
+            while (await scheduleReader.ReadAsync(cancellationToken))
             {
-                int scheduleId = reader.GetInt32(0);
-
-                if (!schedules.TryGetValue(scheduleId, out var schedule))
+                list.Add(new DueScheduleItem
                 {
-                    schedule = new DueScheduleItem
-                    {
-                        ScheduleId = scheduleId,
-                        ScheduledTime = reader.GetTimeSpan(1),
-                        RepeatMode = reader.IsDBNull(2)
-                            ? "Daily"
-                            : reader.GetString(2)
-                    };
-
-                    schedules.Add(scheduleId, schedule);
-                }
-
-                int deviceId = reader.GetInt32(4);
-
-                schedule.DeviceIds.Add(deviceId);
-
-                // Use device timezone.
-                if (string.IsNullOrWhiteSpace(schedule.TimeZoneId) &&
-                    !reader.IsDBNull(5))
-                {
-                    schedule.TimeZoneId = reader.GetString(5);
-                }
+                    ScheduleId = scheduleReader.GetInt32(0),
+                    ScheduledTime = scheduleReader.GetTimeSpan(1),
+                    RepeatMode = scheduleReader.IsDBNull(2)
+                        ? "Daily"
+                        : scheduleReader.GetString(2),
+                    TimeZoneId = "India Standard Time"
+                });
             }
 
-            return schedules.Values.ToList();
+            // No due schedules.
+            if (list.Count == 0)
+                return list;
+
+            // Get ALL active devices.
+            using var deviceCmd = conn.CreateCommand();
+
+            deviceCmd.CommandText = @"
+        SELECT Id
+        FROM Devices
+        WHERE IsDeleted = 0
+           OR IsDeleted IS NULL
+        ORDER BY Id";
+
+            using var deviceReader =
+                await deviceCmd.ExecuteReaderAsync(cancellationToken);
+
+            var deviceIds = new List<int>();
+
+            while (await deviceReader.ReadAsync(cancellationToken))
+            {
+                deviceIds.Add(deviceReader.GetInt32(0));
+            }
+
+            // Assign all active devices to every due schedule.
+            foreach (var schedule in list)
+            {
+                schedule.DeviceIds.AddRange(deviceIds);
+            }
+
+            return list;
         }
 
         private async Task UpdateScheduleCompletionAsync(int scheduleId,DateTime lastRunAtUtc,string lastRunStatus,DateTime? nextRunAtUtc,CancellationToken cancellationToken)

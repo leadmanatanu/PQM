@@ -16,7 +16,7 @@ namespace PQM.Core.Interfaces.Repositories
         Task<bool> DisableSyncAsync(int id, CancellationToken cancellationToken = default);
         Task QueueSyncRequestAsync(int deviceId, CancellationToken cancellationToken = default);
         Task<IEnumerable<DeviceSyncHistory>> GetSyncHistoryAsync(int deviceId, int take = 50, CancellationToken cancellationToken = default);
-        Task<DeviceSyncSchedule?> GetScheduleAsync(int deviceId, CancellationToken cancellationToken = default);
+        Task<DeviceSyncSchedule?> GetScheduleAsync(CancellationToken cancellationToken = default);
         Task UpsertScheduleAsync(DeviceSyncSchedule schedule, CancellationToken cancellationToken = default);
     }
 }

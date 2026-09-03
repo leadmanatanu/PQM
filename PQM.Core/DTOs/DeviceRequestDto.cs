@@ -1,5 +1,4 @@
-﻿using PQM.Core.Entities;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -7,10 +6,8 @@ using System.Threading.Tasks;
 
 namespace PQM.Core.DTOs
 {
-    public class DeviceDto
+    public class DeviceRequestDto
     {
-        public int Id { get; set; }
-
         public string? Name { get; set; }
 
         public int? MeterTypeId { get; set; }
@@ -27,10 +24,18 @@ namespace PQM.Core.DTOs
 
         public bool IsActive { get; set; }
 
-        public DateTime? LastSync { get; set; }
+        public int ClientAddress { get; set; }
 
-        public string Status { get; set; } = "Offline";
+        public int ServerAddress { get; set; }
+
+        public string? Authentication { get; set; }
+
+        public string? Password { get; set; }
+
+        public int Timeout { get; set; }
+
+        public string? TimeZoneId { get; set; }
+
         public int? ScheduleId { get; set; }
-
     }
 }

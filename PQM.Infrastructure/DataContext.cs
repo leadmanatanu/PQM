@@ -63,7 +63,7 @@ namespace PQM.Infrastructure
             modelBuilder.Entity<Device>()
             .HasOne<DeviceSyncSchedule>()
             .WithMany()
-            .HasForeignKey(d => d.DeviceSyncScheduleId)
+            .HasForeignKey(d => d.DeviceSyncSchedule)
             .OnDelete(DeleteBehavior.NoAction);
 
             modelBuilder.Entity<DeviceSyncHistory>(entity =>
@@ -184,9 +184,12 @@ namespace PQM.Infrastructure
                     .WithMany()
                     .HasForeignKey(d => d.ParameterId);
             });
-    
 
-           
+
+
         }
+
+
+
     }
 }

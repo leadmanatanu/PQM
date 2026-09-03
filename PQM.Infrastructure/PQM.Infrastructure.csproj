@@ -1,33 +1,50 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="EFCore.BulkExtensions" Version="8.0.0" />
-    <PackageReference Include="Gurux.DLMS" Version="9.0.2605.2801" />
-    <PackageReference Include="Gurux.Net" Version="8.4.2604.201" />
-    <PackageReference Include="Gurux.Common" Version="8.4.2503.602" />
-	<PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.15" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.15">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.1" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="9.0.15">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.0" />
-    <PackageReference Include="SSH.NET" Version="2024.2.0" />
-    <PackageReference Include="CsvHelper" Version="33.1.0" />
-  </ItemGroup>
+	<ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\PQM.Core\PQM.Core.csproj" />
-  </ItemGroup>
+		<!-- Entity Framework Core -->
+		<PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.15" />
+
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.15">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="9.0.15">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+
+		<!-- Bulk Operations -->
+		<PackageReference Include="EFCore.BulkExtensions" Version="9.0.15" />
+
+		<!-- Gurux -->
+		<PackageReference Include="Gurux.DLMS" Version="9.0.2605.2801" />
+		<PackageReference Include="Gurux.Net" Version="8.4.2604.201" />
+		<PackageReference Include="Gurux.Common" Version="8.4.2503.602" />
+
+		<!-- SQL Server -->
+		<PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.1" />
+
+		<!-- Hosting -->
+		<PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.0" />
+
+		<!-- SSH -->
+		<PackageReference Include="SSH.NET" Version="2024.2.0" />
+
+		<!-- CSV -->
+		<PackageReference Include="CsvHelper" Version="33.1.0" />
+
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\PQM.Core\PQM.Core.csproj" />
+	</ItemGroup>
 
 </Project>
