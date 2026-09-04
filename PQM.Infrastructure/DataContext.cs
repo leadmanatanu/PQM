@@ -17,8 +17,6 @@ namespace PQM.Infrastructure
         public DbSet<User> User { get; set; } = null!;
         public DbSet<Device> Device { get; set; } = null!;
         public DbSet<Parameter> Parameter { get; set; } = null!;
-
-
         public DbSet<Profile> Profiles { get; set; } = null!;
         public DbSet<ReadingSession> ReadingSessions { get; set; } = null!;
         public DbSet<ReadingValue> ReadingValues { get; set; } = null!;
@@ -47,8 +45,6 @@ namespace PQM.Infrastructure
                 optionsBuilder.UseSqlServer(_connectionString);
             }
         }
-
-
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -188,9 +184,6 @@ namespace PQM.Infrastructure
 
 
         }
-
-
-
 
     }
 }
