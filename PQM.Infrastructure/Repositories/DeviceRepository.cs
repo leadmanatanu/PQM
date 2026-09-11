@@ -17,6 +17,7 @@ namespace PQM.Infrastructure.Repositories
         {
             return await _db.Device
                 .Include(d => d.MeterType)
+                .Include(d => d.DeviceSyncSchedule)
                 .Where(d => !d.IsDeleted && d.IsActive)
                 .OrderBy(d => d.Id)
                 .ToListAsync(cancellationToken);
@@ -34,10 +35,20 @@ namespace PQM.Infrastructure.Repositories
             if (device == null)
                 throw new ArgumentNullException(nameof(device));
 
+            // Check duplicate fields
+            var duplicateField = await GetDuplicateFieldAsync(
+                device,
+                cancellationToken);
+
+            if (duplicateField != null)
+            {
+                throw new InvalidOperationException(
+                    $"Device with the same {duplicateField} already exists.");
+            }
+
             device.CreatedAt = DateTime.UtcNow;
 
-           
-            // Resolve MeterType by name if only the name was supplied.
+            // Resolve MeterType by name if only the name was supplied
             if (device.MeterTypeId == null &&
                 device.MeterType != null &&
                 !string.IsNullOrWhiteSpace(device.MeterType.Name))
@@ -53,11 +64,15 @@ namespace PQM.Infrastructure.Repositories
                 }
             }
 
-            // Do not attach an existing navigation object accidentally.
+            // Do not attach an existing navigation object accidentally
             device.MeterType = null;
 
-            await _db.Device.AddAsync(device, cancellationToken);
-            await _db.SaveChangesAsync(cancellationToken);
+            await _db.Device.AddAsync(
+                device,
+                cancellationToken);
+
+            await _db.SaveChangesAsync(
+                cancellationToken);
 
             return device.Id;
         }
@@ -66,10 +81,25 @@ namespace PQM.Infrastructure.Repositories
             if (device == null)
                 throw new ArgumentNullException(nameof(device));
 
-            var existing = await _db.Device.FirstOrDefaultAsync(d => d.Id == device.Id && !d.IsDeleted,cancellationToken);
+            var existing = await _db.Device
+                .FirstOrDefaultAsync(
+                    d => d.Id == device.Id && !d.IsDeleted,
+                    cancellationToken);
 
             if (existing == null)
                 return false;
+
+            // Check duplicate fields
+            // Current device ID is automatically excluded
+            var duplicateField = await GetDuplicateFieldAsync(
+                device,
+                cancellationToken);
+
+            if (duplicateField != null)
+            {
+                throw new InvalidOperationException(
+                    $"Another device with the same {duplicateField} already exists.");
+            }
 
             existing.Name = device.Name;
             existing.IP = device.IP;
@@ -85,15 +115,12 @@ namespace PQM.Infrastructure.Repositories
             existing.TimeZoneId = device.TimeZoneId;
             existing.MeterTypeId = device.MeterTypeId;
 
-            // IMPORTANT:
-            // Device -> Schedule is many-to-one.
-            // Therefore DeviceSyncScheduleId belongs here.
-            existing.DeviceSyncScheduleId = device.DeviceSyncScheduleId;
+            // Device -> Schedule
+            existing.DeviceSyncScheduleId =
+                device.DeviceSyncScheduleId;
 
-            // If status is intentionally managed by the device/service,
-            // don't overwrite it from the edit screen.
-
-            await _db.SaveChangesAsync(cancellationToken);
+            await _db.SaveChangesAsync(
+                cancellationToken);
 
             return true;
         }
@@ -117,6 +144,61 @@ namespace PQM.Infrastructure.Repositories
             return await _db.Set<MeterType>()
                 .OrderBy(m => m.Name)
                 .ToListAsync(cancellationToken);
+        }
+        public async Task<string?> GetDuplicateFieldAsync(Device device,CancellationToken cancellationToken = default)
+        {
+            if (device == null)
+                throw new ArgumentNullException(nameof(device));
+
+            var query = _db.Device.Where(d => !d.IsDeleted);
+
+            // During update, don't compare the device with itself
+            if (device.Id > 0)
+            {
+                query = query.Where(d => d.Id != device.Id);
+            }
+
+            if (!string.IsNullOrWhiteSpace(device.Name))
+            {
+                bool exists = await query.AnyAsync(
+                    d => d.Name == device.Name,
+                    cancellationToken);
+
+                if (exists)
+                    return "Name";
+            }
+
+            if (!string.IsNullOrWhiteSpace(device.SerialNumber))
+            {
+                bool exists = await query.AnyAsync(
+                    d => d.SerialNumber == device.SerialNumber,
+                    cancellationToken);
+
+                if (exists)
+                    return "SerialNumber";
+            }
+
+            if (!string.IsNullOrWhiteSpace(device.ConsumerNumber))
+            {
+                bool exists = await query.AnyAsync(
+                    d => d.ConsumerNumber == device.ConsumerNumber,
+                    cancellationToken);
+
+                if (exists)
+                    return "ConsumerNumber";
+            }
+
+            if (!string.IsNullOrWhiteSpace(device.IP))
+            {
+                bool exists = await query.AnyAsync(
+                    d => d.IP == device.IP,
+                    cancellationToken);
+
+                if (exists)
+                    return "IP";
+            }
+
+            return null;
         }
     }
 }

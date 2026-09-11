@@ -15,50 +15,16 @@ namespace PQM.Server.Controllers
     {
         private readonly IDeviceRepository _deviceRepository;
         private readonly ILiveRepository _liveRepository;
+        private readonly INetworkReachabilityService _reachability;
         private readonly APIResponse _apiResponse;
         private static readonly ConcurrentDictionary<int, SemaphoreSlim> _deviceLocks = new();
-        public LiveScanController(IDeviceRepository deviceRepository,ILiveRepository liveRepository,ILogger<LiveScanController> logger)
+
+        public LiveScanController(IDeviceRepository deviceRepository,ILiveRepository liveRepository,ILogger<LiveScanController> logger,INetworkReachabilityService reachability)
         {
-            _deviceRepository = deviceRepository?? throw new ArgumentNullException(nameof(deviceRepository));
-            _liveRepository = liveRepository?? throw new ArgumentNullException(nameof(liveRepository));
+            _deviceRepository = deviceRepository ?? throw new ArgumentNullException(nameof(deviceRepository));
+            _liveRepository = liveRepository ?? throw new ArgumentNullException(nameof(liveRepository));
             _apiResponse = new APIResponse();
-        }
-        private static SemaphoreSlim GetDeviceLock(int deviceId)
-        {
-            return _deviceLocks.GetOrAdd(deviceId,_ => new SemaphoreSlim(1, 1));
-        }
-        private static async Task<bool> IsDeviceReachableAsync(string ip,int port,int timeoutMs,CancellationToken cancellationToken)
-        {
-            try
-            {
-                using var client =
-                    new System.Net.Sockets.TcpClient();
-
-                var connectTask =
-                    client.ConnectAsync(ip, port);
-
-                var timeoutTask =
-                    Task.Delay(
-                        timeoutMs,
-                        cancellationToken);
-
-                var completedTask =
-                    await Task.WhenAny(
-                        connectTask,
-                        timeoutTask);
-
-                if (completedTask == connectTask)
-                {
-                    await connectTask;
-                    return true;
-                }
-
-                return false;
-            }
-            catch
-            {
-                return false;
-            }
+            _reachability = reachability ?? throw new ArgumentNullException(nameof(reachability));
         }
 
         [HttpPost("{id:int}/live-scan")]
@@ -108,12 +74,7 @@ namespace PQM.Server.Controllers
 
             try
             {
-                bool reachable =
-                    await IsDeviceReachableAsync(
-                        device.IP,
-                        device.PORT,
-                        5000,
-                        ct);
+                bool reachable =await _reachability.IsReachableAsync(device.IP,device.PORT,5000,ct);
 
                 if (!reachable)
                 {
@@ -192,93 +153,6 @@ namespace PQM.Server.Controllers
             {
                 deviceLock.Release();
             }
-        }
-        private async Task<List<LiveScanItemResult>>ReadLiveValuesFromMeterAsync(Device device,List<int>? profileIds,List<int>? parameterIds,CancellationToken ct)
-        {
-            List<LiveScanParameterInfo> parameters = await _liveRepository.GetParametersForLiveScanAsync(profileIds,parameterIds,device.MeterTypeId,ct);
-
-            if (parameters.Count == 0)
-            {
-                return new List<LiveScanItemResult>();
-            }
-
-            var results =
-                new List<LiveScanItemResult>();
-
-            await using var meterReader =
-                new DlmsMeterReader(device);
-
-            await meterReader.ConnectAsync(ct);
-
-            foreach (var param in parameters)
-            {
-                var item =
-                    new LiveScanItemResult
-                    {
-                        ParameterId = param.Id,
-                        ParameterName = param.Name,
-                        ObisCode = param.ObisCode,
-                        Unit = param.Unit
-                    };
-
-                try
-                {
-                    GXDLMSObject dlmsObj =
-                        param.ObjectType switch
-                        {
-                            "GXDLMSExtendedRegister" =>
-                                new GXDLMSExtendedRegister(
-                                    param.ObisCode),
-
-                            "GXDLMSDemandRegister" =>
-                                new GXDLMSDemandRegister(
-                                    param.ObisCode),
-
-                            _ =>
-                                new GXDLMSRegister(
-                                    param.ObisCode)
-                        };
-
-                    if (param.Scaler.HasValue &&
-                        dlmsObj is GXDLMSRegister reg)
-                    {
-                        reg.Scaler =
-                            param.Scaler.Value;
-                    }
-                    else if (param.Scaler.HasValue &&
-                             dlmsObj is GXDLMSExtendedRegister extReg)
-                    {
-                        extReg.Scaler =
-                            param.Scaler.Value;
-                    }
-
-                    int attributeIndex =
-                        param.AttributeIndex ?? 2;
-
-                    var value =
-                        await meterReader.ReadObjectAsync(
-                            dlmsObj,
-                            attributeIndex,
-                            ct);
-
-                    item.Value =
-                        value?.ToString()
-                        ?? string.Empty;
-                }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    item.Error = ex.Message;
-                    item.Value = string.Empty;
-                }
-
-                results.Add(item);
-            }
-
-            return results;
         }
 
         [HttpGet("profiles")]
@@ -372,6 +246,99 @@ namespace PQM.Server.Controllers
                 _apiResponse.Errors = new List<string> { ex.Message };
                 return Ok(_apiResponse);
             }
+        }
+
+        private async Task<List<LiveScanItemResult>> ReadLiveValuesFromMeterAsync(Device device, List<int>? profileIds, List<int>? parameterIds, CancellationToken ct)
+        {
+            List<LiveScanParameterInfo> parameters = await _liveRepository.GetParametersForLiveScanAsync(profileIds, parameterIds, device.MeterTypeId, ct);
+
+            if (parameters.Count == 0)
+            {
+                return new List<LiveScanItemResult>();
+            }
+
+            var results =
+                new List<LiveScanItemResult>();
+
+            await using var meterReader =
+                new DlmsMeterReader(device);
+
+            await meterReader.ConnectAsync(ct);
+
+            foreach (var param in parameters)
+            {
+                var item =
+                    new LiveScanItemResult
+                    {
+                        ParameterId = param.Id,
+                        ParameterName = param.Name,
+                        ObisCode = param.ObisCode,
+                        Unit = param.Unit
+                    };
+
+                try
+                {
+                    GXDLMSObject dlmsObj =
+                        param.ObjectType switch
+                        {
+                            "GXDLMSExtendedRegister" =>
+                                new GXDLMSExtendedRegister(
+                                    param.ObisCode),
+
+                            "GXDLMSDemandRegister" =>
+                                new GXDLMSDemandRegister(
+                                    param.ObisCode),
+
+                            _ =>
+                                new GXDLMSRegister(
+                                    param.ObisCode)
+                        };
+
+                    if (param.Scaler.HasValue &&
+                        dlmsObj is GXDLMSRegister reg)
+                    {
+                        reg.Scaler =
+                            param.Scaler.Value;
+                    }
+                    else if (param.Scaler.HasValue &&
+                             dlmsObj is GXDLMSExtendedRegister extReg)
+                    {
+                        extReg.Scaler =
+                            param.Scaler.Value;
+                    }
+
+                    int attributeIndex =
+                        param.AttributeIndex ?? 2;
+
+                    var value =
+                        await meterReader.ReadObjectAsync(
+                            dlmsObj,
+                            attributeIndex,
+                            ct);
+
+                    item.Value =
+                        value?.ToString()
+                        ?? string.Empty;
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    item.Error = ex.Message;
+                    item.Value = string.Empty;
+                }
+
+                results.Add(item);
+            }
+
+            return results;
+        }
+
+        private static SemaphoreSlim GetDeviceLock(int deviceId)
+        {
+            return _deviceLocks.GetOrAdd(deviceId, _ => new SemaphoreSlim(1, 1));
         }
     }
 }

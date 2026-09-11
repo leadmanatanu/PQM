@@ -64,5 +64,31 @@ namespace PQM.Infrastructure.Repositories
                 .OrderBy(s => s.ScheduledTime)
                 .ToListAsync(cancellationToken);
         }
+        public async Task<bool> HasLinkedDevicesAsync(int scheduleId,CancellationToken cancellationToken = default)
+        {
+            return await _db.Device
+                .AnyAsync(
+                    d => d.DeviceSyncScheduleId == scheduleId
+                         && d.IsDeleted != true
+                         && d.IsActive,
+                    cancellationToken);
+        }
+
+        public async Task<bool> DeleteAsync(int id,CancellationToken cancellationToken = default)
+        {
+            var schedule = await _db.DeviceSyncSchedules
+                .FirstOrDefaultAsync(
+                    s => s.Id == id,
+                    cancellationToken);
+
+            if (schedule == null)
+                return false;
+
+            _db.DeviceSyncSchedules.Remove(schedule);
+
+            await _db.SaveChangesAsync(cancellationToken);
+
+            return true;
+        }
     }
 }

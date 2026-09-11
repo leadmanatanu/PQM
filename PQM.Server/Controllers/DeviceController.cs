@@ -4,7 +4,6 @@ using PQM.Core.Interfaces.Repositories;
 using PQM.Infrastructure.Services;
 using PQM.Server.Models;
 using System.Net;
-using System.Net.Sockets;
 
 namespace PQM.Server.Controllers
 {
@@ -15,11 +14,13 @@ namespace PQM.Server.Controllers
         private readonly IDeviceRepository _deviceRepository;
         private readonly ILogger<DeviceController> _logger;
         private readonly ProfileSyncService _profileSyncService;
-        public DeviceController(IDeviceRepository deviceRepository,ILogger<DeviceController> logger,ProfileSyncService profileSyncService)
+        private readonly INetworkReachabilityService _reachability;
+        public DeviceController(IDeviceRepository deviceRepository,ILogger<DeviceController> logger,ProfileSyncService profileSyncService,INetworkReachabilityService reachability)
         {
             _deviceRepository = deviceRepository;
             _logger = logger;
             _profileSyncService = profileSyncService;
+            _reachability = reachability;
         }
 
         [HttpGet]
@@ -378,7 +379,7 @@ namespace PQM.Server.Controllers
                 // 2. Check device network connectivity
                 // ----------------------------------------------------
 
-                var reachable =await IsDeviceReachableAsync(device.IP,device.PORT,5000,ct);
+                var reachable = await _reachability.IsReachableAsync(device.IP, device.PORT, 5000, ct);
 
                 if (!reachable)
                 {
@@ -488,38 +489,6 @@ namespace PQM.Server.Controllers
                         ex.Message
                     }
                 });
-            }
-        }
-
-        private static async Task<bool> IsDeviceReachableAsync(string ip,int port,int timeoutMs,CancellationToken cancellationToken)
-        {
-            try
-            {
-                using var client = new TcpClient();
-
-                var connectTask =
-                    client.ConnectAsync(ip, port);
-
-                var timeoutTask =
-                    Task.Delay(
-                        timeoutMs,
-                        cancellationToken);
-
-                var completedTask =
-                    await Task.WhenAny(
-                        connectTask,
-                        timeoutTask);
-
-                if (completedTask != connectTask)
-                    return false;
-
-                await connectTask;
-
-                return client.Connected;
-            }
-            catch
-            {
-                return false;
             }
         }
     }

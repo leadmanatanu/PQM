@@ -6,6 +6,8 @@ using PQM.Infrastructure.Services;
 using Serilog;
 using Serilog.Events;
 using System.Text.Json.Serialization;
+using PQM.Server.Hubs;
+using PQM.Server.Services;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -49,8 +51,12 @@ try
     builder.Services.AddScoped<IDeviceRepository, DeviceRepository>();
     builder.Services.AddScoped<IScheduleRepository, ScheduleRepository>();
     builder.Services.AddScoped<ILiveRepository, LiveRepository>();
+    builder.Services.AddSingleton<INetworkReachabilityService, NetworkReachabilityService>();
 
     builder.Services.AddScoped<ProfileSyncService>(sp => new ProfileSyncService(connectionString, sp.GetRequiredService<ILogger<ProfileSyncService>>()));
+
+    builder.Services.AddSignalR();
+    builder.Services.AddHostedService<DevicePingBackgroundService>();
 
     builder.Services.AddCors(options =>
     {
@@ -149,6 +155,8 @@ try
     try
     {
         app.MapControllers();
+
+        app.MapHub<DeviceHub>("/hubs/device");
 
         app.MapFallbackToFile("/index.html");
 

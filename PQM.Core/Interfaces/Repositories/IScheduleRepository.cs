@@ -8,5 +8,7 @@ namespace PQM.Core.Interfaces.Repositories
         Task<bool> UpdateAsync(DeviceSyncSchedule schedule,CancellationToken cancellationToken = default);
         Task<DeviceSyncSchedule?> GetByIdAsync(int id,CancellationToken cancellationToken = default);
         Task<IEnumerable<DeviceSyncSchedule>> GetAllAsync(CancellationToken cancellationToken = default);
+        Task<bool> HasLinkedDevicesAsync(int scheduleId,CancellationToken cancellationToken = default);
+        Task<bool> DeleteAsync(int id,CancellationToken cancellationToken = default);
     }
 }

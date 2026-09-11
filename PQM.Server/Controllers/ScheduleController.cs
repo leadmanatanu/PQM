@@ -335,6 +335,76 @@ namespace PQM.Server.Controllers
                 return Ok(_apiResponse);
             }
         }
-        
+
+        [HttpDelete("schedule/{id:int}")]
+        public async Task<ActionResult> DeleteSchedule(int id,CancellationToken cancellationToken)
+        {
+            try
+            {
+                // Check whether schedule exists
+                var schedule = await _scheduleRepository.GetByIdAsync(id,cancellationToken);
+
+                if (schedule == null)
+                {
+                    return NotFound(new
+                    {
+                        error = $"Schedule {id} not found."
+                    });
+                }
+
+                // Check whether an active, non-deleted device
+                // is linked with this schedule
+                bool hasLinkedDevices = await _scheduleRepository.HasLinkedDevicesAsync(id,cancellationToken);
+
+                if (hasLinkedDevices)
+                {
+                    return Conflict(new
+                    {
+                        error = $"Schedule cannot be deleted because it is linked to one or more active devices."
+                    });
+                }
+
+                // Delete schedule
+                bool deleted = await _scheduleRepository.DeleteAsync(id,cancellationToken);
+
+                if (!deleted)
+                {
+                    return NotFound(new
+                    {
+                        error = $"Schedule {id} not found."
+                    });
+                }
+
+                _apiResponse.Status = true;
+                _apiResponse.StatusCode =
+                    System.Net.HttpStatusCode.OK;
+
+                _apiResponse.Data = new
+                {
+                    id = id,
+                    message = "Schedule deleted successfully."
+                };
+
+                _apiResponse.Errors.Clear();
+
+                return Ok(_apiResponse);
+            }
+            catch (Exception ex)
+            {
+                _apiResponse.Status = false;
+                _apiResponse.StatusCode =
+                    System.Net.HttpStatusCode.BadRequest;
+
+                _apiResponse.Data = null;
+
+                _apiResponse.Errors = new List<string>
+                {
+                    ex.Message
+                };
+
+                return Ok(_apiResponse);
+            }
+        }
+
     }
 }

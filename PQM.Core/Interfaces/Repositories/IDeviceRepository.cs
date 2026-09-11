@@ -11,5 +11,6 @@ namespace PQM.Core.Interfaces.Repositories
         Task<bool> UpdateAsync(Device device,CancellationToken cancellationToken = default);
         Task<bool> DeleteAsync(int id,CancellationToken cancellationToken = default);
         Task<IEnumerable<MeterType>> GetMeterTypesAsync(CancellationToken cancellationToken = default);
+        Task<string?> GetDuplicateFieldAsync(Device device,CancellationToken cancellationToken = default);
     }
 }
