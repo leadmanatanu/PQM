@@ -18,7 +18,7 @@ namespace PQM.Infrastructure.Repositories
             return await _db.Device
                 .Include(d => d.MeterType)
                 .Include(d => d.DeviceSyncSchedule)
-                .Where(d => !d.IsDeleted && d.IsActive)
+                .Where(d => !d.IsDeleted)
                 .OrderBy(d => d.Id)
                 .ToListAsync(cancellationToken);
         }
@@ -36,9 +36,7 @@ namespace PQM.Infrastructure.Repositories
                 throw new ArgumentNullException(nameof(device));
 
             // Check duplicate fields
-            var duplicateField = await GetDuplicateFieldAsync(
-                device,
-                cancellationToken);
+            var duplicateField = await GetDuplicateFieldAsync(device,cancellationToken);
 
             if (duplicateField != null)
             {
@@ -49,14 +47,9 @@ namespace PQM.Infrastructure.Repositories
             device.CreatedAt = DateTime.UtcNow;
 
             // Resolve MeterType by name if only the name was supplied
-            if (device.MeterTypeId == null &&
-                device.MeterType != null &&
-                !string.IsNullOrWhiteSpace(device.MeterType.Name))
+            if (device.MeterTypeId == null &&device.MeterType != null &&!string.IsNullOrWhiteSpace(device.MeterType.Name))
             {
-                var meterType = await _db.Set<MeterType>()
-                    .FirstOrDefaultAsync(
-                        m => m.Name == device.MeterType.Name,
-                        cancellationToken);
+                var meterType = await _db.Set<MeterType>().FirstOrDefaultAsync(m => m.Name == device.MeterType.Name,cancellationToken);
 
                 if (meterType != null)
                 {
@@ -67,12 +60,9 @@ namespace PQM.Infrastructure.Repositories
             // Do not attach an existing navigation object accidentally
             device.MeterType = null;
 
-            await _db.Device.AddAsync(
-                device,
-                cancellationToken);
+            await _db.Device.AddAsync(device,cancellationToken);
 
-            await _db.SaveChangesAsync(
-                cancellationToken);
+            await _db.SaveChangesAsync(cancellationToken);
 
             return device.Id;
         }

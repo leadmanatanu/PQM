@@ -1,23 +1,10 @@
-using System;
 using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
 using Gurux.DLMS;
 using Gurux.DLMS.Enums;
 
 namespace PQM.Infrastructure.Services
 {
-    /// <summary>
-    /// Standalone value formatter for the DLMS batch sync pipeline (DlmsMeterReader).
-    /// This is intentionally separate from DLMSReader.FormatValue(), which uses a different
-    /// array separator convention (", " comma-space) and is tied to the interactive/discover
-    /// read path. Do NOT merge these two formatters.
-    ///
-    /// The "yyyy-MM-dd HH:mm:ss" format produced for DateTime/GXDateTime values is a
-    /// fixed contract: ParameterValueController.Search() in Stage 2B depends on this exact
-    /// format for its ClockString.CompareTo(...) date range filtering. Do NOT change the
-    /// format string without updating the controller's ClockStringFormat constant too.
-    /// </summary>
+
     public static class ValueFormatter
     {
         public static string FormatValue(object? value)
@@ -114,12 +101,6 @@ namespace PQM.Infrastructure.Services
             // Fallback: everything else uses ToString().
             return value.ToString() ?? string.Empty;
         }
-
-        /// <summary>
-        /// Sanitizes raw string values from ReadingValues, DeviceLatestReadings, or DeviceEvents.
-        /// Strips legacy bracketed DLMS structure format (e.g. "[0.001|Current]" -> "0.001").
-        /// Decodes DLMS octet-string date/time hex values (e.g. "07EA071BFF0C13FFFF014A00" -> "2026-07-27 12:19:00").
-        /// </summary>
         public static string CleanValue(string? rawValue)
         {
             if (string.IsNullOrWhiteSpace(rawValue))
@@ -148,7 +129,6 @@ namespace PQM.Infrastructure.Services
 
             return trimmed;
         }
-
         private static bool TryFormatDlmsHexOctetString(string hexStr, out string formattedDate)
         {
             formattedDate = string.Empty;

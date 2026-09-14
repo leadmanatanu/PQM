@@ -9,6 +9,4 @@ public class MeterType
     public DateTime? CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 
-    public ICollection<Device> Devices { get; set; }= new List<Device>();
-    public ICollection<Parameter> Parameters { get; set; }= new List<Parameter>();
 }

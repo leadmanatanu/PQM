@@ -44,9 +44,7 @@ namespace PQM.Server.Controllers
                     });
                 }
 
-                if (!TimeSpan.TryParse(
-                    request.ScheduledTime,
-                    out var scheduledTime))
+                if (!TimeSpan.TryParse(request.ScheduledTime,out var scheduledTime))
                 {
                     return BadRequest(new
                     {
@@ -58,12 +56,7 @@ namespace PQM.Server.Controllers
 
                 string timeZoneId = "India Standard Time";
 
-                DateTime? nextRunAtUtc = request.IsEnabled
-                    ? ScheduleHelper.ComputeNextRunAtUtc(
-                        scheduledTime,
-                        timeZoneId,
-                        nowUtc)
-                    : null;
+                DateTime? nextRunAtUtc = request.IsEnabled? ScheduleHelper.ComputeNextRunAtUtc(scheduledTime,timeZoneId,nowUtc): null;
 
                 var schedule = new DeviceSyncSchedule
                 {
@@ -73,9 +66,7 @@ namespace PQM.Server.Controllers
                     NextRunAtUtc = nextRunAtUtc
                 };
 
-                int scheduleId = await _scheduleRepository.AddAsync(
-                    schedule,
-                    cancellationToken);
+                int scheduleId = await _scheduleRepository.AddAsync(schedule,cancellationToken);
 
                 _apiResponse.Status = true;
                 _apiResponse.StatusCode =
@@ -85,12 +76,9 @@ namespace PQM.Server.Controllers
                 {
                     id = scheduleId,
                     isEnabled = request.IsEnabled,
-                    scheduledTime =
-                        scheduledTime.ToString(@"hh\:mm"),
-                    repeatMode =
-                        request.RepeatMode ?? "Daily",
-                    nextRunAtUtc =
-                        FormatUtcIso(nextRunAtUtc)
+                    scheduledTime =scheduledTime.ToString(@"hh\:mm"),
+                    repeatMode =request.RepeatMode ?? "Daily",
+                    nextRunAtUtc =FormatUtcIso(nextRunAtUtc)
                 };
 
                 _apiResponse.Errors.Clear();

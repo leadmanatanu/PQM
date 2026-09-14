@@ -347,19 +347,13 @@ namespace PQM.Server.Controllers
         [HttpPost("{id:int}/sync")]
         public async Task<ActionResult> TriggerDeviceSync(int id,CancellationToken cancellationToken)
         {
-            using var timeoutCts =new CancellationTokenSource(TimeSpan.FromMinutes(60));
-
-            using var linkedCts =CancellationTokenSource.CreateLinkedTokenSource(cancellationToken,timeoutCts.Token);
-
-            var ct = linkedCts.Token;
-
             try
             {
                 // ----------------------------------------------------
                 // 1. Get device
                 // ----------------------------------------------------
 
-                var device =await _deviceRepository.GetByIdAsync(id,ct);
+                var device = await _deviceRepository.GetByIdAsync(id,cancellationToken);
 
                 if (device == null)
                 {
@@ -369,9 +363,9 @@ namespace PQM.Server.Controllers
                         StatusCode = HttpStatusCode.NotFound,
                         Data = null,
                         Errors = new List<string>
-                        {
-                            $"Device {id} not found."
-                        }
+                {
+                    $"Device {id} not found."
+                }
                     });
                 }
 
@@ -379,7 +373,7 @@ namespace PQM.Server.Controllers
                 // 2. Check device network connectivity
                 // ----------------------------------------------------
 
-                var reachable = await _reachability.IsReachableAsync(device.IP, device.PORT, 5000, ct);
+                var reachable = await _reachability.IsReachableAsync(device.IP,device.PORT,5000,cancellationToken);
 
                 if (!reachable)
                 {
@@ -402,7 +396,7 @@ namespace PQM.Server.Controllers
 
                 _logger.LogInformation("[DeviceController] Sync Now started for Device {DeviceId}.",id);
 
-                var result = await _profileSyncService.SyncDeviceAllProfilesAsync(id, ct);
+                var result = await _profileSyncService.SyncDeviceAllProfilesAsync(id, cancellationToken);
 
                 // ----------------------------------------------------
                 // 4. Return result
@@ -422,9 +416,7 @@ namespace PQM.Server.Controllers
                     });
                 }
 
-                _logger.LogInformation(
-                    "[DeviceController] Sync Now completed for Device {DeviceId}.",
-                    id);
+                _logger.LogInformation("[DeviceController] Sync Now completed for Device {DeviceId}.",id);
 
                 return Ok(new APIResponse
                 {
@@ -435,28 +427,9 @@ namespace PQM.Server.Controllers
                         deviceId = id,
                         status = "Completed",
                         completedAt = DateTime.UtcNow,
-                        message =
-                            $"Sync completed successfully for device {id}."
+                        message = $"Sync completed successfully for device {id}."
                     },
                     Errors = new List<string>()
-                });
-            }
-            catch (OperationCanceledException)
-                when (timeoutCts.IsCancellationRequested)
-            {
-                _logger.LogWarning(
-                    "[DeviceController] Sync timeout for Device {DeviceId}.",
-                    id);
-
-                return Ok(new APIResponse
-                {
-                    Status = false,
-                    StatusCode = HttpStatusCode.RequestTimeout,
-                    Data = null,
-                    Errors = new List<string>
-                    {
-                        "Sync did not complete within 5 minutes."
-                    }
                 });
             }
             catch (OperationCanceledException)
@@ -474,10 +447,7 @@ namespace PQM.Server.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(
-                    ex,
-                    "[DeviceController] TriggerDeviceSync failed for Device {DeviceId}.",
-                    id);
+                _logger.LogError(ex,"[DeviceController] TriggerDeviceSync failed for Device {DeviceId}.",id);
 
                 return Ok(new APIResponse
                 {

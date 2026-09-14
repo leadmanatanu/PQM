@@ -51,6 +51,7 @@ try
     builder.Services.AddScoped<IDeviceRepository, DeviceRepository>();
     builder.Services.AddScoped<IScheduleRepository, ScheduleRepository>();
     builder.Services.AddScoped<ILiveRepository, LiveRepository>();
+    builder.Services.AddScoped<IReportRepository, ReportRepository>();
     builder.Services.AddSingleton<INetworkReachabilityService, NetworkReachabilityService>();
 
     builder.Services.AddScoped<ProfileSyncService>(sp => new ProfileSyncService(connectionString, sp.GetRequiredService<ILogger<ProfileSyncService>>()));

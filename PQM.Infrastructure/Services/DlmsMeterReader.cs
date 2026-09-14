@@ -6,35 +6,10 @@ using Gurux.DLMS.Enums;
 using Gurux.DLMS.Objects;
 using Gurux.Net;
 using PQM.Core.Entities;
-// Alias required: Gurux.DLMS.Enums also defines a 'Task' type which collides
-// with System.Threading.Tasks.Task in this namespace.
 using SysTask = System.Threading.Tasks.Task;
 
 namespace PQM.Infrastructure.Services
 {
-    /// <summary>
-    /// Batch/incremental-sync DLMS meter reader.
-    ///
-    /// This class is the ported and adapted version of the validated prototype at
-    /// D:\event_reading\meter_reading. It is intentionally a separate class from
-    /// DLMSReader (the interactive/discover reader) for the following reasons:
-    ///
-    ///   1. Different output model: produces structured ProfileRow objects rather than
-    ///      JSON strings, which is what the sync pipeline (Stage 4+) needs.
-    ///
-    ///   2. AllData = false fix: the critical bug in DLMSReader (AllData = true causes
-    ///      Receive() to block for the full WaitTime even after a complete frame arrives)
-    ///      is fixed here without touching DLMSReader.cs.
-    ///
-    ///   3. Incremental sync support: ReadProfileAllEntriesAsync accepts a startTime
-    ///      watermark parameter that DLMSReader does not support.
-    ///
-    ///   4. _isAssociated guard: prevents NullReferenceException from ReleaseRequest()
-    ///      when a connection never fully completed association.
-    ///
-    /// Registration: Transient in DI (stateful per-connection, same pattern as DLMSReader
-    /// via DLMSSessionManager — instantiate, use, dispose within one sync operation).
-    /// </summary>
     public class DlmsMeterReader : IDisposable, IAsyncDisposable
     {
         private readonly Device _device;
@@ -42,55 +17,11 @@ namespace PQM.Infrastructure.Services
         private readonly GXNet _media;
         private readonly bool _verboseLogging;
         private int _lastRequestBytesReceived;
-
         private bool _connected;
-
-        // Guard flag set to true only after a successful ParseAAREResponse().
-        // Used in Disconnect() to avoid calling ReleaseRequest() on a connection
-        // that never completed association — which causes a NullReferenceException
-        // inside the Gurux library.
         private bool _isAssociated;
-
-        // =========================================================
-        // PER-METER SESSION COOLDOWN
-        //
-        // Some DLMS meters (including this model) do not immediately release
-        // their application-layer association after RLRQ. If a new AARQ arrives
-        // before the meter's session cleanup completes, the meter responds with
-        // "Service Unsupported" (GXDLMSConfirmedServiceError).
-        //
-        // The cooldown tracker records the last disconnect time for each meter
-        // (keyed by IP:PORT). ConnectAsync checks this and waits out any remaining
-        // cooldown before attempting Open(). This is transparent in production where
-        // syncs are minutes apart, and handles back-to-back syncs (e.g., multiple
-        // profiles per device in Stage 5) correctly.
-        // =========================================================
-        private static readonly ConcurrentDictionary<string, DateTime> _meterLastDisconnect
-            = new ConcurrentDictionary<string, DateTime>();
-
-        /// <summary>
-        /// Default conservative 8-second settling cooldown between sessions on the same meter.
-        /// Configurable via appsettings.json (DlmsSettings:MeterCooldownSeconds).
-        /// Value chosen conservatively to ensure DLMS meter firmware association layers reset.
-        /// </summary>
+        private static readonly ConcurrentDictionary<string, DateTime> _meterLastDisconnect= new ConcurrentDictionary<string, DateTime>();
         public static int DefaultMeterCooldownSeconds { get; set; } = 8;
         private readonly int _meterCooldownSeconds;
-
-        public GXDLMSObjectCollection Objects => _client.Objects;
-
-        // =========================================================
-        // CONSTRUCTOR — takes Device entity directly
-        // =========================================================
-
-        /// <param name="device">
-        ///   The Device entity from PQM.Core. Connection parameters are read directly
-        ///   from it: IP, PORT, ClientAddress, ServerAddress, Authentication (via
-        ///   AuthenticationTypeId shim), Password, Timeout.
-        /// </param>
-        /// <param name="verboseLogging">
-        ///   When true, traces every sent/received frame byte to Console. Useful for
-        ///   diagnosing protocol issues; disable in production.
-        /// </param>
         public DlmsMeterReader(Device device, bool verboseLogging = false, int meterCooldownSeconds = 0)
         {
             _device = device;
@@ -168,11 +99,6 @@ namespace PQM.Infrastructure.Services
                 };
             }
         }
-
-        // =========================================================
-        // CONNECT
-        // =========================================================
-
         public async SysTask ConnectAsync(System.Threading.CancellationToken cancellationToken = default)
         {
             try
@@ -260,12 +186,7 @@ namespace PQM.Infrastructure.Services
                 throw;
             }
         }
-
-        // =========================================================
-        // ASSOCIATION VIEW
-        // =========================================================
-
-        public async System.Threading.Tasks.Task<IReadOnlyList<string>> ReadAssociationViewAsync(System.Threading.CancellationToken cancellationToken = default)
+        public async Task<IReadOnlyList<string>> ReadAssociationViewAsync(System.Threading.CancellationToken cancellationToken = default)
         {
             EnsureConnected();
             cancellationToken.ThrowIfCancellationRequested();
@@ -302,12 +223,6 @@ namespace PQM.Infrastructure.Services
 
             return result;
         }
-
-        /// <summary>
-        /// Adds any ProfileCatalog entries that the meter did not return in its
-        /// association view. Required because some meters omit certain profiles from
-        /// the association view even though they are fully readable.
-        /// </summary>
         private void EnsureKnownProfileObjects()
         {
             var addedProfiles = new List<string>();
@@ -337,15 +252,7 @@ namespace PQM.Infrastructure.Services
                 Console.WriteLine("[FALLBACK] All known profile objects were present in the meter's association view.");
             }
         }
-
-        // =========================================================
-        // READ SINGLE OBJECT
-        // =========================================================
-
-        public async System.Threading.Tasks.Task<object?> ReadObjectAsync(
-            GXDLMSObject obj,
-            int attributeIndex = 2,
-            System.Threading.CancellationToken cancellationToken = default)
+        public async Task<object?> ReadObjectAsync(GXDLMSObject obj,int attributeIndex = 2,System.Threading.CancellationToken cancellationToken = default)
         {
             EnsureConnected();
             cancellationToken.ThrowIfCancellationRequested();
@@ -364,197 +271,11 @@ namespace PQM.Infrastructure.Services
 
             return _client.UpdateValue(obj, attributeIndex, reply.Value);
         }
-
-        public GXDLMSObject? FindObjectByObis(string obisCode)
-        {
-            return _client.Objects.FirstOrDefault(o => o.LogicalName == obisCode);
-        }
-
-        // =========================================================
-        // GET PROFILE OBJECTS
-        // =========================================================
-
         public List<GXDLMSProfileGeneric> GetProfileObjects()
         {
             return _client.Objects.OfType<GXDLMSProfileGeneric>().ToList();
         }
-
-        // =========================================================
-        // READ PROFILE INVENTORY (diagnostic-only, minimal reads)
-        //
-        // Used exclusively by the MeterInventoryCheck diagnostic tool.
-        // Reads only:
-        //   • Attribute 3 (CaptureObjects)  — needed to populate schema so
-        //     ReadRowsByEntry can send the right selective-access descriptor.
-        //   • Attribute 7 (EntriesInUse)    — the total count without pulling data.
-        //   • ReadRowsByEntry(1, 1)          — the very first entry (earliest ts).
-        //   • ReadRowsByEntry(N, 1)          — the very last entry (latest ts).
-        //
-        // This does NOT read the full buffer and writes NOTHING to the database.
-        // =========================================================
-
-        /// <summary>
-        /// Lightweight profile inventory: returns entry count, earliest timestamp,
-        /// and latest timestamp for a ProfileGeneric object identified by its OBIS code.
-        /// Reads the absolute minimum from the meter (attr 3 + attr 7 + 2 entry reads).
-        /// Throws if the profile is not found in the association view.
-        /// </summary>
-        public async System.Threading.Tasks.Task<ProfileInventoryResult> ReadProfileInventoryAsync(
-            string obisCode,
-            System.Threading.CancellationToken cancellationToken = default)
-        {
-            EnsureConnected();
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var profile = _client.Objects
-                .OfType<GXDLMSProfileGeneric>()
-                .FirstOrDefault(o => o.LogicalName == obisCode)
-                ?? throw new InvalidOperationException(
-                       $"Profile object ({obisCode}) not found in meter objects. Call ReadAssociationViewAsync() first.");
-
-            var result = new ProfileInventoryResult { ObisCode = obisCode };
-
-            // ── Attribute 3: CaptureObjects (needed before entry reads) ──────
-            await ReadObjectAsync(profile, 3, cancellationToken);
-
-            // ── Attribute 7: EntriesInUse ────────────────────────────────────
-            try
-            {
-                await ReadObjectAsync(profile, 7, cancellationToken);
-                result.EntriesInUse = (int)profile.EntriesInUse;
-            }
-            catch (OperationCanceledException) { throw; }
-            catch (Exception ex)
-            {
-                result.EntriesInUseError = ex.Message;
-            }
-
-            if (result.EntriesInUse is null or 0)
-                return result; // Can't do boundary reads without a valid count.
-
-            uint n = (uint)result.EntriesInUse.Value;
-
-            // ── First entry (index 1, count 1) ───────────────────────────────
-            try
-            {
-                var firstReqs = _client.ReadRowsByEntry(profile, 1, 1);
-                GXReplyData? firstReply = null;
-                foreach (var req in firstReqs)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    firstReply = await SendAndReceiveAsync(req, cancellationToken);
-                }
-                if (firstReply?.Error == 0 && firstReply.Value != null)
-                {
-                    var parsed = _client.UpdateValue(profile, 2, firstReply.Value);
-                    var rows = ConvertProfileRows(parsed ?? firstReply.Value);
-                    result.Earliest = rows.FirstOrDefault(r => r.Timestamp.HasValue)?.Timestamp;
-                }
-                else if (firstReply != null && firstReply.Error != 0)
-                {
-                    result.EarliestError = $"DLMS Error {firstReply.Error}";
-                }
-            }
-            catch (OperationCanceledException) { throw; }
-            catch (Exception ex)
-            {
-                result.EarliestError = ex.Message;
-            }
-
-            // ── Last entry (index N, count 1) ────────────────────────────────
-            try
-            {
-                var lastReqs = _client.ReadRowsByEntry(profile, n, 1);
-                GXReplyData? lastReply = null;
-                foreach (var req in lastReqs)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    lastReply = await SendAndReceiveAsync(req, cancellationToken);
-                }
-                if (lastReply?.Error == 0 && lastReply.Value != null)
-                {
-                    var parsed = _client.UpdateValue(profile, 2, lastReply.Value);
-                    var rows = ConvertProfileRows(parsed ?? lastReply.Value);
-                    result.Latest = rows.FirstOrDefault(r => r.Timestamp.HasValue)?.Timestamp;
-                }
-                else if (lastReply != null && lastReply.Error != 0)
-                {
-                    result.LatestError = $"DLMS Error {lastReply.Error}";
-                }
-            }
-            catch (OperationCanceledException) { throw; }
-            catch (Exception ex)
-            {
-                result.LatestError = ex.Message;
-            }
-
-            // If entry-access selective access failed for earliest/latest, try range-access fallback (Attempt 2)
-            if (!result.Earliest.HasValue || !result.Latest.HasValue)
-            {
-                try
-                {
-                    var start = new GXDateTime(new DateTime(2000, 1, 1));
-                    var end = new GXDateTime(DateTime.Now);
-                    start.Skip = DateTimeSkips.Deviation | DateTimeSkips.Status;
-                    end.Skip = DateTimeSkips.Deviation | DateTimeSkips.Status;
-
-                    var reqs = _client.ReadRowsByRange(profile, start, end);
-                    GXReplyData? rangeReply = null;
-                    foreach (var req in reqs)
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        rangeReply = await SendAndReceiveAsync(req, cancellationToken);
-                        if (rangeReply != null && rangeReply.Error != 0) break;
-                    }
-
-                    if (rangeReply?.Error == 0 && rangeReply.Value != null)
-                    {
-                        var parsed = _client.UpdateValue(profile, 2, rangeReply.Value);
-                        var rows = ConvertProfileRows(parsed ?? rangeReply.Value);
-                        if (!result.Earliest.HasValue)
-                            result.Earliest = rows.FirstOrDefault(r => r.Timestamp.HasValue)?.Timestamp;
-                        if (!result.Latest.HasValue)
-                            result.Latest = rows.LastOrDefault(r => r.Timestamp.HasValue)?.Timestamp;
-                    }
-                }
-                catch (OperationCanceledException) { throw; }
-                catch { }
-            }
-
-            // Ultimate Fallback: if selective access by entry and range both failed (e.g. meter returned DLMS Error 2),
-            // call ReadProfileAllEntriesAsync which handles full buffer attribute 2 fallback.
-            if (!result.Earliest.HasValue || !result.Latest.HasValue)
-            {
-                try
-                {
-                    var allRows = await ReadProfileAllEntriesAsync(obisCode, cancellationToken: cancellationToken);
-                    if (!result.Earliest.HasValue)
-                        result.Earliest = allRows.FirstOrDefault(r => r.Timestamp.HasValue)?.Timestamp;
-                    if (!result.Latest.HasValue)
-                        result.Latest = allRows.LastOrDefault(r => r.Timestamp.HasValue)?.Timestamp;
-                }
-                catch (OperationCanceledException) { throw; }
-                catch (Exception ex)
-                {
-                    if (!result.Earliest.HasValue) result.EarliestError = ex.Message;
-                    if (!result.Latest.HasValue) result.LatestError = ex.Message;
-                }
-            }
-
-            return result;
-        }
-
-        // =========================================================
-        // GET PROFILE OBJECTS
-        // =========================================================
-
-        // =========================================================
-        // READ CAPTURE OBJECTS (attribute 3)
-        // =========================================================
-
-        public async System.Threading.Tasks.Task<IReadOnlyList<ProfileColumnInfo>> ReadCaptureObjectsAsync(
-            GXDLMSProfileGeneric profile,
-            System.Threading.CancellationToken cancellationToken = default)
+        public async Task<IReadOnlyList<ProfileColumnInfo>> ReadCaptureObjectsAsync(GXDLMSProfileGeneric profile,System.Threading.CancellationToken cancellationToken = default)
         {
             EnsureConnected();
             cancellationToken.ThrowIfCancellationRequested();
@@ -631,15 +352,7 @@ namespace PQM.Infrastructure.Services
 
             return result;
         }
-
-        // =========================================================
-        // READ PROFILE ALL ENTRIES
-        // =========================================================
-
-        public async System.Threading.Tasks.Task<IReadOnlyList<ProfileRow>> ReadProfileAllEntriesAsync(
-            string obisCode,
-            DateTime? startTime = null,
-            System.Threading.CancellationToken cancellationToken = default)
+        public async Task<IReadOnlyList<ProfileRow>> ReadProfileAllEntriesAsync(string obisCode,DateTime? startTime = null,System.Threading.CancellationToken cancellationToken = default)
         {
             EnsureConnected();
             cancellationToken.ThrowIfCancellationRequested();
@@ -736,22 +449,6 @@ namespace PQM.Infrastructure.Services
             var value = await ReadObjectAsync(profile, 2, cancellationToken);
             return ConvertProfileRows(value);
         }
-
-        /// <summary>Groups a flat list of ProfileRows into a dictionary keyed by date (midnight UTC).
-        /// Rows without a valid Timestamp are excluded.</summary>
-        public IReadOnlyDictionary<DateTime, List<ProfileRow>> GroupRowsByDay(IReadOnlyList<ProfileRow> rows)
-        {
-            return rows
-                .Where(r => r.Timestamp.HasValue)
-                .GroupBy(r => r.Timestamp!.Value.Date)
-                .OrderBy(g => g.Key)
-                .ToDictionary(g => g.Key, g => g.ToList());
-        }
-
-        // =========================================================
-        // CONVERT PROFILE ROWS
-        // =========================================================
-
         private static IReadOnlyList<ProfileRow> ConvertProfileRows(object? value)
         {
             var rows = new List<ProfileRow>();
@@ -781,14 +478,7 @@ namespace PQM.Infrastructure.Services
 
             return rows;
         }
-
-        // =========================================================
-        // SEND AND RECEIVE
-        // =========================================================
-
-        private async System.Threading.Tasks.Task<GXReplyData> SendAndReceiveAsync(
-            byte[] request,
-            System.Threading.CancellationToken cancellationToken = default)
+        private async Task<GXReplyData> SendAndReceiveAsync(byte[] request,System.Threading.CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             _lastRequestBytesReceived = 0;
@@ -807,12 +497,7 @@ namespace PQM.Infrastructure.Services
 
             return reply;
         }
-
-        private async SysTask SendAndReceiveAsync(
-            byte[] request,
-            GXReplyData reply,
-            GXReplyData notify,
-            System.Threading.CancellationToken cancellationToken = default)
+        private async SysTask SendAndReceiveAsync(byte[] request,GXReplyData reply,GXReplyData notify,System.Threading.CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var buffer = new GXByteBuffer();
@@ -991,17 +676,6 @@ namespace PQM.Infrastructure.Services
                 }
             }
         }
-
-        // =========================================================
-        // EXTRACT TIMESTAMP
-        //
-        // Scans the row's values array for the first DateTime-like value.
-        // Applies the Year <= 1 guard: meters occasionally return GXDateTime
-        // with Year=0 or Year=1 for wildcarded/invalid clock entries.
-        // Returning null instead of a garbage DateTime prevents corrupt
-        // watermarks and display values in Stage 4.
-        // =========================================================
-
         private static DateTime? ExtractTimestamp(object?[] values)
         {
             foreach (var value in values)
@@ -1082,27 +756,11 @@ namespace PQM.Infrastructure.Services
 
             return null;
         }
-
-        // =========================================================
-        // CONNECTION CHECK
-        // =========================================================
-
         private void EnsureConnected()
         {
             if (!_connected)
                 throw new InvalidOperationException("Meter is not connected. Call ConnectAsync() first.");
         }
-
-        // =========================================================
-        // DISCONNECT
-        // =========================================================
-
-        /// <summary>
-        /// Async disconnect: sends RLRQ and waits for the RLRE response before closing
-        /// the TCP socket. This ensures the meter has fully released the session before
-        /// a new connection can be established — critical for back-to-back sync runs.
-        /// Called by DisposeAsync (used by ProfileSyncService's 'await using' pattern).
-        /// </summary>
         public async System.Threading.Tasks.Task DisconnectAsync()
         {
             if (_client == null)
@@ -1210,12 +868,6 @@ namespace PQM.Infrastructure.Services
                 }
             }
         }
-
-        /// <summary>
-        /// Synchronous disconnect: fires RLRQ best-effort without waiting for RLRE.
-        /// Used by the synchronous Dispose() path only. Prefer 'await using' (DisposeAsync)
-        /// so that DisconnectAsync runs and the meter's session is properly released.
-        /// </summary>
         public void Disconnect()
         {
             if (_client == null)
@@ -1269,22 +921,11 @@ namespace PQM.Infrastructure.Services
                 }
             }
         }
-
-        // =========================================================
-        // DISPOSE / ASYNC DISPOSE
-        // =========================================================
-
         public void Dispose()
         {
             try { Disconnect(); } catch { }
             try { _media?.Dispose(); } catch { }
         }
-
-        /// <summary>
-        /// Async dispose: awaits DisconnectAsync so the RLRE is received before closing.
-        /// Always prefer 'await using var reader = new DlmsMeterReader(device)' over
-        /// 'using var reader = ...' to ensure proper session teardown.
-        /// </summary>
         public async ValueTask DisposeAsync()
         {
             try { await DisconnectAsync(); } catch { }

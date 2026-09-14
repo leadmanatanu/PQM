@@ -9,8 +9,6 @@ namespace PQM.Core.Entities
         public required string Value { get; set; }
         public string? RawValue { get; set; }
         public double? ValueNumeric { get; set; }
-        public DateTime? CreatedAt { get; set; }
-        public DateTime? UpdatedAt { get; set; }
 
         public long? SessionId { get; set; }
         public ReadingSession? Session { get; set; }

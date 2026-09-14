@@ -15,6 +15,5 @@ namespace PQM.Core.Entities
         public DateTime? CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
 
-        public ICollection<Device> Devices { get; set; } = new List<Device>();
     }
 }

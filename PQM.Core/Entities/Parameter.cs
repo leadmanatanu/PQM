@@ -31,6 +31,5 @@ namespace PQM.Core.Entities
         public Profile? Profile { get; set; }
         public int? MeterTypeId { get; set; }
         public MeterType? MeterType { get; set; }
-        public virtual ICollection<ReadingValue> ReadingValues { get; set; } = new List<ReadingValue>();
     }
 }

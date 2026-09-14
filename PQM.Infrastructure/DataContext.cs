@@ -48,7 +48,7 @@ namespace PQM.Infrastructure
 
             modelBuilder.Entity<Device>()
                 .HasOne(d => d.DeviceSyncSchedule)
-                .WithMany(s => s.Devices)
+                .WithMany()
                 .HasForeignKey(d => d.DeviceSyncScheduleId)
                 .OnDelete(DeleteBehavior.NoAction);
 
@@ -62,7 +62,7 @@ namespace PQM.Infrastructure
 
             modelBuilder.Entity<Device>()
              .HasOne(d => d.MeterType)
-             .WithMany(mt => mt.Devices)
+             .WithMany()
              .HasForeignKey(d => d.MeterTypeId);
 
             modelBuilder.Entity<Profile>(entity =>
@@ -77,11 +77,11 @@ namespace PQM.Infrastructure
                 entity.HasKey(e => e.Id);
 
                 entity.HasOne(d => d.Profile)
-                    .WithMany(p => p.Parameters)
+                    .WithMany()
                     .HasForeignKey(d => d.ProfileId);
 
                 entity.HasOne(d => d.MeterType)
-                    .WithMany(m => m.Parameters)
+                    .WithMany()
                     .HasForeignKey(d => d.MeterTypeId)
                     .OnDelete(DeleteBehavior.NoAction);
             });
@@ -113,11 +113,11 @@ namespace PQM.Infrastructure
                 entity.HasKey(e => e.Id);
 
                 entity.HasOne(d => d.Session)
-                    .WithMany(s => s.Values)
+                    .WithMany()
                     .HasForeignKey(d => d.SessionId);
 
                 entity.HasOne(d => d.Parameter)
-                    .WithMany(p => p.ReadingValues)
+                    .WithMany()
                     .HasForeignKey(d => d.ParameterId);
             });
 

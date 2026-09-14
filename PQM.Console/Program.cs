@@ -1,10 +1,13 @@
-using System;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using PQM.Core.Interfaces.Repositories;
 using PQM.Infrastructure;
+using PQM.Infrastructure.Repositories;
 using PQM.Infrastructure.Services;
+using System;
 
 namespace PQM.Console
 {
@@ -25,7 +28,8 @@ namespace PQM.Console
                 })
                 .ConfigureServices((hostContext, services) =>
                 {
-                    string connectionString =hostContext.Configuration.GetConnectionString("DefaultConnection")?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+                    string connectionString = hostContext.Configuration.GetConnectionString("DefaultConnection")
+                        ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 
                     int meterCooldown = hostContext.Configuration.GetValue<int>("DlmsSettings:MeterCooldownSeconds", 8);
                     DlmsMeterReader.DefaultMeterCooldownSeconds = meterCooldown > 0 ? meterCooldown : 8;
@@ -37,11 +41,15 @@ namespace PQM.Console
                         options.MeterCooldownSeconds = DlmsMeterReader.DefaultMeterCooldownSeconds;
                     });
 
-                    // Register DataContext
-                    services.AddScoped<DataContext>(sp =>new DataContext(connectionString));
+                    // Register DataContext as a proper EF Core DbContext (scoped by default).
+                    // Replace UseSqlServer with your provider if different.
+                    services.AddDbContext<DataContext>(options =>options.UseSqlServer(connectionString));
+
+                    services.AddScoped<IDeviceRepository, DeviceRepository>();
+                    services.AddScoped<INetworkReachabilityService, NetworkReachabilityService>();
 
                     // Register Profile Sync Service
-                    services.AddSingleton<ProfileSyncService>(sp =>new ProfileSyncService(connectionString,sp.GetRequiredService<ILogger<ProfileSyncService>>()));
+                    services.AddSingleton<ProfileSyncService>(sp => new ProfileSyncService(connectionString, sp.GetRequiredService<ILogger<ProfileSyncService>>()));
 
                     // Register Background Worker
                     services.AddHostedService<DeviceConsoleRunnerService>();

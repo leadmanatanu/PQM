@@ -50,7 +50,6 @@ namespace PQM.Core.Entities
                 _ => 0
             };
         }
-
         public string? Password { get; set; }
         public int? Timeout { get; set; } = 30000;
        

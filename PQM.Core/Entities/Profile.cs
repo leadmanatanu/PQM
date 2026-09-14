@@ -16,6 +16,5 @@ namespace PQM.Core.Entities
         public int? MeterTypeId { get; set; }
         public MeterType? MeterType { get; set; }
 
-        public virtual ICollection<Parameter> Parameters { get; set; } = new List<Parameter>();
     }
 }

@@ -47,8 +47,7 @@ namespace PQM.Server.Controllers
                 });
             }
 
-            var deviceLock =
-                GetDeviceLock(id);
+            var deviceLock = GetDeviceLock(id);
 
             // Do not queue another scan for the same device
             bool acquired = await deviceLock.WaitAsync(TimeSpan.Zero,cancellationToken);
@@ -67,9 +66,7 @@ namespace PQM.Server.Controllers
                     "A previous scan on this device is still in progress. If this persists, the device may be unresponsive — try again shortly."
                     };
 
-                return StatusCode(
-                    409,
-                    _apiResponse);
+                return StatusCode(409,_apiResponse);
             }
 
             try
@@ -87,7 +84,7 @@ namespace PQM.Server.Controllers
                     _apiResponse.Errors =
                         new List<string>
                         {
-                        $"Unable to connect to device at {device.IP}:{device.PORT}. Check network connectivity and Power."
+                        $"Unable to connect {device.Name}. Check network connectivity and Power."
                         };
 
                     return Ok(_apiResponse);

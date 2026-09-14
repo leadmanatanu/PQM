@@ -1,10 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Linq;
-using System.Threading.Tasks;
 using Microsoft.Data.SqlClient;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using PQM.Core.Entities;
 
@@ -19,7 +13,6 @@ namespace PQM.Infrastructure.Services
         public DateTime? NewWatermarkUtc { get; set; }
         public string? ErrorMessage { get; set; }
     }
-
     public class DeviceSyncResult
     {
         public int DeviceId { get; set; }
@@ -34,28 +27,22 @@ namespace PQM.Infrastructure.Services
         public string? ErrorMessage { get; set; }
         public Dictionary<string, SyncResult> ProfileResults { get; set; } = new();
     }
-
     public class ProfileSyncService
     {
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, byte> _activeDeviceSyncs = new();
-
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> _lockAcquiredTimes = new();
-
         private readonly string _connectionString;
-
         private readonly ILogger<ProfileSyncService> _logger;
-
         public ProfileSyncService(string connectionString, ILogger<ProfileSyncService> logger)
         {
             _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
-
         public static bool TryAcquireLock(int deviceId)
         {
             if (_lockAcquiredTimes.TryGetValue(deviceId, out var acquiredAt))
             {
-                if (DateTime.UtcNow - acquiredAt > TimeSpan.FromMinutes(45))
+                if (DateTime.UtcNow - acquiredAt > TimeSpan.FromMinutes(90))
                 {
                     _activeDeviceSyncs.TryRemove(deviceId, out _);
                     _lockAcquiredTimes.TryRemove(deviceId, out _);
@@ -69,13 +56,11 @@ namespace PQM.Infrastructure.Services
             }
             return false;
         }
-
         public static void ReleaseLock(int deviceId)
         {
             _activeDeviceSyncs.TryRemove(deviceId, out _);
             _lockAcquiredTimes.TryRemove(deviceId, out _);
         }
-
         public async Task<DeviceSyncResult> SyncDeviceAllProfilesAsync(int deviceId, System.Threading.CancellationToken cancellationToken = default)
         {
             var deviceResult = new DeviceSyncResult { DeviceId = deviceId };
@@ -94,9 +79,9 @@ namespace PQM.Infrastructure.Services
             DateTime syncExecutionTimeUtc = DateTime.UtcNow;
             bool isTimedOut = false;
 
-            // Generous 45-minute outer safety timeout for complete per-device sweep
+            // Generous 90-minute outer safety timeout for complete per-device sweep
             using var hardCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            hardCts.CancelAfter(TimeSpan.FromMinutes(45));
+            hardCts.CancelAfter(TimeSpan.FromMinutes(90));
             var syncToken = hardCts.Token;
 
             try
@@ -134,8 +119,8 @@ namespace PQM.Infrastructure.Services
                             TimeSpan timeout = obisCode switch
                             {
                                 "1.0.99.1.0.255" => TimeSpan.FromMinutes(30), // Block Load Profile
-                                "1.0.99.2.0.255" => TimeSpan.FromMinutes(15), // Daily Load Profile
-                                _ => TimeSpan.FromMinutes(10)
+                                "1.0.99.2.0.255" => TimeSpan.FromMinutes(10), // Daily Load Profile
+                                _ => TimeSpan.FromMinutes(5)
                             };
                             profileCts.CancelAfter(timeout);
                             var profileToken = profileCts.Token;
@@ -183,9 +168,9 @@ namespace PQM.Infrastructure.Services
                     catch (OperationCanceledException) when (syncToken.IsCancellationRequested)
                     {
                         isTimedOut = true;
-                        _logger.LogWarning("[ProfileSyncService] Sync timed out after 5 minutes for Device {DeviceId}.", deviceId);
+                        _logger.LogWarning("[ProfileSyncService] Sync timed out after 90 minutes for Device {DeviceId}.", deviceId);
                         deviceResult.Success = false;
-                        deviceResult.ErrorMessage = "Sync timed out after 5 minutes";
+                        deviceResult.ErrorMessage = "Sync timed out after 90 minutes";
                     }
                     catch (Exception ex)
                     {
@@ -204,7 +189,7 @@ namespace PQM.Infrastructure.Services
                 isTimedOut = true;
                 _logger.LogWarning("[ProfileSyncService] Hard cancellation timeout reached for Device {DeviceId}.", deviceId);
                 deviceResult.Success = false;
-                deviceResult.ErrorMessage = "Sync timed out after 5 minutes";
+                deviceResult.ErrorMessage = "Sync timed out after 90 minutes";
                 await UpdateDeviceStatusInDbAsync(deviceId, syncExecutionTimeUtc);
                 return deviceResult;
             }
@@ -214,7 +199,6 @@ namespace PQM.Infrastructure.Services
                 _logger.LogInformation("[ProfileSyncService] Concurrency lock RELEASED for Device {DeviceId}.", deviceId);
             }
         }
-
         private async Task<SyncResult> SyncSingleProfileOnOpenReaderAsync(DlmsMeterReader reader,Device device,string obisCode,TimeZoneInfo deviceTz,DateTime syncExecutionTimeUtc,System.Threading.CancellationToken cancellationToken = default)
         {
             var result = new SyncResult();
@@ -259,7 +243,6 @@ namespace PQM.Infrastructure.Services
 
             return await SaveReadingSessionAsync(device.Id, profileId, obisCode, isTimeSeries, deviceTz, rows, columns, parameterMap, currentWatermarkUtc, syncExecutionTimeUtc);
         }
-
         private async Task<int> GetOrCreateParameterForColumnAsync(SqlConnection conn,SqlTransaction tx,int profileId,int colIndex,IReadOnlyList<ProfileColumnInfo> columns)
         {
             string obis = (colIndex < columns.Count && !string.IsNullOrEmpty(columns[colIndex].LogicalName))
@@ -296,7 +279,6 @@ namespace PQM.Infrastructure.Services
                 return Convert.ToInt32(newId);
             }
         }
-
         private async Task UpdateDeviceStatusInDbAsync(int deviceId, DateTime lastSyncUtc)
         {
             using var conn = new SqlConnection(_connectionString);
@@ -311,7 +293,6 @@ namespace PQM.Infrastructure.Services
 
             await cmd.ExecuteNonQueryAsync();
         }
-
         private async Task<SyncResult> SaveReadingSessionAsync(int deviceId,int profileId,string obisCode,bool isTimeSeries,TimeZoneInfo deviceTz,IReadOnlyList<ProfileRow> rows,IReadOnlyList<ProfileColumnInfo> columns,Dictionary<int, int> parameterMap,DateTime? currentWatermarkUtc,DateTime syncExecutionTimeUtc)
         {
             var result = new SyncResult { RowsRead = rows.Count };
@@ -416,7 +397,6 @@ namespace PQM.Infrastructure.Services
                 }
             }
         }
-
         private TimeZoneInfo GetDeviceTimeZone(string? timeZoneId)
         {
             if (!string.IsNullOrWhiteSpace(timeZoneId))
@@ -440,7 +420,6 @@ namespace PQM.Infrastructure.Services
                 return TimeZoneInfo.Local;
             }
         }
-
         private async Task<Device?> LoadDeviceAsync(int deviceId)
         {
             using var conn = new SqlConnection(_connectionString);
@@ -471,7 +450,6 @@ namespace PQM.Infrastructure.Services
 
             return null;
         }
-
         private async Task<int> EnsureProfileAsync(string obisCode, bool isTimeSeries)
         {
             using var conn = new SqlConnection(_connectionString);
@@ -505,7 +483,6 @@ namespace PQM.Infrastructure.Services
                 return Convert.ToInt32(newId);
             }
         }
-
         private async Task<DateTime?> GetLastReadWatermarkUtcAsync(int deviceId, int profileId)
         {
             using var conn = new SqlConnection(_connectionString);
@@ -523,7 +500,6 @@ namespace PQM.Infrastructure.Services
             }
             return null;
         }
-
         private async Task<Dictionary<int, int>> EnsureParametersAsync(int profileId, IReadOnlyList<ProfileColumnInfo> columns)
         {
             var map = new Dictionary<int, int>();
@@ -599,7 +575,6 @@ namespace PQM.Infrastructure.Services
 
             return map;
         }
-
         private async Task<HashSet<DateTime>> GetExistingEntryTimestampsUtcAsync(SqlConnection conn, SqlTransaction tx, int deviceId, int profileId)
         {
             var set = new HashSet<DateTime>();
@@ -619,7 +594,6 @@ namespace PQM.Infrastructure.Services
 
             return set;
         }
-
         private async Task<long> InsertReadingSessionAsync(SqlConnection conn, SqlTransaction tx, int deviceId, int profileId, DateTime readTime, DateTime? entryTimestampUtc)
         {
             using var cmd = conn.CreateCommand();
@@ -635,7 +609,6 @@ namespace PQM.Infrastructure.Services
             var id = await cmd.ExecuteScalarAsync();
             return Convert.ToInt64(id);
         }
-
         private async Task InsertReadingValueAsync(SqlConnection conn, SqlTransaction tx, long sessionId, int parameterId, string value, string? rawValue, double? numericValue)
         {
             using var cmd = conn.CreateCommand();
@@ -650,7 +623,6 @@ namespace PQM.Infrastructure.Services
 
             await cmd.ExecuteNonQueryAsync();
         }
-
         private async Task UpsertDeviceProfileSyncStateAsync(SqlConnection conn, SqlTransaction tx, int deviceId, int profileId, DateTime lastReadTimestampUtc, DateTime lastSyncedAt)
         {
             using var cmd = conn.CreateCommand();
@@ -672,7 +644,6 @@ namespace PQM.Infrastructure.Services
 
             await cmd.ExecuteNonQueryAsync();
         }
-
         private static double? TryParseDouble(string input)
         {
             if (double.TryParse(input, out var val)) return val;

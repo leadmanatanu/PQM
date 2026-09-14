@@ -20,4 +20,26 @@ namespace PQM.Core.DTOs
         public DateTime EndDate { get; set; }
         public string? EventType { get; set; }
     }
+    public class AggregatedReportRow
+    {
+        public int ParameterId { get; set; }
+        public string ParameterName { get; set; } = string.Empty;
+        public DateTime DateStamp { get; set; }
+        public string Value { get; set; } = string.Empty;
+    }
+    public class ParameterValueSearch
+    {
+        public long Id { get; set; }
+        public required string Value { get; set; }
+        public DateTime? DateStamp { get; set; }
+        public required string DeviceName { get; set; }
+        public required string ParameterName { get; set; }
+        public int ParameterId { get; set; }
+    }
+
+    public class ParameterValueSearchResult
+    {
+        public int TotalCount { get; set; }
+        public List<ParameterValueSearch> DeviceLogSearch { get; set; } = new();
+    }
 }

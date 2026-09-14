@@ -21,6 +21,8 @@ namespace PQM.Infrastructure.Repositories
                 schedule.RepeatMode = "Daily";
             }
 
+            schedule.CreatedAt = DateTime.UtcNow;
+
             await _db.DeviceSyncSchedules.AddAsync(schedule, cancellationToken);
             await _db.SaveChangesAsync(cancellationToken);
 
@@ -43,6 +45,7 @@ namespace PQM.Infrastructure.Repositories
             existing.ScheduledTime = schedule.ScheduledTime;
             existing.RepeatMode = schedule.RepeatMode ?? "Daily";
             existing.NextRunAtUtc = schedule.NextRunAtUtc;
+            existing.UpdatedAt = DateTime.UtcNow;
 
             // LastRunAtUtc / LastRunStatus are intentionally left alone here —
             // they should be updated by the sync job itself, not the edit screen.
@@ -73,17 +76,22 @@ namespace PQM.Infrastructure.Repositories
                          && d.IsActive,
                     cancellationToken);
         }
-
         public async Task<bool> DeleteAsync(int id,CancellationToken cancellationToken = default)
         {
-            var schedule = await _db.DeviceSyncSchedules
-                .FirstOrDefaultAsync(
-                    s => s.Id == id,
-                    cancellationToken);
+            var schedule = await _db.DeviceSyncSchedules.FirstOrDefaultAsync(s => s.Id == id,cancellationToken);
 
             if (schedule == null)
                 return false;
 
+            // Unlink inactive or deleted devices
+            var devices = await _db.Device.Where(d =>d.DeviceSyncScheduleId == id &&(d.IsDeleted == true || !d.IsActive)).ToListAsync(cancellationToken);
+
+            foreach (var device in devices)
+            {
+                device.DeviceSyncScheduleId = null;
+            }
+
+            // Delete the schedule
             _db.DeviceSyncSchedules.Remove(schedule);
 
             await _db.SaveChangesAsync(cancellationToken);
