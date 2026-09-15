@@ -363,9 +363,9 @@ namespace PQM.Server.Controllers
                         StatusCode = HttpStatusCode.NotFound,
                         Data = null,
                         Errors = new List<string>
-                {
-                    $"Device {id} not found."
-                }
+                        {
+                            $"Device {id} not found."
+                        }
                     });
                 }
 
@@ -384,7 +384,7 @@ namespace PQM.Server.Controllers
                         Data = null,
                         Errors = new List<string>
                         {
-                            $"Unable to connect to device at {device.IP}:{device.PORT}. " +
+                            $"Unable to connect {device.Name} " +
                             "Check network connectivity and Power."
                         }
                     });
@@ -427,7 +427,7 @@ namespace PQM.Server.Controllers
                         deviceId = id,
                         status = "Completed",
                         completedAt = DateTime.UtcNow,
-                        message = $"Sync completed successfully for device {id}."
+                        message = $"Sync completed successfully for device {device.Name}."
                     },
                     Errors = new List<string>()
                 });

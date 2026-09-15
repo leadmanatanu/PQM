@@ -7,7 +7,7 @@ namespace PQM.Core.Entities
     {
         [Key]
         public int Id { get; set; }
-        public DateTime? LastReadTimestampUtc { get; set; }
+        public DateTime? LastReadTimestamp { get; set; }
         public DateTime? LastSyncedAt { get; set; }
        
         public int DeviceId { get; set; }

@@ -103,10 +103,7 @@ namespace PQM.Console
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(
-                        ex,
-                        "[PQM.Console] Schedule {ScheduleId}: failed to execute.",
-                        schedule.ScheduleId);
+                    _logger.LogError(ex,"[PQM.Console] Schedule {ScheduleId}: failed to execute.",schedule.ScheduleId);
 
                     finalStatus = "Failed";
                 }
@@ -116,13 +113,7 @@ namespace PQM.Console
                     await UpdateScheduleCompletionAsync(schedule.ScheduleId, DateTime.UtcNow, finalStatus, nextRunAtUtc, completionCts.Token);
                 }
 
-                _logger.LogInformation(
-                    "[PQM.Console] Completed Schedule {ScheduleId}. Status={Status} ({Succeeded}/{Total} devices). NextRun={NextRunAtUtc}",
-                    schedule.ScheduleId,
-                    finalStatus,
-                    succeeded,
-                    total,
-                    nextRunAtUtc);
+                _logger.LogInformation("[PQM.Console] Completed Schedule {ScheduleId}. Status={Status} ({Succeeded}/{Total} devices). NextRun={NextRunAtUtc}",schedule.ScheduleId,finalStatus,succeeded,total,nextRunAtUtc);
             }
         }
         private async Task<bool> ProcessScheduledDeviceAsync(int deviceId, int scheduleId, CancellationToken stoppingToken)

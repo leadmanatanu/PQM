@@ -6,7 +6,6 @@ namespace PQM.Infrastructure.Services
     {
         Task<bool> IsReachableAsync(string ip, int port, int timeoutMs, CancellationToken ct);
     }
-
     public class NetworkReachabilityService : INetworkReachabilityService
     {
         public async Task<bool> IsReachableAsync(string ip, int port, int timeoutMs, CancellationToken ct)

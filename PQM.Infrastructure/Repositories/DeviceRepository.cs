@@ -106,8 +106,7 @@ namespace PQM.Infrastructure.Repositories
             existing.MeterTypeId = device.MeterTypeId;
 
             // Device -> Schedule
-            existing.DeviceSyncScheduleId =
-                device.DeviceSyncScheduleId;
+            existing.DeviceSyncScheduleId =device.DeviceSyncScheduleId;
 
             await _db.SaveChangesAsync(
                 cancellationToken);
