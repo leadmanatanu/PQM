@@ -44,7 +44,7 @@ namespace PQM.Infrastructure.Repositories
             existing.IsEnabled = schedule.IsEnabled;
             existing.ScheduledTime = schedule.ScheduledTime;
             existing.RepeatMode = schedule.RepeatMode ?? "Daily";
-            existing.NextRunAtUtc = schedule.NextRunAtUtc;
+            existing.NextRunAt = schedule.NextRunAt;
             existing.UpdatedAt = DateTime.UtcNow;
 
             // LastRunAtUtc / LastRunStatus are intentionally left alone here —

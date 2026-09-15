@@ -90,7 +90,7 @@ namespace PQM.Infrastructure
             {
                 entity.ToTable("ReadingSessions");
                 entity.HasKey(e => e.Id);
-                entity.Property(e => e.EntryTimestampUtc).HasColumnName("EntryTimestampUtc");
+                entity.Property(e => e.EntryTimestamp).HasColumnName("EntryTimestampUtc");
 
                 entity.HasOne(d => d.Device)
                     .WithMany()
@@ -101,7 +101,7 @@ namespace PQM.Infrastructure
                     .HasForeignKey(d => d.ProfileId);
 
                 // Add unique filtered index (prevent duplicates while allowing nulls)
-                entity.HasIndex(e => new { e.DeviceId, e.ProfileId, e.EntryTimestampUtc })
+                entity.HasIndex(e => new { e.DeviceId, e.ProfileId, e.EntryTimestamp })
                     .HasDatabaseName("IX_ReadingSessions_Device_Profile_Timestamp")
                     .IsUnique()
                     .HasFilter("[EntryTimestampUtc] IS NOT NULL");

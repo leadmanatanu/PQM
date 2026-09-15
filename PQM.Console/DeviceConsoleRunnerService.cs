@@ -188,8 +188,8 @@ namespace PQM.Console
             var list = await db.DeviceSyncSchedules
                 .AsNoTracking()
                 .Where(s => s.IsEnabled
-                    && s.NextRunAtUtc != null
-                    && s.NextRunAtUtc <= nowUtc)
+                    && s.NextRunAt != null
+                    && s.NextRunAt <= nowUtc)
                 .OrderBy(s => s.Id)
                 .Select(s => new DueScheduleItem
                 {
@@ -231,9 +231,9 @@ namespace PQM.Console
             await db.DeviceSyncSchedules
                 .Where(s => s.Id == scheduleId)
                 .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(s => s.LastRunAtUtc, lastRunAtUtc)
+                        .SetProperty(s => s.LastRunAt, lastRunAtUtc)
                         .SetProperty(s => s.LastRunStatus, lastRunStatus)
-                        .SetProperty(s => s.NextRunAtUtc, nextRunAtUtc),
+                        .SetProperty(s => s.NextRunAt, nextRunAtUtc),
                     cancellationToken);
         }
     }

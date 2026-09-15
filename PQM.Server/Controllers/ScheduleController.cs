@@ -63,7 +63,7 @@ namespace PQM.Server.Controllers
                     IsEnabled = request.IsEnabled,
                     ScheduledTime = scheduledTime,
                     RepeatMode = request.RepeatMode ?? "Daily",
-                    NextRunAtUtc = nextRunAtUtc
+                    NextRunAt = nextRunAtUtc
                 };
 
                 int scheduleId = await _scheduleRepository.AddAsync(schedule,cancellationToken);
@@ -143,7 +143,7 @@ namespace PQM.Server.Controllers
                     IsEnabled = request.IsEnabled,
                     ScheduledTime = scheduledTime,
                     RepeatMode = request.RepeatMode ?? "Daily",
-                    NextRunAtUtc = nextRunAtUtc
+                    NextRunAt = nextRunAtUtc
                 };
 
                 bool updated = await _scheduleRepository.UpdateAsync(
@@ -226,10 +226,10 @@ namespace PQM.Server.Controllers
                     repeatMode = schedule.RepeatMode,
 
                     nextRunAtUtc =
-                        FormatUtcIso(schedule.NextRunAtUtc),
+                        FormatUtcIso(schedule.NextRunAt),
 
                     lastRunAtUtc =
-                        FormatUtcIso(schedule.LastRunAtUtc),
+                        FormatUtcIso(schedule.LastRunAt),
 
                     lastRunStatus = schedule.LastRunStatus
                 };
@@ -287,10 +287,10 @@ namespace PQM.Server.Controllers
                         repeatMode = schedule.RepeatMode,
 
                         nextRunAtUtc =
-                            FormatUtcIso(schedule.NextRunAtUtc),
+                            FormatUtcIso(schedule.NextRunAt),
 
                         lastRunAtUtc =
-                            FormatUtcIso(schedule.LastRunAtUtc),
+                            FormatUtcIso(schedule.LastRunAt),
 
                         lastRunStatus = schedule.LastRunStatus
                     });
