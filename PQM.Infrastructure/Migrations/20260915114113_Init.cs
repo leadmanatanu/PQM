@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace PQM.Infrastructure.Migrations
 {
     /// <inheritdoc />
-    public partial class init : Migration
+    public partial class Init : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -20,8 +20,8 @@ namespace PQM.Infrastructure.Migrations
                     IsEnabled = table.Column<bool>(type: "bit", nullable: false),
                     ScheduledTime = table.Column<TimeSpan>(type: "time", nullable: false),
                     RepeatMode = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    NextRunAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    LastRunAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    NextRunAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    LastRunAt = table.Column<DateTime>(type: "datetime2", nullable: true),
                     LastRunStatus = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
                     UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: true)
@@ -78,7 +78,7 @@ namespace PQM.Infrastructure.Migrations
                     IsDeleted = table.Column<bool>(type: "bit", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
                     UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    LastSync = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    LastSyncAt = table.Column<DateTime>(type: "datetime2", nullable: true),
                     ClientAddress = table.Column<int>(type: "int", nullable: true),
                     ServerAddress = table.Column<int>(type: "int", nullable: true),
                     AuthenticationTypeId = table.Column<int>(type: "int", nullable: true),
@@ -130,17 +130,16 @@ namespace PQM.Infrastructure.Migrations
                 name: "DeviceProfileSyncState",
                 columns: table => new
                 {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    LastReadTimestamp = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    LastSyncedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
                     DeviceId = table.Column<int>(type: "int", nullable: false),
-                    ProfileId = table.Column<int>(type: "int", nullable: false),
-                    Id = table.Column<int>(type: "int", nullable: false),
-                    LastReadTimestampUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    LastSyncedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: true)
+                    ProfileId = table.Column<int>(type: "int", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_DeviceProfileSyncState", x => new { x.DeviceId, x.ProfileId });
+                    table.PrimaryKey("PK_DeviceProfileSyncState", x => x.Id);
                     table.ForeignKey(
                         name: "FK_DeviceProfileSyncState_Devices_DeviceId",
                         column: x => x.DeviceId,
@@ -200,10 +199,8 @@ namespace PQM.Infrastructure.Migrations
                 {
                     Id = table.Column<long>(type: "bigint", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    ReadTime = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    EntryTimestampUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    ReadTimeAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    EntryTimestamp = table.Column<DateTime>(type: "datetime2", nullable: true),
                     DeviceId = table.Column<int>(type: "int", nullable: false),
                     ProfileId = table.Column<int>(type: "int", nullable: false)
                 },
@@ -233,8 +230,6 @@ namespace PQM.Infrastructure.Migrations
                     Value = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     RawValue = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     ValueNumeric = table.Column<double>(type: "float", nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
                     SessionId = table.Column<long>(type: "bigint", nullable: true),
                     ParameterId = table.Column<int>(type: "int", nullable: true)
                 },
@@ -252,6 +247,12 @@ namespace PQM.Infrastructure.Migrations
                         principalTable: "ReadingSessions",
                         principalColumn: "Id");
                 });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_DeviceProfileSyncState_DeviceId_ProfileId",
+                table: "DeviceProfileSyncState",
+                columns: new[] { "DeviceId", "ProfileId" },
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_DeviceProfileSyncState_ProfileId",
@@ -286,9 +287,9 @@ namespace PQM.Infrastructure.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_ReadingSessions_Device_Profile_Timestamp",
                 table: "ReadingSessions",
-                columns: new[] { "DeviceId", "ProfileId", "EntryTimestampUtc" },
+                columns: new[] { "DeviceId", "ProfileId", "EntryTimestamp" },
                 unique: true,
-                filter: "[EntryTimestampUtc] IS NOT NULL");
+                filter: "[EntryTimestamp] IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ReadingSessions_ProfileId",

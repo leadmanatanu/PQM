@@ -12,8 +12,8 @@ using PQM.Infrastructure;
 namespace PQM.Infrastructure.Migrations
 {
     [DbContext(typeof(DataContext))]
-    [Migration("20260910111817_init")]
-    partial class init
+    [Migration("20260915114113_Init")]
+    partial class Init
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -81,7 +81,7 @@ namespace PQM.Infrastructure.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
-                    b.Property<DateTime?>("LastSync")
+                    b.Property<DateTime?>("LastSyncAt")
                         .HasColumnType("datetime2");
 
                     b.Property<int?>("MeterTypeId")
@@ -124,30 +124,30 @@ namespace PQM.Infrastructure.Migrations
 
             modelBuilder.Entity("PQM.Core.Entities.DeviceProfileSyncState", b =>
                 {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
                     b.Property<int>("DeviceId")
                         .HasColumnType("int");
+
+                    b.Property<DateTime?>("LastReadTimestamp")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastSyncedAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<int>("ProfileId")
                         .HasColumnType("int");
 
-                    b.Property<DateTime?>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("Id")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("LastReadTimestampUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("LastSyncedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("DeviceId", "ProfileId");
+                    b.HasKey("Id");
 
                     b.HasIndex("ProfileId");
+
+                    b.HasIndex("DeviceId", "ProfileId")
+                        .IsUnique();
 
                     b.ToTable("DeviceProfileSyncState", (string)null);
                 });
@@ -166,13 +166,13 @@ namespace PQM.Infrastructure.Migrations
                     b.Property<bool>("IsEnabled")
                         .HasColumnType("bit");
 
-                    b.Property<DateTime?>("LastRunAtUtc")
+                    b.Property<DateTime?>("LastRunAt")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("LastRunStatus")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<DateTime?>("NextRunAtUtc")
+                    b.Property<DateTime?>("NextRunAt")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("RepeatMode")
@@ -302,33 +302,27 @@ namespace PQM.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
-                    b.Property<DateTime?>("CreatedAt")
-                        .HasColumnType("datetime2");
-
                     b.Property<int>("DeviceId")
                         .HasColumnType("int");
 
-                    b.Property<DateTime?>("EntryTimestampUtc")
+                    b.Property<DateTime?>("EntryTimestamp")
                         .HasColumnType("datetime2")
-                        .HasColumnName("EntryTimestampUtc");
+                        .HasColumnName("EntryTimestamp");
 
                     b.Property<int>("ProfileId")
                         .HasColumnType("int");
 
-                    b.Property<DateTime?>("ReadTime")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("UpdatedAt")
+                    b.Property<DateTime?>("ReadTimeAt")
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
 
                     b.HasIndex("ProfileId");
 
-                    b.HasIndex("DeviceId", "ProfileId", "EntryTimestampUtc")
+                    b.HasIndex("DeviceId", "ProfileId", "EntryTimestamp")
                         .IsUnique()
                         .HasDatabaseName("IX_ReadingSessions_Device_Profile_Timestamp")
-                        .HasFilter("[EntryTimestampUtc] IS NOT NULL");
+                        .HasFilter("[EntryTimestamp] IS NOT NULL");
 
                     b.ToTable("ReadingSessions", (string)null);
                 });
@@ -341,9 +335,6 @@ namespace PQM.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
-                    b.Property<DateTime?>("CreatedAt")
-                        .HasColumnType("datetime2");
-
                     b.Property<int?>("ParameterId")
                         .HasColumnType("int");
 
@@ -352,9 +343,6 @@ namespace PQM.Infrastructure.Migrations
 
                     b.Property<long?>("SessionId")
                         .HasColumnType("bigint");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
 
                     b.Property<string>("Value")
                         .IsRequired()
@@ -406,12 +394,12 @@ namespace PQM.Infrastructure.Migrations
             modelBuilder.Entity("PQM.Core.Entities.Device", b =>
                 {
                     b.HasOne("PQM.Core.Entities.DeviceSyncSchedule", "DeviceSyncSchedule")
-                        .WithMany("Devices")
+                        .WithMany()
                         .HasForeignKey("DeviceSyncScheduleId")
                         .OnDelete(DeleteBehavior.NoAction);
 
                     b.HasOne("MeterType", "MeterType")
-                        .WithMany("Devices")
+                        .WithMany()
                         .HasForeignKey("MeterTypeId");
 
                     b.Navigation("DeviceSyncSchedule");
@@ -441,12 +429,12 @@ namespace PQM.Infrastructure.Migrations
             modelBuilder.Entity("PQM.Core.Entities.Parameter", b =>
                 {
                     b.HasOne("MeterType", "MeterType")
-                        .WithMany("Parameters")
+                        .WithMany()
                         .HasForeignKey("MeterTypeId")
                         .OnDelete(DeleteBehavior.NoAction);
 
                     b.HasOne("PQM.Core.Entities.Profile", "Profile")
-                        .WithMany("Parameters")
+                        .WithMany()
                         .HasForeignKey("ProfileId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -487,43 +475,16 @@ namespace PQM.Infrastructure.Migrations
             modelBuilder.Entity("PQM.Core.Entities.ReadingValue", b =>
                 {
                     b.HasOne("PQM.Core.Entities.Parameter", "Parameter")
-                        .WithMany("ReadingValues")
+                        .WithMany()
                         .HasForeignKey("ParameterId");
 
                     b.HasOne("PQM.Core.Entities.ReadingSession", "Session")
-                        .WithMany("Values")
+                        .WithMany()
                         .HasForeignKey("SessionId");
 
                     b.Navigation("Parameter");
 
                     b.Navigation("Session");
-                });
-
-            modelBuilder.Entity("MeterType", b =>
-                {
-                    b.Navigation("Devices");
-
-                    b.Navigation("Parameters");
-                });
-
-            modelBuilder.Entity("PQM.Core.Entities.DeviceSyncSchedule", b =>
-                {
-                    b.Navigation("Devices");
-                });
-
-            modelBuilder.Entity("PQM.Core.Entities.Parameter", b =>
-                {
-                    b.Navigation("ReadingValues");
-                });
-
-            modelBuilder.Entity("PQM.Core.Entities.Profile", b =>
-                {
-                    b.Navigation("Parameters");
-                });
-
-            modelBuilder.Entity("PQM.Core.Entities.ReadingSession", b =>
-                {
-                    b.Navigation("Values");
                 });
 #pragma warning restore 612, 618
         }

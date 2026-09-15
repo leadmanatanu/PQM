@@ -76,7 +76,9 @@ namespace PQM.Infrastructure.Services
 
             _logger.LogInformation("[ProfileSyncService] Concurrency lock ACQUIRED for Device {DeviceId}.", deviceId);
 
-            DateTime syncExecutionTimeUtc = DateTime.UtcNow;
+            //DateTime syncExecutionTimeUtc = DateTime.UtcNow;
+            DateTime syncExecutionTimeIST = DateTime.Now;
+
             bool isTimedOut = false;
 
             // Generous 90-minute outer safety timeout for complete per-device sweep
@@ -127,7 +129,10 @@ namespace PQM.Infrastructure.Services
 
                             try
                             {
-                                var profileSyncRes = await SyncSingleProfileOnOpenReaderAsync(reader, device, obisCode, deviceTz, syncExecutionTimeUtc, profileToken);
+                                //var profileSyncRes = await SyncSingleProfileOnOpenReaderAsync(reader, device, obisCode, deviceTz, syncExecutionTimeUtc, profileToken);
+
+                                var profileSyncRes = await SyncSingleProfileOnOpenReaderAsync(reader, device, obisCode, deviceTz, syncExecutionTimeIST, profileToken);
+
                                 deviceResult.ProfileResults[obisCode] = profileSyncRes;
 
                                 if (profileSyncRes.Success)
@@ -180,7 +185,7 @@ namespace PQM.Infrastructure.Services
                     }
                 } // DisconnectAsync() executes here automatically, sending WRAPPER RLRQ frame!
 
-                await UpdateDeviceStatusInDbAsync(deviceId, syncExecutionTimeUtc);
+                await UpdateDeviceStatusInDbAsync(deviceId, syncExecutionTimeIST);
 
                 return deviceResult;
             }
@@ -190,7 +195,7 @@ namespace PQM.Infrastructure.Services
                 _logger.LogWarning("[ProfileSyncService] Hard cancellation timeout reached for Device {DeviceId}.", deviceId);
                 deviceResult.Success = false;
                 deviceResult.ErrorMessage = "Sync timed out after 90 minutes";
-                await UpdateDeviceStatusInDbAsync(deviceId, syncExecutionTimeUtc);
+                await UpdateDeviceStatusInDbAsync(deviceId, syncExecutionTimeIST);
                 return deviceResult;
             }
             finally
@@ -199,7 +204,7 @@ namespace PQM.Infrastructure.Services
                 _logger.LogInformation("[ProfileSyncService] Concurrency lock RELEASED for Device {DeviceId}.", deviceId);
             }
         }
-        private async Task<SyncResult> SyncSingleProfileOnOpenReaderAsync(DlmsMeterReader reader,Device device,string obisCode,TimeZoneInfo deviceTz,DateTime syncExecutionTimeUtc,System.Threading.CancellationToken cancellationToken = default)
+        private async Task<SyncResult> SyncSingleProfileOnOpenReaderAsync(DlmsMeterReader reader,Device device,string obisCode,TimeZoneInfo deviceTz,DateTime syncExecutionTimeIST, System.Threading.CancellationToken cancellationToken = default)
         {
             var result = new SyncResult();
             bool isTimeSeries = ProfileCatalog.TimeSeriesProfiles.ContainsKey(obisCode);
@@ -208,17 +213,13 @@ namespace PQM.Infrastructure.Services
             int profileId = await EnsureProfileAsync(obisCode, isTimeSeries);
 
             DateTime? startTimeLocal = null;
-            DateTime? currentWatermarkUtc = null;
+            DateTime? currentWatermarkIST = null;  
 
             if (isTimeSeries)
             {
-                currentWatermarkUtc = await GetLastReadWatermarkUtcAsync(device.Id, profileId);
-                if (currentWatermarkUtc.HasValue)
-                {
-                    DateTime watermarkWithSafetyUtc = currentWatermarkUtc.Value.AddHours(-1);
-                    startTimeLocal = TimeZoneInfo.ConvertTimeFromUtc(watermarkWithSafetyUtc, deviceTz);
-                }
+                currentWatermarkIST = await GetLastReadWatermarkIST(device.Id, profileId);  // ← Uses undeclared variable!
             }
+
 
             IReadOnlyList<ProfileColumnInfo> columns;
             var profileObj = reader.GetProfileObjects().FirstOrDefault(p => p.LogicalName == obisCode);
@@ -241,7 +242,7 @@ namespace PQM.Infrastructure.Services
                 return result;
             }
 
-            return await SaveReadingSessionAsync(device.Id, profileId, obisCode, isTimeSeries, deviceTz, rows, columns, parameterMap, currentWatermarkUtc, syncExecutionTimeUtc);
+            return await SaveReadingSessionAsync(device.Id, profileId, obisCode, isTimeSeries, deviceTz, rows, columns, parameterMap, currentWatermarkIST, syncExecutionTimeIST);
         }
         private async Task<int> GetOrCreateParameterForColumnAsync(SqlConnection conn,SqlTransaction tx,int profileId,int colIndex,IReadOnlyList<ProfileColumnInfo> columns)
         {
@@ -279,7 +280,7 @@ namespace PQM.Infrastructure.Services
                 return Convert.ToInt32(newId);
             }
         }
-        private async Task UpdateDeviceStatusInDbAsync(int deviceId, DateTime lastSyncUtc)
+        private async Task UpdateDeviceStatusInDbAsync(int deviceId, DateTime lastSyncIST)
         {
             using var conn = new SqlConnection(_connectionString);
             await conn.OpenAsync();
@@ -288,12 +289,12 @@ namespace PQM.Infrastructure.Services
         UPDATE Devices 
         SET LastSync = @lastSync
         WHERE Id = @id";
-            cmd.Parameters.AddWithValue("@lastSync", lastSyncUtc);
+            cmd.Parameters.AddWithValue("@lastSync", lastSyncIST);
             cmd.Parameters.AddWithValue("@id", deviceId);
 
             await cmd.ExecuteNonQueryAsync();
         }
-        private async Task<SyncResult> SaveReadingSessionAsync(int deviceId,int profileId,string obisCode,bool isTimeSeries,TimeZoneInfo deviceTz,IReadOnlyList<ProfileRow> rows,IReadOnlyList<ProfileColumnInfo> columns,Dictionary<int, int> parameterMap,DateTime? currentWatermarkUtc,DateTime syncExecutionTimeUtc)
+        private async Task<SyncResult> SaveReadingSessionAsync(int deviceId, int profileId, string obisCode, bool isTimeSeries, TimeZoneInfo deviceTz,IReadOnlyList<ProfileRow> rows, IReadOnlyList<ProfileColumnInfo> columns,Dictionary<int, int> parameterMap, DateTime? currentWatermarkIST, DateTime syncExecutionTimeIST)
         {
             var result = new SyncResult { RowsRead = rows.Count };
 
@@ -303,7 +304,8 @@ namespace PQM.Infrastructure.Services
                 return result;
             }
 
-            DateTime? maxWrittenEntryUtc = null;
+            //DateTime? maxWrittenEntryUtc = null;
+            DateTime? maxWrittenEntryIST = null;
 
             using (var conn = new SqlConnection(_connectionString))
             {
@@ -312,34 +314,43 @@ namespace PQM.Infrastructure.Services
 
                 try
                 {
-                    var existingTimestamps = await GetExistingEntryTimestampsUtcAsync(conn, tx, deviceId, profileId);
+                    //var existingTimestamps = await GetExistingEntryTimestampsUtcAsync(conn, tx, deviceId, profileId);
+
+                    var existingTimestamps = await GetExistingEntryTimestampsIST(conn, tx, deviceId, profileId);
 
                     for (int rIdx = 0; rIdx < rows.Count; rIdx++)
                     {
                         var row = rows[rIdx];
 
-                        DateTime? entryTimestampUtc = null;
+                        //DateTime? entryTimestampUtc = null;
+                        //if (row.Timestamp.HasValue && row.Timestamp.Value.Year > 1)
+                        //{
+                        //    try
+                        //    {
+                        //        var localDt = DateTime.SpecifyKind(row.Timestamp.Value, DateTimeKind.Unspecified);
+                        //        entryTimestampUtc = TimeZoneInfo.ConvertTimeToUtc(localDt, deviceTz);
+                        //    }
+                        //    catch (Exception ex)
+                        //    {
+                        //        _logger.LogWarning(ex, "[ProfileSyncService] Row {RIdx}: failed to convert local timestamp {LocalTs} to UTC.", rIdx, row.Timestamp);
+                        //        entryTimestampUtc = null;
+                        //    }
+                        //}
+
+                        DateTime? entryTimestampIST = null;
                         if (row.Timestamp.HasValue && row.Timestamp.Value.Year > 1)
                         {
-                            try
-                            {
-                                var localDt = DateTime.SpecifyKind(row.Timestamp.Value, DateTimeKind.Unspecified);
-                                entryTimestampUtc = TimeZoneInfo.ConvertTimeToUtc(localDt, deviceTz);
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.LogWarning(ex, "[ProfileSyncService] Row {RIdx}: failed to convert local timestamp {LocalTs} to UTC.", rIdx, row.Timestamp);
-                                entryTimestampUtc = null;
-                            }
+                            entryTimestampIST = row.Timestamp.Value;
                         }
 
-                        if (entryTimestampUtc.HasValue && existingTimestamps.Contains(entryTimestampUtc.Value))
+                        //if (entryTimestampUtc.HasValue && existingTimestamps.Contains(entryTimestampUtc.Value))
+                        if (entryTimestampIST.HasValue && existingTimestamps.Contains(entryTimestampIST.Value))
                         {
                             result.RowsSkipped++;
                             continue;
                         }
 
-                        long sessionId = await InsertReadingSessionAsync(conn, tx, deviceId, profileId, syncExecutionTimeUtc, entryTimestampUtc);
+                        long sessionId = await InsertReadingSessionAsync(conn, tx, deviceId, profileId, syncExecutionTimeIST, entryTimestampIST);
 
                         for (int cIdx = 0; cIdx < row.Values.Count; cIdx++)
                         {
@@ -363,22 +374,31 @@ namespace PQM.Infrastructure.Services
                         }
 
                         result.RowsWritten++;
-                        if (entryTimestampUtc.HasValue)
+                        //if (entryTimestampUtc.HasValue)
+                        //{
+                        //    existingTimestamps.Add(entryTimestampUtc.Value);
+                        //    if (!maxWrittenEntryUtc.HasValue || entryTimestampUtc.Value > maxWrittenEntryUtc.Value)
+                        //    {
+                        //        maxWrittenEntryUtc = entryTimestampUtc.Value;
+                        //    }
+                        //}
+
+                        if (entryTimestampIST.HasValue)
                         {
-                            existingTimestamps.Add(entryTimestampUtc.Value);
-                            if (!maxWrittenEntryUtc.HasValue || entryTimestampUtc.Value > maxWrittenEntryUtc.Value)
+                            existingTimestamps.Add(entryTimestampIST.Value);
+                            if (!maxWrittenEntryIST.HasValue || entryTimestampIST.Value > maxWrittenEntryIST.Value)
                             {
-                                maxWrittenEntryUtc = entryTimestampUtc.Value;
+                                maxWrittenEntryIST = entryTimestampIST.Value;
                             }
                         }
                     }
 
                     if (isTimeSeries)
                     {
-                        DateTime? watermarkToSave = maxWrittenEntryUtc ?? currentWatermarkUtc;
+                        DateTime? watermarkToSave = maxWrittenEntryIST ?? currentWatermarkIST;
                         if (watermarkToSave.HasValue)
                         {
-                            await UpsertDeviceProfileSyncStateAsync(conn, tx, deviceId, profileId, watermarkToSave.Value, syncExecutionTimeUtc);
+                            await UpsertDeviceProfileSyncStateAsync(conn, tx, deviceId, profileId, watermarkToSave.Value, syncExecutionTimeIST);
                             result.NewWatermarkUtc = watermarkToSave;
                         }
                     }
@@ -483,7 +503,7 @@ namespace PQM.Infrastructure.Services
                 return Convert.ToInt32(newId);
             }
         }
-        private async Task<DateTime?> GetLastReadWatermarkUtcAsync(int deviceId, int profileId)
+        private async Task<DateTime?> GetLastReadWatermarkIST(int deviceId, int profileId)
         {
             using var conn = new SqlConnection(_connectionString);
             await conn.OpenAsync();
@@ -575,7 +595,7 @@ namespace PQM.Infrastructure.Services
 
             return map;
         }
-        private async Task<HashSet<DateTime>> GetExistingEntryTimestampsUtcAsync(SqlConnection conn, SqlTransaction tx, int deviceId, int profileId)
+        private async Task<HashSet<DateTime>> GetExistingEntryTimestampsIST(SqlConnection conn, SqlTransaction tx, int deviceId, int profileId)
         {
             var set = new HashSet<DateTime>();
             using var cmd = conn.CreateCommand();
@@ -589,12 +609,12 @@ namespace PQM.Infrastructure.Services
             while (await rdr.ReadAsync())
             {
                 var dt = rdr.GetDateTime(0);
-                set.Add(DateTime.SpecifyKind(dt, DateTimeKind.Utc));
+                set.Add(DateTime.SpecifyKind(dt, DateTimeKind.Unspecified));
             }
 
             return set;
         }
-        private async Task<long> InsertReadingSessionAsync(SqlConnection conn, SqlTransaction tx, int deviceId, int profileId, DateTime readTime, DateTime? entryTimestampUtc)
+        private async Task<long> InsertReadingSessionAsync(SqlConnection conn, SqlTransaction tx, int deviceId, int profileId, DateTime readTimeIST, DateTime? entryTimestampIST)
         {
             using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
@@ -603,8 +623,8 @@ namespace PQM.Infrastructure.Services
                                 SELECT SCOPE_IDENTITY();";
             cmd.Parameters.AddWithValue("@did", deviceId);
             cmd.Parameters.AddWithValue("@pid", profileId);
-            cmd.Parameters.AddWithValue("@rt", readTime);
-            cmd.Parameters.AddWithValue("@et", (object?)entryTimestampUtc ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@rt", readTimeIST);
+            cmd.Parameters.AddWithValue("@et", (object?)entryTimestampIST ?? DBNull.Value);
 
             var id = await cmd.ExecuteScalarAsync();
             return Convert.ToInt64(id);
@@ -623,7 +643,7 @@ namespace PQM.Infrastructure.Services
 
             await cmd.ExecuteNonQueryAsync();
         }
-        private async Task UpsertDeviceProfileSyncStateAsync(SqlConnection conn, SqlTransaction tx, int deviceId, int profileId, DateTime lastReadTimestampUtc, DateTime lastSyncedAt)
+        private async Task UpsertDeviceProfileSyncStateAsync(SqlConnection conn, SqlTransaction tx, int deviceId, int profileId, DateTime lastReadTimestampIST, DateTime lastSyncedAtIST)
         {
             using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
@@ -639,8 +659,8 @@ namespace PQM.Infrastructure.Services
 
             cmd.Parameters.AddWithValue("@did", deviceId);
             cmd.Parameters.AddWithValue("@pid", profileId);
-            cmd.Parameters.AddWithValue("@lr", lastReadTimestampUtc);
-            cmd.Parameters.AddWithValue("@ls", lastSyncedAt);
+            cmd.Parameters.AddWithValue("@lr", lastReadTimestampIST);
+            cmd.Parameters.AddWithValue("@ls", lastSyncedAtIST);
 
             await cmd.ExecuteNonQueryAsync();
         }
