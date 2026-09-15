@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PQM.Infrastructure;
 
@@ -11,9 +12,11 @@ using PQM.Infrastructure;
 namespace PQM.Infrastructure.Migrations
 {
     [DbContext(typeof(DataContext))]
-    partial class DataContextModelSnapshot : ModelSnapshot
+    [Migration("20260915104229_init37")]
+    partial class init37
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -304,7 +307,7 @@ namespace PQM.Infrastructure.Migrations
 
                     b.Property<DateTime?>("EntryTimestamp")
                         .HasColumnType("datetime2")
-                        .HasColumnName("EntryTimestamp");
+                        .HasColumnName("EntryTimestampUtc");
 
                     b.Property<int>("ProfileId")
                         .HasColumnType("int");
@@ -319,7 +322,7 @@ namespace PQM.Infrastructure.Migrations
                     b.HasIndex("DeviceId", "ProfileId", "EntryTimestamp")
                         .IsUnique()
                         .HasDatabaseName("IX_ReadingSessions_Device_Profile_Timestamp")
-                        .HasFilter("[EntryTimestamp] IS NOT NULL");
+                        .HasFilter("[EntryTimestampUtc] IS NOT NULL");
 
                     b.ToTable("ReadingSessions", (string)null);
                 });

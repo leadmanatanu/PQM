@@ -16,7 +16,7 @@ namespace PQM.Core.Entities
         public bool IsDeleted { get; set; }
         public DateTime? CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
-        public DateTime? LastSync { get; set; }
+        public DateTime? LastSyncAt { get; set; }
 
         public int? ClientAddress { get; set; } 
         public int? ServerAddress { get; set; } 
