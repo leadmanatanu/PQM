@@ -217,7 +217,8 @@ namespace PQM.Infrastructure.Services
 
             if (isTimeSeries)
             {
-                currentWatermarkIST = await GetLastReadWatermarkIST(device.Id, profileId);  // ← Uses undeclared variable!
+                currentWatermarkIST = await GetLastReadWatermarkIST(device.Id, profileId);
+                startTimeLocal = currentWatermarkIST;
             }
 
 
@@ -287,7 +288,7 @@ namespace PQM.Infrastructure.Services
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
         UPDATE Devices 
-        SET LastSync = @lastSync
+        SET LastSyncAt = @lastSync
         WHERE Id = @id";
             cmd.Parameters.AddWithValue("@lastSync", lastSyncIST);
             cmd.Parameters.AddWithValue("@id", deviceId);
@@ -508,8 +509,8 @@ namespace PQM.Infrastructure.Services
             using var conn = new SqlConnection(_connectionString);
             await conn.OpenAsync();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"SELECT LastReadTimestampUtc FROM DeviceProfileSyncState
-                                WHERE DeviceId = @did AND ProfileId = @pid";
+            cmd.CommandText = @"SELECT LastReadTimestamp FROM DeviceProfileSyncState
+                        WHERE DeviceId = @did AND ProfileId = @pid";
             cmd.Parameters.AddWithValue("@did", deviceId);
             cmd.Parameters.AddWithValue("@pid", profileId);
 
@@ -600,8 +601,8 @@ namespace PQM.Infrastructure.Services
             var set = new HashSet<DateTime>();
             using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
-            cmd.CommandText = @"SELECT EntryTimestampUtc FROM ReadingSessions
-                                WHERE DeviceId = @did AND ProfileId = @pid AND EntryTimestampUtc IS NOT NULL";
+            cmd.CommandText = @"SELECT EntryTimestamp FROM ReadingSessions
+                                WHERE DeviceId = @did AND ProfileId = @pid AND EntryTimestamp IS NOT NULL";
             cmd.Parameters.AddWithValue("@did", deviceId);
             cmd.Parameters.AddWithValue("@pid", profileId);
 
@@ -618,9 +619,9 @@ namespace PQM.Infrastructure.Services
         {
             using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
-            cmd.CommandText = @"INSERT INTO ReadingSessions (DeviceId, ProfileId, ReadTime, EntryTimestampUtc)
-                                VALUES (@did, @pid, @rt, @et);
-                                SELECT SCOPE_IDENTITY();";
+            cmd.CommandText = @"INSERT INTO ReadingSessions (DeviceId, ProfileId, ReadTimeAt, EntryTimestamp)
+                    VALUES (@did, @pid, @rt, @et);
+                    SELECT SCOPE_IDENTITY();";
             cmd.Parameters.AddWithValue("@did", deviceId);
             cmd.Parameters.AddWithValue("@pid", profileId);
             cmd.Parameters.AddWithValue("@rt", readTimeIST);
@@ -648,14 +649,14 @@ namespace PQM.Infrastructure.Services
             using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
             cmd.CommandText = @"
-                MERGE DeviceProfileSyncState AS target
-                USING (SELECT @did AS DeviceId, @pid AS ProfileId) AS source
-                ON (target.DeviceId = source.DeviceId AND target.ProfileId = source.ProfileId)
-                WHEN MATCHED THEN
-                    UPDATE SET target.LastReadTimestampUtc = @lr, target.LastSyncedAt = @ls
-                WHEN NOT MATCHED THEN
-                    INSERT (DeviceId, ProfileId, LastReadTimestampUtc, LastSyncedAt)
-                    VALUES (@did, @pid, @lr, @ls);";
+        MERGE DeviceProfileSyncState AS target
+        USING (SELECT @did AS DeviceId, @pid AS ProfileId) AS source
+        ON (target.DeviceId = source.DeviceId AND target.ProfileId = source.ProfileId)
+        WHEN MATCHED THEN
+            UPDATE SET target.LastReadTimestamp = @lr, target.LastSyncedAt = @ls
+        WHEN NOT MATCHED THEN
+            INSERT (DeviceId, ProfileId, LastReadTimestamp, LastSyncedAt)
+            VALUES (@did, @pid, @lr, @ls);";
 
             cmd.Parameters.AddWithValue("@did", deviceId);
             cmd.Parameters.AddWithValue("@pid", profileId);
