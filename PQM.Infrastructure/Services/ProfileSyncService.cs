@@ -67,8 +67,7 @@ namespace PQM.Infrastructure.Services
             _lockAcquiredTimes.TryRemove(deviceId, out _);
         }
 
-        public async Task<DeviceSyncResult> SyncDeviceAllProfilesAsync(
-            int deviceId, CancellationToken cancellationToken = default)
+        public async Task<DeviceSyncResult> SyncDeviceAllProfilesAsync(int deviceId, CancellationToken cancellationToken = default)
         {
             var result = new DeviceSyncResult { DeviceId = deviceId };
 
