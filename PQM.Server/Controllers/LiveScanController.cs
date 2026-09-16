@@ -27,6 +27,13 @@ namespace PQM.Server.Controllers
             _reachability = reachability ?? throw new ArgumentNullException(nameof(reachability));
         }
 
+        private static DateTime GetIndiaStandardTime()
+        {
+            return TimeZoneInfo.ConvertTimeFromUtc(
+                DateTime.UtcNow,
+                TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
+        }
+
         [HttpPost("{id:int}/live-scan")]
         public async Task<ActionResult> LiveScan(int id,[FromBody] LiveScanRequest? request,CancellationToken cancellationToken)
         {
@@ -98,8 +105,7 @@ namespace PQM.Server.Controllers
 
                 _apiResponse.Data = new
                 {
-                    scannedAt =
-                        DateTime.UtcNow.ToString("o"),
+                    scannedAt = GetIndiaStandardTime().ToString("o"),
 
                     deviceId = id,
 

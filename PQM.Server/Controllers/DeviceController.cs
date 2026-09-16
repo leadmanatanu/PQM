@@ -23,6 +23,13 @@ namespace PQM.Server.Controllers
             _reachability = reachability;
         }
 
+        private static DateTime GetIndiaStandardTime()
+        {
+            return TimeZoneInfo.ConvertTimeFromUtc(
+                DateTime.UtcNow,
+                TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
+        }
+
         [HttpGet]
         public async Task<ActionResult> GetAllDevices(CancellationToken cancellationToken)
         {
@@ -426,7 +433,7 @@ namespace PQM.Server.Controllers
                     {
                         deviceId = id,
                         status = "Completed",
-                        completedAt = DateTime.UtcNow,
+                        completedAt = GetIndiaStandardTime(),
                         message = $"Sync completed successfully for device {device.Name}."
                     },
                     Errors = new List<string>()

@@ -17,94 +17,25 @@ namespace PQM.Server.Controllers
         public ScheduleController(IScheduleRepository scheduleRepository)
         {
             _apiResponse = new APIResponse();
-            _scheduleRepository = scheduleRepository?? throw new ArgumentNullException(nameof(scheduleRepository));
+            _scheduleRepository = scheduleRepository ?? throw new ArgumentNullException(nameof(scheduleRepository));
         }
-        private static string? FormatUtcIso(DateTime? dt)
-        {
-            if (!dt.HasValue)
-                return null;
 
-            var utc = DateTime.SpecifyKind(
-                dt.Value,
-                DateTimeKind.Utc);
+        //private static string? FormatUtcIso(DateTime? dt)
+        //{
+        //    if (!dt.HasValue)
+        //        return null;
 
-            return utc.ToString("o");
-        }
+        //    var utc = DateTime.SpecifyKind(
+        //        dt.Value,
+        //        DateTimeKind.Utc);
+
+        //    return utc.ToString("o");
+        //}
 
         [HttpPost("schedule")]
-        public async Task<ActionResult> CreateSchedule([FromBody] UpdateScheduleRequest request,CancellationToken cancellationToken)
-        {
-            try
-            {
-                if (request == null)
-                {
-                    return BadRequest(new
-                    {
-                        error = "Request body is required."
-                    });
-                }
-
-                if (!TimeSpan.TryParse(request.ScheduledTime,out var scheduledTime))
-                {
-                    return BadRequest(new
-                    {
-                        error = "Invalid ScheduledTime format. Expected HH:mm or HH:mm:ss."
-                    });
-                }
-
-                DateTime nowUtc = DateTime.UtcNow;
-
-                string timeZoneId = "India Standard Time";
-
-                DateTime? nextRunAtUtc = request.IsEnabled? ScheduleHelper.ComputeNextRunAtUtc(scheduledTime,timeZoneId,nowUtc): null;
-
-                var schedule = new DeviceSyncSchedule
-                {
-                    IsEnabled = request.IsEnabled,
-                    ScheduledTime = scheduledTime,
-                    RepeatMode = request.RepeatMode ?? "Daily",
-                    NextRunAt = nextRunAtUtc
-                };
-
-                int scheduleId = await _scheduleRepository.AddAsync(schedule,cancellationToken);
-
-                _apiResponse.Status = true;
-                _apiResponse.StatusCode =
-                    System.Net.HttpStatusCode.OK;
-
-                _apiResponse.Data = new
-                {
-                    id = scheduleId,
-                    isEnabled = request.IsEnabled,
-                    scheduledTime =scheduledTime.ToString(@"hh\:mm"),
-                    repeatMode =request.RepeatMode ?? "Daily",
-                    nextRunAtUtc =FormatUtcIso(nextRunAtUtc)
-                };
-
-                _apiResponse.Errors.Clear();
-
-                return Ok(_apiResponse);
-            }
-            catch (Exception ex)
-            {
-                _apiResponse.Status = false;
-                _apiResponse.StatusCode =
-                    System.Net.HttpStatusCode.BadRequest;
-
-                _apiResponse.Data = null;
-
-                _apiResponse.Errors =
-                    new List<string>
-                    {
-                    ex.Message
-                    };
-
-                return Ok(_apiResponse);
-            }
-        }
-
-        [HttpPut("schedule/{id:int}")]
-        public async Task<ActionResult> UpdateSchedule(int id,[FromBody] UpdateScheduleRequest request,CancellationToken cancellationToken)
+        public async Task<ActionResult> CreateSchedule(
+            [FromBody] UpdateScheduleRequest request,
+            CancellationToken cancellationToken)
         {
             try
             {
@@ -126,15 +57,95 @@ namespace PQM.Server.Controllers
                     });
                 }
 
-                DateTime nowUtc = DateTime.UtcNow;
+                DateTime nowIST = GetIndiaStandardTime();
 
                 string timeZoneId = "India Standard Time";
 
-                DateTime? nextRunAtUtc = request.IsEnabled
-                    ? ScheduleHelper.ComputeNextRunAtUtc(
+                DateTime? nextRunAtIST = request.IsEnabled
+                    ? ScheduleHelper.ComputeNextRunAt(scheduledTime, nowIST)
+                    : null;
+
+                var schedule = new DeviceSyncSchedule
+                {
+                    IsEnabled = request.IsEnabled,
+                    ScheduledTime = scheduledTime,
+                    RepeatMode = request.RepeatMode ?? "Daily",
+                    NextRunAt = nextRunAtIST
+                };
+
+                int scheduleId = await _scheduleRepository.AddAsync(
+                    schedule,
+                    cancellationToken);
+
+                _apiResponse.Status = true;
+                _apiResponse.StatusCode =
+                    System.Net.HttpStatusCode.OK;
+
+                _apiResponse.Data = new
+                {
+                    id = scheduleId,
+                    isEnabled = request.IsEnabled,
+                    scheduledTime = scheduledTime.ToString(@"hh\:mm"),
+                    repeatMode = request.RepeatMode ?? "Daily",
+                    nextRunAt = nextRunAtIST
+                };
+
+                _apiResponse.Errors.Clear();
+
+                return Ok(_apiResponse);
+            }
+            catch (Exception ex)
+            {
+                _apiResponse.Status = false;
+                _apiResponse.StatusCode =
+                    System.Net.HttpStatusCode.BadRequest;
+
+                _apiResponse.Data = null;
+
+                _apiResponse.Errors =
+                    new List<string>
+                    {
+                        ex.Message
+                    };
+
+                return Ok(_apiResponse);
+            }
+        }
+
+        [HttpPut("schedule/{id:int}")]
+        public async Task<ActionResult> UpdateSchedule(
+            int id,
+            [FromBody] UpdateScheduleRequest request,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                if (request == null)
+                {
+                    return BadRequest(new
+                    {
+                        error = "Request body is required."
+                    });
+                }
+
+                if (!TimeSpan.TryParse(
+                    request.ScheduledTime,
+                    out var scheduledTime))
+                {
+                    return BadRequest(new
+                    {
+                        error = "Invalid ScheduledTime format. Expected HH:mm or HH:mm:ss."
+                    });
+                }
+
+                DateTime nowIST = GetIndiaStandardTime();
+
+                string timeZoneId = "India Standard Time";
+
+                DateTime? nextRunAtIST = request.IsEnabled
+                    ? ScheduleHelper.ComputeNextRunAt(
                         scheduledTime,
-                        timeZoneId,
-                        nowUtc)
+                        nowIST)
                     : null;
 
                 var schedule = new DeviceSyncSchedule
@@ -143,7 +154,7 @@ namespace PQM.Server.Controllers
                     IsEnabled = request.IsEnabled,
                     ScheduledTime = scheduledTime,
                     RepeatMode = request.RepeatMode ?? "Daily",
-                    NextRunAt = nextRunAtUtc
+                    NextRunAt = nextRunAtIST
                 };
 
                 bool updated = await _scheduleRepository.UpdateAsync(
@@ -170,8 +181,7 @@ namespace PQM.Server.Controllers
                         scheduledTime.ToString(@"hh\:mm"),
                     repeatMode =
                         request.RepeatMode ?? "Daily",
-                    nextRunAtUtc =
-                        FormatUtcIso(nextRunAtUtc)
+                    nextRunAt = nextRunAtIST
                 };
 
                 _apiResponse.Errors.Clear();
@@ -189,7 +199,7 @@ namespace PQM.Server.Controllers
                 _apiResponse.Errors =
                     new List<string>
                     {
-                    ex.Message
+                        ex.Message
                     };
 
                 return Ok(_apiResponse);
@@ -197,7 +207,9 @@ namespace PQM.Server.Controllers
         }
 
         [HttpGet("schedule/{id:int}")]
-        public async Task<ActionResult> GetSchedule(int id,CancellationToken cancellationToken)
+        public async Task<ActionResult> GetSchedule(
+            int id,
+            CancellationToken cancellationToken)
         {
             try
             {
@@ -225,11 +237,9 @@ namespace PQM.Server.Controllers
 
                     repeatMode = schedule.RepeatMode,
 
-                    nextRunAtUtc =
-                        FormatUtcIso(schedule.NextRunAt),
+                    nextRunAt = schedule.NextRunAt,
 
-                    lastRunAtUtc =
-                        FormatUtcIso(schedule.LastRunAt),
+                    lastRunAt = schedule.LastRunAt,
 
                     lastRunStatus = schedule.LastRunStatus
                 };
@@ -255,7 +265,7 @@ namespace PQM.Server.Controllers
                 _apiResponse.Errors =
                     new List<string>
                     {
-                    ex.Message
+                        ex.Message
                     };
 
                 return Ok(_apiResponse);
@@ -263,7 +273,8 @@ namespace PQM.Server.Controllers
         }
 
         [HttpGet("schedules")]
-        public async Task<ActionResult> GetAllSchedules(CancellationToken cancellationToken)
+        public async Task<ActionResult> GetAllSchedules(
+            CancellationToken cancellationToken)
         {
             try
             {
@@ -286,11 +297,9 @@ namespace PQM.Server.Controllers
 
                         repeatMode = schedule.RepeatMode,
 
-                        nextRunAtUtc =
-                            FormatUtcIso(schedule.NextRunAt),
+                        nextRunAt = schedule.NextRunAt,
 
-                        lastRunAtUtc =
-                            FormatUtcIso(schedule.LastRunAt),
+                        lastRunAt = schedule.LastRunAt,
 
                         lastRunStatus = schedule.LastRunStatus
                     });
@@ -317,7 +326,7 @@ namespace PQM.Server.Controllers
                 _apiResponse.Errors =
                     new List<string>
                     {
-                    ex.Message
+                        ex.Message
                     };
 
                 return Ok(_apiResponse);
@@ -325,12 +334,16 @@ namespace PQM.Server.Controllers
         }
 
         [HttpDelete("schedule/{id:int}")]
-        public async Task<ActionResult> DeleteSchedule(int id,CancellationToken cancellationToken)
+        public async Task<ActionResult> DeleteSchedule(
+            int id,
+            CancellationToken cancellationToken)
         {
             try
             {
                 // Check whether schedule exists
-                var schedule = await _scheduleRepository.GetByIdAsync(id,cancellationToken);
+                var schedule = await _scheduleRepository.GetByIdAsync(
+                    id,
+                    cancellationToken);
 
                 if (schedule == null)
                 {
@@ -342,18 +355,24 @@ namespace PQM.Server.Controllers
 
                 // Check whether an active, non-deleted device
                 // is linked with this schedule
-                bool hasLinkedDevices = await _scheduleRepository.HasLinkedDevicesAsync(id,cancellationToken);
+                bool hasLinkedDevices =
+                    await _scheduleRepository.HasLinkedDevicesAsync(
+                        id,
+                        cancellationToken);
 
                 if (hasLinkedDevices)
                 {
                     return Conflict(new
                     {
-                        error = $"Schedule cannot be deleted because it is linked to one or more active devices."
+                        error = "Schedule cannot be deleted because it is linked to one or more active devices."
                     });
                 }
 
                 // Delete schedule
-                bool deleted = await _scheduleRepository.DeleteAsync(id,cancellationToken);
+                bool deleted =
+                    await _scheduleRepository.DeleteAsync(
+                        id,
+                        cancellationToken);
 
                 if (!deleted)
                 {
@@ -394,5 +413,11 @@ namespace PQM.Server.Controllers
             }
         }
 
+        private static DateTime GetIndiaStandardTime()
+        {
+            return TimeZoneInfo.ConvertTimeFromUtc(
+                DateTime.UtcNow,
+                TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
+        }
     }
 }

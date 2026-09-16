@@ -18,6 +18,13 @@ namespace PQM.Server.Controllers
             _reportRepository = reportRepository;
         }
 
+        private static DateTime GetIndiaStandardTime()
+        {
+            return TimeZoneInfo.ConvertTimeFromUtc(
+                DateTime.UtcNow,
+                TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
+        }
+
         [HttpGet("aggregate")]
         public IActionResult GetAggregatedReport([FromQuery] ReportSearch searchParams)
         {
@@ -99,7 +106,7 @@ namespace PQM.Server.Controllers
                 var sb = new StringBuilder();
 
                 sb.AppendLine($"\"Report Type\",\"Interval Aggregated Report ({interval} min buckets)\"");
-                sb.AppendLine($"\"Generated At\",\"{DateTime.Now:yyyy-MM-dd HH:mm:ss}\"");
+                sb.AppendLine($"\"Generated At\",\"{GetIndiaStandardTime():yyyy-MM-dd HH:mm:ss}\"");
                 sb.AppendLine();
 
                 sb.Append("\"Parameter\"");
@@ -123,7 +130,7 @@ namespace PQM.Server.Controllers
                     sb.AppendLine();
                 }
 
-                string fileName = $"AggregatedReport_{interval}min_{DateTime.Now:yyyyMMdd_HHmmss}.xls";
+                string fileName = $"AggregatedReport_{interval}min_{GetIndiaStandardTime():yyyyMMdd_HHmmss}.xls";
                 byte[] bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
 
                 return File(bytes, "application/vnd.ms-excel", fileName);

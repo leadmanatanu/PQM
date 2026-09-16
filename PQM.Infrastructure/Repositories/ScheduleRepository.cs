@@ -11,6 +11,13 @@ namespace PQM.Infrastructure.Repositories
         {
             _db = db ?? throw new ArgumentNullException(nameof(db));
         }
+
+        private static DateTime GetIndiaStandardTime()
+        {
+            return TimeZoneInfo.ConvertTimeFromUtc(
+                DateTime.UtcNow,
+                TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
+        }
         public async Task<int> AddAsync(DeviceSyncSchedule schedule,CancellationToken cancellationToken = default)
         {
             if (schedule == null)
@@ -21,7 +28,7 @@ namespace PQM.Infrastructure.Repositories
                 schedule.RepeatMode = "Daily";
             }
 
-            schedule.CreatedAt = DateTime.UtcNow;
+            schedule.CreatedAt = GetIndiaStandardTime();
 
             await _db.DeviceSyncSchedules.AddAsync(schedule, cancellationToken);
             await _db.SaveChangesAsync(cancellationToken);
@@ -45,9 +52,9 @@ namespace PQM.Infrastructure.Repositories
             existing.ScheduledTime = schedule.ScheduledTime;
             existing.RepeatMode = schedule.RepeatMode ?? "Daily";
             existing.NextRunAt = schedule.NextRunAt;
-            existing.UpdatedAt = DateTime.UtcNow;
+            existing.UpdatedAt = GetIndiaStandardTime();
 
-            // LastRunAtUtc / LastRunStatus are intentionally left alone here —
+            // LastRunAt / LastRunStatus are intentionally left alone here —
             // they should be updated by the sync job itself, not the edit screen.
 
             await _db.SaveChangesAsync(cancellationToken);

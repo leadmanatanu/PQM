@@ -8,6 +8,7 @@ using PQM.Core.Helpers;
 using PQM.Core.Interfaces.Repositories;
 using PQM.Infrastructure;
 using PQM.Infrastructure.Services;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace PQM.Console
 {
@@ -16,7 +17,11 @@ namespace PQM.Console
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<DeviceConsoleRunnerService> _logger;
         private readonly ConsoleOptions _options;
-        public DeviceConsoleRunnerService(IServiceScopeFactory scopeFactory, IOptions<ConsoleOptions> options, ILogger<DeviceConsoleRunnerService> logger)
+
+        public DeviceConsoleRunnerService(
+            IServiceScopeFactory scopeFactory,
+            IOptions<ConsoleOptions> options,
+            ILogger<DeviceConsoleRunnerService> logger)
         {
             _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -25,15 +30,20 @@ namespace PQM.Console
             if (string.IsNullOrWhiteSpace(_options.DefaultConnection))
                 throw new InvalidOperationException("Connection string 'DefaultConnection' not found in options.");
         }
+
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             int tickCounter = 0;
+
             while (!stoppingToken.IsCancellationRequested)
             {
                 tickCounter++;
+
                 if (tickCounter % 12 == 1)
                 {
-                    _logger.LogInformation("[PQM.Console] Service Heartbeat — Service active and polling. Time: {TimeUtc:yyyy-MM-dd HH:mm:ss UTC}.", DateTime.UtcNow);
+                    _logger.LogInformation(
+                        "[PQM.Console] Service Heartbeat — Service active and polling. Time: {TimeUtc:yyyy-MM-dd HH:mm:ss UTC}.",
+                        DateTime.UtcNow);
                 }
 
                 try
@@ -42,7 +52,10 @@ namespace PQM.Console
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "[PQM.Console] Error during sync execution cycle: {Message}", ex.Message);
+                    _logger.LogError(
+                        ex,
+                        "[PQM.Console] Error during sync execution cycle: {Message}",
+                        ex.Message);
                 }
 
                 try
@@ -57,6 +70,7 @@ namespace PQM.Console
 
             _logger.LogInformation("[PQM.Console] Production Sync Runner Stopped.");
         }
+
         private async Task ProcessDueSchedulesAsync(CancellationToken stoppingToken)
         {
             var dueSchedules = await GetDueSchedulesAsync(stoppingToken);
@@ -73,17 +87,26 @@ namespace PQM.Console
                 if (stoppingToken.IsCancellationRequested)
                     return;
 
-                _logger.LogInformation("[PQM.Console] Executing Schedule {ScheduleId} for {DeviceCount} device(s).",schedule.ScheduleId,schedule.DeviceIds.Count);
+                _logger.LogInformation(
+                    "[PQM.Console] Executing Schedule {ScheduleId} for {DeviceCount} device(s).",
+                    schedule.ScheduleId,
+                    schedule.DeviceIds.Count);
 
-                DateTime nowUtc = DateTime.UtcNow;
+                DateTime nowIST = GetIndiaStandardTime();
 
-                DateTime? nextRunAtUtc = ScheduleHelper.ComputeNextRunAtUtc(schedule.ScheduledTime, schedule.TimeZoneId, nowUtc);
+                DateTime? nextRunAtIST =
+                    ScheduleHelper.ComputeNextRunAt(
+                        schedule.ScheduledTime,
+                        nowIST);
 
-                // Mark as Running immediately, and advance NextRunAtUtc now so this
-                // schedule isn't picked up again on the next 5-second poll.
                 using (var advanceCts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
                 {
-                    await UpdateScheduleCompletionAsync(schedule.ScheduleId, nowUtc, "Running", nextRunAtUtc, advanceCts.Token);
+                    await UpdateScheduleCompletionAsync(
+                        schedule.ScheduleId,
+                        nowIST,
+                        "Running",
+                        nextRunAtIST,
+                        advanceCts.Token);
                 }
 
                 string finalStatus;
@@ -92,62 +115,109 @@ namespace PQM.Console
 
                 try
                 {
-                    var deviceTasks = schedule.DeviceIds.Select(deviceId => ProcessScheduledDeviceAsync(deviceId, schedule.ScheduleId, stoppingToken));
+                    var deviceTasks = schedule.DeviceIds.Select(
+                        deviceId => ProcessScheduledDeviceAsync(
+                            deviceId,
+                            schedule.ScheduleId,
+                            stoppingToken));
 
                     bool[] deviceOutcomes = await Task.WhenAll(deviceTasks);
 
                     succeeded = deviceOutcomes.Count(ok => ok);
-
-                    // Schedule ran on time and completed → Success, regardless of individual device results.
                     finalStatus = "Success";
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex,"[PQM.Console] Schedule {ScheduleId}: failed to execute.",schedule.ScheduleId);
+                    _logger.LogError(
+                        ex,
+                        "[PQM.Console] Schedule {ScheduleId}: failed to execute.",
+                        schedule.ScheduleId);
 
                     finalStatus = "Failed";
                 }
 
                 using (var completionCts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
                 {
-                    await UpdateScheduleCompletionAsync(schedule.ScheduleId, DateTime.UtcNow, finalStatus, nextRunAtUtc, completionCts.Token);
+                    await UpdateScheduleCompletionAsync(
+                        schedule.ScheduleId,
+                        GetIndiaStandardTime(),
+                        finalStatus,
+                        nextRunAtIST,
+                        completionCts.Token);
                 }
 
-                _logger.LogInformation("[PQM.Console] Completed Schedule {ScheduleId}. Status={Status} ({Succeeded}/{Total} devices). NextRun={NextRunAtUtc}",schedule.ScheduleId,finalStatus,succeeded,total,nextRunAtUtc);
+                _logger.LogInformation(
+                     "[PQM.Console] Completed Schedule {ScheduleId}. Status={Status} ({Succeeded}/{Total} devices). NextRun={NextRunAtIST}",
+                     schedule.ScheduleId,
+                     finalStatus,
+                     succeeded,
+                     total,
+                     nextRunAtIST);
             }
         }
-        private async Task<bool> ProcessScheduledDeviceAsync(int deviceId, int scheduleId, CancellationToken stoppingToken)
+
+        private async Task<bool> ProcessScheduledDeviceAsync(
+            int deviceId,
+            int scheduleId,
+            CancellationToken stoppingToken)
         {
             if (stoppingToken.IsCancellationRequested)
                 return false;
 
             using var scope = _scopeFactory.CreateScope();
-            var profileSyncService = scope.ServiceProvider.GetRequiredService<ProfileSyncService>();
 
-            // ✅ ADD THESE TWO LINES
-            var deviceRepository = scope.ServiceProvider.GetRequiredService<IDeviceRepository>();
-            var reachability = scope.ServiceProvider.GetRequiredService<INetworkReachabilityService>();
+            var profileSyncService =
+                scope.ServiceProvider.GetRequiredService<ProfileSyncService>();
+
+            var deviceRepository =
+                scope.ServiceProvider.GetRequiredService<IDeviceRepository>();
+
+            var reachability =
+                scope.ServiceProvider.GetRequiredService<INetworkReachabilityService>();
 
             try
             {
-                // ✅ ADD THIS ENTIRE BLOCK
-                var device = await deviceRepository.GetByIdAsync(deviceId, stoppingToken);
+                var device = await deviceRepository.GetByIdAsync(
+                    deviceId,
+                    stoppingToken);
+
                 if (device == null)
                 {
-                    _logger.LogWarning("[PQM.Console] Schedule {ScheduleId}: Device {DeviceId} not found.", scheduleId, deviceId);
+                    _logger.LogWarning(
+                        "[PQM.Console] Schedule {ScheduleId}: Device {DeviceId} not found.",
+                        scheduleId,
+                        deviceId);
+
                     return false;
                 }
 
-                var reachable = await reachability.IsReachableAsync(device.IP, device.PORT, 5000, stoppingToken);
+                var reachable = await reachability.IsReachableAsync(
+                    device.IP,
+                    device.PORT,
+                    5000,
+                    stoppingToken);
+
                 if (!reachable)
                 {
-                    _logger.LogWarning("[PQM.Console] Schedule {ScheduleId}: Device {DeviceId} at {IP}:{PORT} is unreachable. Skipping sync.",scheduleId, deviceId, device.IP, device.PORT);
+                    _logger.LogWarning(
+                        "[PQM.Console] Schedule {ScheduleId}: Device {DeviceId} at {IP}:{PORT} is unreachable. Skipping sync.",
+                        scheduleId,
+                        deviceId,
+                        device.IP,
+                        device.PORT);
+
                     return false;
                 }
 
-                _logger.LogInformation("[PQM.Console] Schedule {ScheduleId}: Starting sync for Device {DeviceId}.", scheduleId, deviceId);
+                _logger.LogInformation(
+                    "[PQM.Console] Schedule {ScheduleId}: Starting sync for Device {DeviceId}.",
+                    scheduleId,
+                    deviceId);
 
-                var result = await profileSyncService.SyncDeviceAllProfilesAsync(deviceId, stoppingToken);
+                var result =
+                    await profileSyncService.SyncDeviceAllProfilesAsync(
+                        deviceId,
+                        stoppingToken);
 
                 string finalStatus = result.Success ? "Online" : "Error";
 
@@ -155,13 +225,19 @@ namespace PQM.Console
                 {
                     _logger.LogInformation(
                         "[PQM.Console] Schedule {ScheduleId}: Device {DeviceId} completed. Status={Status}, Profiles={Succeeded}/{Attempted}",
-                        scheduleId, deviceId, finalStatus, result.ProfilesSucceeded, result.ProfilesAttempted);
+                        scheduleId,
+                        deviceId,
+                        finalStatus,
+                        result.ProfilesSucceeded,
+                        result.ProfilesAttempted);
                 }
                 else
                 {
                     _logger.LogWarning(
                         "[PQM.Console] Schedule {ScheduleId}: Device {DeviceId} failed. Error={Error}",
-                        scheduleId, deviceId, result.ErrorMessage);
+                        scheduleId,
+                        deviceId,
+                        result.ErrorMessage);
                 }
 
                 return result.Success;
@@ -177,19 +253,21 @@ namespace PQM.Console
                 return false;
             }
         }
-        private async Task<List<DueScheduleItem>> GetDueSchedulesAsync(CancellationToken cancellationToken)
+
+        private async Task<List<DueScheduleItem>> GetDueSchedulesAsync(
+            CancellationToken cancellationToken)
         {
             using var scope = _scopeFactory.CreateScope();
+
             var db = scope.ServiceProvider.GetRequiredService<DataContext>();
 
-            var nowUtc = DateTime.UtcNow;
+            var nowIST = GetIndiaStandardTime();
 
-            // Get all due global schedules.
             var list = await db.DeviceSyncSchedules
                 .AsNoTracking()
                 .Where(s => s.IsEnabled
                     && s.NextRunAt != null
-                    && s.NextRunAt <= nowUtc)
+                    && s.NextRunAt <= nowIST)
                 .OrderBy(s => s.Id)
                 .Select(s => new DueScheduleItem
                 {
@@ -200,41 +278,51 @@ namespace PQM.Console
                 })
                 .ToListAsync(cancellationToken);
 
-            // No due schedules.
             if (list.Count == 0)
                 return list;
 
-            // For each due schedule, get only the active devices assigned to THIS schedule
-            // (Devices.ScheduleId is a FK -> DeviceSyncSchedule.Id: one device has exactly one schedule).
             foreach (var schedule in list)
             {
                 var deviceIds = await db.Device
                     .AsNoTracking()
-                    .Where(d => d.IsActive == true && d.IsDeleted == false
-                             && d.DeviceSyncScheduleId == schedule.ScheduleId)
+                    .Where(d => d.IsActive == true
+                        && d.IsDeleted == false
+                        && d.DeviceSyncScheduleId == schedule.ScheduleId)
                     .OrderBy(d => d.Id)
                     .Select(d => d.Id)
                     .ToListAsync(cancellationToken);
 
                 schedule.DeviceIds.AddRange(deviceIds);
             }
-          
+
             return list;
         }
-        private async Task UpdateScheduleCompletionAsync(int scheduleId, DateTime lastRunAtUtc, string lastRunStatus, DateTime? nextRunAtUtc, CancellationToken cancellationToken)
+
+        private async Task UpdateScheduleCompletionAsync(
+    int scheduleId,
+    DateTime lastRunAtIST,
+    string lastRunStatus,
+    DateTime? nextRunAtIST,
+    CancellationToken cancellationToken)
         {
             using var scope = _scopeFactory.CreateScope();
+
             var db = scope.ServiceProvider.GetRequiredService<DataContext>();
 
-            // ExecuteUpdateAsync issues a single UPDATE statement directly (EF Core 7+),
-            // matching the original raw-SQL behavior without loading the entity first.
             await db.DeviceSyncSchedules
                 .Where(s => s.Id == scheduleId)
                 .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(s => s.LastRunAt, lastRunAtUtc)
-                        .SetProperty(s => s.LastRunStatus, lastRunStatus)
-                        .SetProperty(s => s.NextRunAt, nextRunAtUtc),
+                    .SetProperty(s => s.LastRunAt, lastRunAtIST)
+                    .SetProperty(s => s.LastRunStatus, lastRunStatus)
+                    .SetProperty(s => s.NextRunAt, nextRunAtIST),
                     cancellationToken);
+        }
+
+        private static DateTime GetIndiaStandardTime()
+        {
+            return TimeZoneInfo.ConvertTimeFromUtc(
+                DateTime.UtcNow,
+                TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
         }
     }
 }
