@@ -699,10 +699,15 @@ namespace PQM.Infrastructure.Services
 
                 if (value is GXDateTime gxDateTime)
                 {
-                    var dt = gxDateTime.Value.DateTime;
-                    if (dt.Year <= 1 || dt.Year >= 9999)
-                        continue; // Invalid/wildcarded clock entry guard
-                    return dt;
+                    // Use raw local components as sent by the meter.
+                    // gxDateTime.Value.DateTime applies an embedded deviation/offset
+                    // that is wrong on this meter, shifting the time by hours.
+                    if (DateTime.TryParse(gxDateTime.ToString(), out var localDt))
+                    {
+                        if (localDt.Year <= 1 || localDt.Year >= 9999)
+                            continue;
+                        return localDt;
+                    }
                 }
 
                 if (value is byte[] bytes)
@@ -729,16 +734,16 @@ namespace PQM.Infrastructure.Services
                         try
                         {
                             var gx = (GXDateTime)GXDLMSClient.ChangeType(bytes, DataType.DateTime);
-                            if (gx != null && gx.Value.DateTime.Year > 1 && gx.Value.DateTime.Year < 9999)
-                                return gx.Value.DateTime;
+                            if (gx != null && DateTime.TryParse(gx.ToString(), out var gxDt) && gxDt.Year > 1 && gxDt.Year < 9999)
+                                return gxDt;
                         }
                         catch
                         {
                             try
                             {
                                 var gxDate = (GXDateTime)GXDLMSClient.ChangeType(bytes, DataType.Date);
-                                if (gxDate != null && gxDate.Value.DateTime.Year > 1 && gxDate.Value.DateTime.Year < 9999)
-                                    return gxDate.Value.DateTime;
+                                if (gxDate != null && DateTime.TryParse(gxDate.ToString(), out var gxDateDt) && gxDateDt.Year > 1 && gxDateDt.Year < 9999)
+                                    return gxDateDt;
                             }
                             catch { }
                         }

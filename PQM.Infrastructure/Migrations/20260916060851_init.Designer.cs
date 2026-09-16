@@ -12,8 +12,8 @@ using PQM.Infrastructure;
 namespace PQM.Infrastructure.Migrations
 {
     [DbContext(typeof(DataContext))]
-    [Migration("20260915114113_Init")]
-    partial class Init
+    [Migration("20260916060851_init")]
+    partial class init
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
