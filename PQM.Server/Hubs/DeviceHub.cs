@@ -1,22 +1,46 @@
-using Microsoft.AspNetCore.SignalR;
-using System.Threading.Tasks;
+﻿using Microsoft.AspNetCore.SignalR;
+using System.Collections.Concurrent;
 
 namespace PQM.Server.Hubs
 {
     public class DeviceHub : Hub
     {
-        /// <summary>
-        /// Called by PQM.Console (SignalR client) to broadcast status changes to all connected web clients.
-        /// </summary>
-        public async Task BroadcastDeviceStatus(int deviceId, string status, string? lastSync, string? lastError)
+        private static readonly ConcurrentDictionary<string, HashSet<int>> _subscriptions = new();
+
+        public Task SubscribeToDevices(List<int> deviceIds)
         {
-            await Clients.All.SendAsync("DeviceStatusChanged", new
+            var set = _subscriptions.GetOrAdd(Context.ConnectionId, _ => new HashSet<int>());
+            lock (set)
             {
-                deviceId,
-                status,
-                lastSync,
-                lastError
-            });
+                foreach (var id in deviceIds) set.Add(id);
+            }
+            return Task.CompletedTask;
+        }
+
+        public Task UnsubscribeFromDevices(List<int> deviceIds)
+        {
+            if (_subscriptions.TryGetValue(Context.ConnectionId, out var set))
+            {
+                lock (set)
+                {
+                    foreach (var id in deviceIds) set.Remove(id);
+                }
+            }
+            return Task.CompletedTask;
+        }
+
+        public override Task OnDisconnectedAsync(Exception? exception)
+        {
+            _subscriptions.TryRemove(Context.ConnectionId, out _);
+            return base.OnDisconnectedAsync(exception);
+        }
+
+        public static IReadOnlyList<string> GetSubscribedConnections(int deviceId)
+        {
+            return _subscriptions
+                .Where(kvp => kvp.Value.Contains(deviceId))
+                .Select(kvp => kvp.Key)
+                .ToList();
         }
     }
 }

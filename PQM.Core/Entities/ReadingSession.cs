@@ -1,18 +1,19 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 namespace PQM.Core.Entities
 {
     public class ReadingSession
     {
+        [Key]
         public long Id { get; set; }
+        public DateTime? ReadTimeAt { get; set; }
+        public DateTime? EntryTimestamp { get; set; }
         public int DeviceId { get; set; }
-        public int ProfileId { get; set; }
-        public DateTime? ReadTime { get; set; }
-        public DateTime? EntryTimestampUtc { get; set; }
+        public Device? Device { get; set; }
 
-        public virtual Device? Device { get; set; }
-        public virtual Profile? Profile { get; set; }
-        public virtual ICollection<ReadingValue> Values { get; set; } = new List<ReadingValue>();
+        public int ProfileId { get; set; }
+        public Profile? Profile { get; set; }
     }
 }

@@ -4,29 +4,16 @@ namespace PQM.Core.Helpers
 {
     public static class ScheduleHelper
     {
-        public static DateTime? ComputeNextRunAtUtc(TimeSpan scheduledTime, string? timeZoneId, DateTime nowUtc)
+        public static DateTime? ComputeNextRunAt(
+            TimeSpan scheduledTime,
+            DateTime nowIST)
         {
-            TimeZoneInfo tz;
-            try
-            {
-                tz = string.IsNullOrWhiteSpace(timeZoneId)
-                    ? TimeZoneInfo.Local
-                    : TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
-            }
-            catch
-            {
-                tz = TimeZoneInfo.Utc;
-            }
+            DateTime candidate = nowIST.Date.Add(scheduledTime);
 
-            DateTime nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, tz);
-            DateTime candidateLocal = nowLocal.Date.Add(scheduledTime);
+            if (candidate <= nowIST)
+                candidate = candidate.AddDays(1);
 
-            if (candidateLocal <= nowLocal)
-            {
-                candidateLocal = candidateLocal.AddDays(1);
-            }
-
-            return TimeZoneInfo.ConvertTimeToUtc(candidateLocal, tz);
+            return candidate;
         }
     }
 }

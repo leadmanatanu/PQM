@@ -1,16 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
 using PQM.Core.Entities;
 using PQM.Core.Interfaces.Repositories;
-using PQM.Infrastructure;
-using PQM.Server.Models;
 using PQM.Infrastructure.Services;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
+using PQM.Server.Models;
+using System.Net;
 
 namespace PQM.Server.Controllers
 {
@@ -19,612 +12,460 @@ namespace PQM.Server.Controllers
     public class DeviceController : ControllerBase
     {
         private readonly IDeviceRepository _deviceRepository;
-        private readonly APIResponse _apiResponse;
         private readonly ILogger<DeviceController> _logger;
-        private readonly string _connectionString;
-
-        public DeviceController(
-            IDeviceRepository deviceRepository,
-            ILogger<DeviceController> logger,
-            IConfiguration configuration)
+        private readonly ProfileSyncService _profileSyncService;
+        private readonly INetworkReachabilityService _reachability;
+        public DeviceController(IDeviceRepository deviceRepository,ILogger<DeviceController> logger,ProfileSyncService profileSyncService,INetworkReachabilityService reachability)
         {
             _deviceRepository = deviceRepository;
-            _apiResponse = new APIResponse();
             _logger = logger;
-            _connectionString = configuration.GetConnectionString("DefaultConnection")
-                ?? throw new InvalidOperationException("Connection string DefaultConnection not found.");
+            _profileSyncService = profileSyncService;
+            _reachability = reachability;
         }
 
-        private static string? FormatUtcIso(DateTime? dt)
+        private static DateTime GetIndiaStandardTime()
         {
-            if (!dt.HasValue) return null;
-            var utc = DateTime.SpecifyKind(dt.Value, DateTimeKind.Utc);
-            return utc.ToString("o");
+            return TimeZoneInfo.ConvertTimeFromUtc(
+                DateTime.UtcNow,
+                TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
         }
 
         [HttpGet]
-        public async Task<ActionResult> Get(CancellationToken cancellationToken)
+        public async Task<ActionResult> GetAllDevices(CancellationToken cancellationToken)
         {
             try
             {
                 var devices = await _deviceRepository.GetAllAsync(cancellationToken);
-                _apiResponse.Status = true;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-                _apiResponse.Data = devices;
-                _apiResponse.Errors.Clear();
-                return Ok(_apiResponse);
+
+                return Ok(new APIResponse
+                {
+                    Status = true,
+                    StatusCode = HttpStatusCode.OK,
+                    Data = devices,
+                    Errors = new List<string>()
+                });
             }
             catch (Exception ex)
             {
-                _apiResponse.Status = false;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
-                _apiResponse.Data = null;
-                _apiResponse.Errors = new List<string> { ex.Message };
-                return Ok(_apiResponse);
+                _logger.LogError(
+                    ex,
+                    "[DeviceController] GetAllDevices failed.");
+
+                return Ok(new APIResponse
+                {
+                    Status = false,
+                    StatusCode = HttpStatusCode.BadRequest,
+                    Data = null,
+                    Errors = new List<string>
+                    {
+                        ex.Message
+                    }
+                });
             }
         }
 
         [HttpGet("{id:int}")]
-        public async Task<ActionResult> Get(int id, CancellationToken cancellationToken)
+        public async Task<ActionResult> GetDeviceById(int id,CancellationToken cancellationToken)
         {
             try
             {
-                var device = await _deviceRepository.GetByIdAsync(id, cancellationToken);
+                var device =
+                    await _deviceRepository.GetByIdAsync(
+                        id,
+                        cancellationToken);
+
                 if (device == null)
                 {
-                    return NotFound();
+                    return NotFound(new APIResponse
+                    {
+                        Status = false,
+                        StatusCode = HttpStatusCode.NotFound,
+                        Data = null,
+                        Errors = new List<string>
+                        {
+                            $"Device {id} not found."
+                        }
+                    });
                 }
-                _apiResponse.Status = true;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-                _apiResponse.Data = device;
-                _apiResponse.Errors.Clear();
-                return Ok(_apiResponse);
+
+                return Ok(new APIResponse
+                {
+                    Status = true,
+                    StatusCode = HttpStatusCode.OK,
+                    Data = device,
+                    Errors = new List<string>()
+                });
             }
             catch (Exception ex)
             {
-                _apiResponse.Status = false;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
-                _apiResponse.Data = null;
-                _apiResponse.Errors = new List<string> { ex.Message };
-                return Ok(_apiResponse);
+                _logger.LogError(
+                    ex,
+                    "[DeviceController] GetDeviceById failed for Device {DeviceId}.",
+                    id);
+
+                return Ok(new APIResponse
+                {
+                    Status = false,
+                    StatusCode = HttpStatusCode.BadRequest,
+                    Data = null,
+                    Errors = new List<string>
+                    {
+                        ex.Message
+                    }
+                });
             }
         }
 
         [HttpPost]
-        public async Task<ActionResult> Post([FromBody] Device device, CancellationToken cancellationToken)
+        public async Task<ActionResult> CreateDevice([FromBody] Device device,CancellationToken cancellationToken)
         {
             try
             {
-                var created = await _deviceRepository.AddAsync(device, cancellationToken);
-                _apiResponse.Status = true;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.Created;
-                _apiResponse.Data = created;
-                _apiResponse.Errors.Clear();
-                return CreatedAtAction(nameof(Get), new { id = created }, _apiResponse);
+                if (device == null)
+                {
+                    return BadRequest(new APIResponse
+                    {
+                        Status = false,
+                        StatusCode = HttpStatusCode.BadRequest,
+                        Data = null,
+                        Errors = new List<string>
+                        {
+                            "Device data is required."
+                        }
+                    });
+                }
+
+                // Schedule is optional at repository level.
+                // Frontend can enforce "Add schedule first" validation.
+
+                var deviceId =
+                    await _deviceRepository.AddAsync(
+                        device,
+                        cancellationToken);
+
+                return CreatedAtAction(
+                    nameof(GetDeviceById),
+                    new { id = deviceId },
+                    new APIResponse
+                    {
+                        Status = true,
+                        StatusCode = HttpStatusCode.Created,
+                        Data = new
+                        {
+                            id = deviceId,
+                            message = "Device created successfully."
+                        },
+                        Errors = new List<string>()
+                    });
             }
             catch (Exception ex)
             {
-                _apiResponse.Status = false;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
-                _apiResponse.Data = null;
-                _apiResponse.Errors = new List<string> { ex.Message };
-                return Ok(_apiResponse);
+                _logger.LogError(
+                    ex,
+                    "[DeviceController] CreateDevice failed.");
+
+                return Ok(new APIResponse
+                {
+                    Status = false,
+                    StatusCode = HttpStatusCode.BadRequest,
+                    Data = null,
+                    Errors = new List<string>
+                    {
+                        ex.Message
+                    }
+                });
             }
         }
 
         [HttpPut("{id:int}")]
-        public async Task<ActionResult> Put(int id, [FromBody] Device device, CancellationToken cancellationToken)
+        public async Task<ActionResult> UpdateDevice(int id,[FromBody] Device device,CancellationToken cancellationToken)
         {
             try
             {
-                if (id != device.Id)
+                if (device == null)
                 {
-                    return BadRequest();
+                    return BadRequest(new APIResponse
+                    {
+                        Status = false,
+                        StatusCode = HttpStatusCode.BadRequest,
+                        Data = null,
+                        Errors = new List<string>
+                        {
+                            "Device data is required."
+                        }
+                    });
                 }
 
-                var updated = await _deviceRepository.UpdateAsync(device, cancellationToken);
+                if (id != device.Id)
+                {
+                    return BadRequest(new APIResponse
+                    {
+                        Status = false,
+                        StatusCode = HttpStatusCode.BadRequest,
+                        Data = null,
+                        Errors = new List<string>
+                        {
+                            "Device ID in URL and request body do not match."
+                        }
+                    });
+                }
+
+                var updated =
+                    await _deviceRepository.UpdateAsync(
+                        device,
+                        cancellationToken);
+
                 if (!updated)
                 {
-                    return NotFound();
+                    return NotFound(new APIResponse
+                    {
+                        Status = false,
+                        StatusCode = HttpStatusCode.NotFound,
+                        Data = null,
+                        Errors = new List<string>
+                        {
+                            $"Device {id} not found."
+                        }
+                    });
                 }
-                _apiResponse.Status = true;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-                _apiResponse.Data = updated;
-                _apiResponse.Errors.Clear();
-                return Ok(_apiResponse);
+
+                return Ok(new APIResponse
+                {
+                    Status = true,
+                    StatusCode = HttpStatusCode.OK,
+                    Data = new
+                    {
+                        id,
+                        message = "Device updated successfully."
+                    },
+                    Errors = new List<string>()
+                });
             }
             catch (Exception ex)
             {
-                _apiResponse.Status = false;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
-                _apiResponse.Data = null;
-                _apiResponse.Errors = new List<string> { ex.Message };
-                return Ok(_apiResponse);
+                _logger.LogError(
+                    ex,
+                    "[DeviceController] UpdateDevice failed for Device {DeviceId}.",
+                    id);
+
+                return Ok(new APIResponse
+                {
+                    Status = false,
+                    StatusCode = HttpStatusCode.BadRequest,
+                    Data = null,
+                    Errors = new List<string>
+                    {
+                        ex.Message
+                    }
+                });
             }
         }
 
         [HttpDelete("{id:int}")]
-        public async Task<ActionResult> Delete(int id, CancellationToken cancellationToken)
+        public async Task<ActionResult> DeleteDevice(int id,CancellationToken cancellationToken)
         {
             try
             {
-                var deleted = await _deviceRepository.DeleteAsync(id, cancellationToken);
+                var deleted =
+                    await _deviceRepository.DeleteAsync(
+                        id,
+                        cancellationToken);
+
                 if (!deleted)
                 {
-                    return NotFound();
+                    return NotFound(new APIResponse
+                    {
+                        Status = false,
+                        StatusCode = HttpStatusCode.NotFound,
+                        Data = null,
+                        Errors = new List<string>
+                        {
+                            $"Device {id} not found."
+                        }
+                    });
                 }
-                _apiResponse.Status = true;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-                _apiResponse.Data = true;
-                _apiResponse.Errors.Clear();
-                return Ok(_apiResponse);
+
+                return Ok(new APIResponse
+                {
+                    Status = true,
+                    StatusCode = HttpStatusCode.OK,
+                    Data = new
+                    {
+                        id,
+                        message = "Device deleted successfully."
+                    },
+                    Errors = new List<string>()
+                });
             }
             catch (Exception ex)
             {
-                _apiResponse.Status = false;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
-                _apiResponse.Data = null;
-                _apiResponse.Errors = new List<string> { ex.Message };
-                return Ok(_apiResponse);
+                _logger.LogError(
+                    ex,
+                    "[DeviceController] DeleteDevice failed for Device {DeviceId}.",
+                    id);
+
+                return Ok(new APIResponse
+                {
+                    Status = false,
+                    StatusCode = HttpStatusCode.BadRequest,
+                    Data = null,
+                    Errors = new List<string>
+                    {
+                        ex.Message
+                    }
+                });
+            }
+        }
+
+        [HttpGet("meterTypes")]
+        public async Task<ActionResult> GetAllMeterTypes(CancellationToken cancellationToken)
+        {
+            try
+            {
+                var meterTypes =await _deviceRepository.GetMeterTypesAsync(cancellationToken);
+
+                return Ok(new APIResponse
+                {
+                    Status = true,
+                    StatusCode = HttpStatusCode.OK,
+                    Data = meterTypes,
+                    Errors = new List<string>()
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "[DeviceController] GetAllMeterTypes failed.");
+
+                return Ok(new APIResponse
+                {
+                    Status = false,
+                    StatusCode = HttpStatusCode.BadRequest,
+                    Data = null,
+                    Errors = new List<string>
+                    {
+                        ex.Message
+                    }
+                });
             }
         }
 
         [HttpPost("{id:int}/sync")]
-        public async Task<ActionResult> TriggerSync(int id, CancellationToken cancellationToken)
+        public async Task<ActionResult> TriggerDeviceSync(int id,CancellationToken cancellationToken)
         {
             try
             {
-                using var conn = new Microsoft.Data.SqlClient.SqlConnection(_connectionString);
-                await conn.OpenAsync(cancellationToken);
+                // ----------------------------------------------------
+                // 1. Get device
+                // ----------------------------------------------------
 
-                using (var checkCmd = conn.CreateCommand())
-                {
-                    checkCmd.CommandText = "SELECT COUNT(1) FROM Devices WHERE Id = @id AND (IsDeleted = 0 OR IsDeleted IS NULL)";
-                    checkCmd.Parameters.AddWithValue("@id", id);
-                    var count = Convert.ToInt32(await checkCmd.ExecuteScalarAsync(cancellationToken));
-                    if (count == 0)
-                    {
-                        return NotFound(new { error = $"Device {id} not found." });
-                    }
-                }
+                var device = await _deviceRepository.GetByIdAsync(id,cancellationToken);
 
-                // Deduplication check: return existing active request if already Pending or Processing
-                using (var existingCmd = conn.CreateCommand())
+                if (device == null)
                 {
-                    existingCmd.CommandText = "SELECT TOP 1 Id, Status FROM DeviceSyncRequest WHERE DeviceId = @id AND Status IN ('Pending', 'Processing') ORDER BY RequestedAt DESC";
-                    existingCmd.Parameters.AddWithValue("@id", id);
-                    using var r = await existingCmd.ExecuteReaderAsync(cancellationToken);
-                    if (await r.ReadAsync(cancellationToken))
+                    return NotFound(new APIResponse
                     {
-                        long existingId = r.GetInt64(0);
-                        string existingStatus = r.GetString(1);
-                        _apiResponse.Status = true;
-                        _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-                        _apiResponse.Data = new
+                        Status = false,
+                        StatusCode = HttpStatusCode.NotFound,
+                        Data = null,
+                        Errors = new List<string>
                         {
-                            requestId = existingId,
-                            deviceId = id,
-                            status = existingStatus,
-                            message = $"Sync request already active (Request #{existingId}, Status: {existingStatus})."
-                        };
-                        _apiResponse.Errors.Clear();
-                        return Ok(_apiResponse);
-                    }
-                }
-
-                using (var cmd = conn.CreateCommand())
-                {
-                    cmd.CommandText = @"
-                        INSERT INTO DeviceSyncRequest (DeviceId, RequestedAt, Status)
-                        VALUES (@did, GETUTCDATE(), 'Pending');
-                        SELECT SCOPE_IDENTITY();";
-                    cmd.Parameters.AddWithValue("@did", id);
-                    var requestId = await cmd.ExecuteScalarAsync(cancellationToken);
-
-                    _apiResponse.Status = true;
-                    _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-                    _apiResponse.Data = new
-                    {
-                        requestId = Convert.ToInt64(requestId),
-                        deviceId = id,
-                        status = "Pending",
-                        message = $"Sync request submitted for device {id}."
-                    };
-                    _apiResponse.Errors.Clear();
-                    return Ok(_apiResponse);
-                }
-            }
-            catch (Exception ex)
-            {
-                _apiResponse.Status = false;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
-                _apiResponse.Data = null;
-                _apiResponse.Errors = new List<string> { ex.Message };
-                return Ok(_apiResponse);
-            }
-        }
-
-        public class DeviceScanRequest
-        {
-            public int? ProfileId { get; set; }
-            public List<int>? ParameterIds { get; set; }
-        }
-
-        /// <summary>
-        /// Submits a live scan request. Returns a scanRequestId immediately.
-        /// PQM.Console picks up the request, executes it against the meter, and stores results.
-        /// Poll GET /api/device/{id}/scan/result/{scanRequestId} for completion.
-        ///
-        /// ARCHITECTURAL NOTE: This endpoint intentionally does NOT open a DlmsMeterReader
-        /// connection directly. All DLMS/meter communication is owned exclusively by PQM.Console
-        /// so that PQM.Server restarts cannot interrupt in-progress connections, and so that
-        /// scan and scheduled-sync operations are serialized through a single process.
-        /// Do NOT add direct DlmsMeterReader calls back to this controller.
-        /// </summary>
-        [HttpPost("{id:int}/scan")]
-        public async Task<ActionResult> ScanDevice(int id, [FromBody] DeviceScanRequest? request, CancellationToken cancellationToken)
-        {
-            try
-            {
-                // Verify device exists
-                using var conn = new Microsoft.Data.SqlClient.SqlConnection(_connectionString);
-                await conn.OpenAsync(cancellationToken);
-
-                using (var checkCmd = conn.CreateCommand())
-                {
-                    checkCmd.CommandText = "SELECT COUNT(1) FROM Devices WHERE Id = @id AND (IsDeleted = 0 OR IsDeleted IS NULL)";
-                    checkCmd.Parameters.AddWithValue("@id", id);
-                    var count = Convert.ToInt32(await checkCmd.ExecuteScalarAsync(cancellationToken));
-                    if (count == 0)
-                        return NotFound(new { error = $"Device {id} not found." });
-                }
-
-                // Deduplication check: return existing active scan if already Pending or Processing
-                using (var existingScanCmd = conn.CreateCommand())
-                {
-                    existingScanCmd.CommandText = "SELECT TOP 1 Id, Status FROM DeviceScanRequest WHERE DeviceId = @id AND Status IN ('Pending', 'Processing') ORDER BY RequestedAt DESC";
-                    existingScanCmd.Parameters.AddWithValue("@id", id);
-                    using var r = await existingScanCmd.ExecuteReaderAsync(cancellationToken);
-                    if (await r.ReadAsync(cancellationToken))
-                    {
-                        long existingScanId = r.GetInt64(0);
-                        string existingStatus = r.GetString(1);
-                        _logger.LogInformation("[DeviceController] Live scan already active for Device {DeviceId} — ScanRequestId={ScanRequestId}, Status={Status}.", id, existingScanId, existingStatus);
-                        _apiResponse.Status = true;
-                        _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-                        _apiResponse.Data = new { scanRequestId = existingScanId, deviceId = id, status = existingStatus };
-                        _apiResponse.Errors.Clear();
-                        return Ok(_apiResponse);
-                    }
-                }
-
-                // Serialize ParameterIds as JSON for storage
-                string? paramIdsJson = null;
-                if (request?.ParameterIds != null && request.ParameterIds.Count > 0)
-                    paramIdsJson = System.Text.Json.JsonSerializer.Serialize(request.ParameterIds);
-
-                long scanRequestId;
-                using (var insertCmd = conn.CreateCommand())
-                {
-                    insertCmd.CommandText = @"
-                        INSERT INTO DeviceScanRequest (DeviceId, ProfileId, ParameterIds, Status, RequestedAt)
-                        VALUES (@deviceId, @profileId, @paramIds, 'Pending', GETUTCDATE());
-                        SELECT SCOPE_IDENTITY();";
-                    insertCmd.Parameters.AddWithValue("@deviceId", id);
-                    insertCmd.Parameters.AddWithValue("@profileId", (object?)(request?.ProfileId) ?? DBNull.Value);
-                    insertCmd.Parameters.AddWithValue("@paramIds", (object?)paramIdsJson ?? DBNull.Value);
-                    scanRequestId = Convert.ToInt64(await insertCmd.ExecuteScalarAsync(cancellationToken));
-                }
-
-                _logger.LogInformation("[DeviceController] Live scan queued for Device {DeviceId} — ScanRequestId={ScanRequestId}.", id, scanRequestId);
-
-                _apiResponse.Status = true;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-                _apiResponse.Data = new { scanRequestId, deviceId = id, status = "Pending" };
-                _apiResponse.Errors.Clear();
-                return Ok(_apiResponse);
-            }
-            catch (Exception ex)
-            {
-                _apiResponse.Status = false;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
-                _apiResponse.Data = null;
-                _apiResponse.Errors = new List<string> { ex.Message };
-                return Ok(_apiResponse);
-            }
-        }
-
-        /// <summary>
-        /// Polls the result of a previously submitted scan request.
-        /// Returns status: Pending | Processing | Completed | Failed.
-        /// When Completed, the data field contains scannedAt + items[].
-        /// </summary>
-        [HttpGet("{id:int}/scan/result/{scanRequestId:long}")]
-        public async Task<ActionResult> GetScanResult(int id, long scanRequestId, CancellationToken cancellationToken)
-        {
-            try
-            {
-                using var conn = new Microsoft.Data.SqlClient.SqlConnection(_connectionString);
-                await conn.OpenAsync(cancellationToken);
-
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"
-                    SELECT Status, ResultJson, ErrorMessage
-                    FROM DeviceScanRequest
-                    WHERE Id = @id AND DeviceId = @deviceId";
-                cmd.Parameters.AddWithValue("@id", scanRequestId);
-                cmd.Parameters.AddWithValue("@deviceId", id);
-
-                using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-                if (!await reader.ReadAsync(cancellationToken))
-                    return NotFound(new { error = $"Scan request {scanRequestId} not found for device {id}." });
-
-                string status = reader.GetString(0);
-                string? resultJson = reader.IsDBNull(1) ? null : reader.GetString(1);
-                string? errorMessage = reader.IsDBNull(2) ? null : reader.GetString(2);
-
-                if (status == "Completed" && resultJson != null)
-                {
-                    var resultData = System.Text.Json.JsonSerializer.Deserialize<object>(resultJson);
-                    _apiResponse.Status = true;
-                    _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-                    _apiResponse.Data = resultData;
-                    _apiResponse.Errors.Clear();
-                    return Ok(_apiResponse);
-                }
-
-                if (status == "Failed")
-                {
-                    bool isConcurrency = errorMessage?.Contains("already syncing") == true ||
-                                        errorMessage?.Contains("already scanning") == true;
-                    _apiResponse.Status = false;
-                    _apiResponse.StatusCode = isConcurrency
-                        ? System.Net.HttpStatusCode.Conflict
-                        : System.Net.HttpStatusCode.BadRequest;
-                    _apiResponse.Data = null;
-                    _apiResponse.Errors = new List<string> { errorMessage ?? "Scan failed." };
-                    return isConcurrency ? StatusCode(409, _apiResponse) : Ok(_apiResponse);
-                }
-
-                // Still Pending or Processing
-                _apiResponse.Status = true;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-                _apiResponse.Data = new { scanRequestId, deviceId = id, status };
-                _apiResponse.Errors.Clear();
-                return Ok(_apiResponse);
-            }
-            catch (Exception ex)
-            {
-                _apiResponse.Status = false;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
-                _apiResponse.Data = null;
-                _apiResponse.Errors = new List<string> { ex.Message };
-                return Ok(_apiResponse);
-            }
-        }
-
-        [HttpPost("{id:int}/enable-sync")]
-        public async Task<ActionResult> EnableSync(int id, CancellationToken cancellationToken)
-        {
-            try
-            {
-                using var conn = new Microsoft.Data.SqlClient.SqlConnection(_connectionString);
-                await conn.OpenAsync(cancellationToken);
-                using (var cmd = conn.CreateCommand())
-                {
-                    cmd.CommandText = @"
-                        MERGE DeviceSyncSchedule AS target
-                        USING (SELECT @id AS DeviceId) AS source
-                        ON (target.DeviceId = source.DeviceId)
-                        WHEN MATCHED THEN
-                            UPDATE SET IsEnabled = 1
-                        WHEN NOT MATCHED THEN
-                            INSERT (DeviceId, IsEnabled, ScheduledTime, RepeatMode)
-                            VALUES (@id, 1, '00:00', 'Daily');";
-                    cmd.Parameters.AddWithValue("@id", id);
-                    await cmd.ExecuteNonQueryAsync(cancellationToken);
-                }
-
-                _apiResponse.Status = true;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-                _apiResponse.Data = new { deviceId = id, isEnabled = true, message = "Device sync enabled." };
-                _apiResponse.Errors.Clear();
-                return Ok(_apiResponse);
-            }
-            catch (Exception ex)
-            {
-                _apiResponse.Status = false;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
-                _apiResponse.Data = null;
-                _apiResponse.Errors = new List<string> { ex.Message };
-                return Ok(_apiResponse);
-            }
-        }
-
-        [HttpGet("schedules")]
-        public async Task<ActionResult> GetAllSchedules(CancellationToken cancellationToken)
-        {
-            try
-            {
-                var list = new List<object>();
-                using var conn = new Microsoft.Data.SqlClient.SqlConnection(_connectionString);
-                await conn.OpenAsync(cancellationToken);
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"
-                    SELECT d.Id, d.Name, d.IP, d.Status, d.LastSync, d.TimeZoneId,
-                           s.IsEnabled, s.ScheduledTime, s.RepeatMode, s.NextRunAtUtc, s.LastRunAtUtc, s.LastRunStatus
-                    FROM Devices d
-                    LEFT JOIN DeviceSyncSchedule s ON d.Id = s.DeviceId
-                    WHERE d.IsDeleted = 0 OR d.IsDeleted IS NULL";
-                using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-                while (await reader.ReadAsync(cancellationToken))
-                {
-                    bool hasSchedule = !reader.IsDBNull(6);
-                    list.Add(new
-                    {
-                        deviceId = reader.GetInt32(0),
-                        deviceName = reader.GetString(1),
-                        ip = reader.GetString(2),
-                        status = reader.IsDBNull(3) ? "Offline" : reader.GetString(3),
-                        lastSync = reader.IsDBNull(4) ? (string?)null : FormatUtcIso(reader.GetDateTime(4)),
-                        timeZoneId = reader.IsDBNull(5) ? "India Standard Time" : reader.GetString(5),
-                        isEnabled = hasSchedule ? reader.GetBoolean(6) : false,
-                        scheduledTime = hasSchedule ? reader.GetTimeSpan(7).ToString(@"hh\:mm") : "00:00",
-                        repeatMode = hasSchedule ? reader.GetString(8) : "Daily",
-                        nextRunAtUtc = hasSchedule && !reader.IsDBNull(9) ? FormatUtcIso(reader.GetDateTime(9)) : (string?)null,
-                        lastRunAtUtc = hasSchedule && !reader.IsDBNull(10) ? FormatUtcIso(reader.GetDateTime(10)) : (string?)null,
-                        lastRunStatus = hasSchedule && !reader.IsDBNull(11) ? reader.GetString(11) : (string?)null
+                            $"Device {id} not found."
+                        }
                     });
                 }
 
-                _apiResponse.Status = true;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-                _apiResponse.Data = list;
-                _apiResponse.Errors.Clear();
-                return Ok(_apiResponse);
-            }
-            catch (Exception ex)
-            {
-                _apiResponse.Status = false;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
-                _apiResponse.Data = null;
-                _apiResponse.Errors = new List<string> { ex.Message };
-                return Ok(_apiResponse);
-            }
-        }
+                // ----------------------------------------------------
+                // 2. Check device network connectivity
+                // ----------------------------------------------------
 
-        [HttpGet("{id:int}/schedule")]
-        public async Task<ActionResult> GetSchedule(int id, CancellationToken cancellationToken)
-        {
-            try
-            {
-                using var conn = new Microsoft.Data.SqlClient.SqlConnection(_connectionString);
-                await conn.OpenAsync(cancellationToken);
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"
-                    SELECT s.DeviceId, s.IsEnabled, s.ScheduledTime, s.RepeatMode, s.NextRunAtUtc, s.LastRunAtUtc, s.LastRunStatus, d.TimeZoneId
-                    FROM Devices d
-                    LEFT JOIN DeviceSyncSchedule s ON d.Id = s.DeviceId
-                    WHERE d.Id = @id";
-                cmd.Parameters.AddWithValue("@id", id);
-                using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-                if (await reader.ReadAsync(cancellationToken))
+                var reachable = await _reachability.IsReachableAsync(device.IP,device.PORT,5000,cancellationToken);
+
+                if (!reachable)
                 {
-                    bool hasSchedule = !reader.IsDBNull(1);
-                    var data = new
+                    return Ok(new APIResponse
                     {
-                        deviceId = reader.GetInt32(0),
-                        isEnabled = hasSchedule ? reader.GetBoolean(1) : false,
-                        scheduledTime = hasSchedule ? reader.GetTimeSpan(2).ToString(@"hh\:mm") : "00:00",
-                        repeatMode = hasSchedule ? reader.GetString(3) : "Daily",
-                        nextRunAtUtc = hasSchedule && !reader.IsDBNull(4) ? FormatUtcIso(reader.GetDateTime(4)) : (string?)null,
-                        lastRunAtUtc = hasSchedule && !reader.IsDBNull(5) ? FormatUtcIso(reader.GetDateTime(5)) : (string?)null,
-                        lastRunStatus = hasSchedule && !reader.IsDBNull(6) ? reader.GetString(6) : (string?)null,
-                        timeZoneId = reader.IsDBNull(7) ? "India Standard Time" : reader.GetString(7)
-                    };
-                    _apiResponse.Status = true;
-                    _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-                    _apiResponse.Data = data;
-                    _apiResponse.Errors.Clear();
-                    return Ok(_apiResponse);
+                        Status = false,
+                        StatusCode = HttpStatusCode.BadRequest,
+                        Data = null,
+                        Errors = new List<string>
+                        {
+                            $"Unable to connect {device.Name} " +
+                            "Check network connectivity and Power."
+                        }
+                    });
                 }
 
-                return NotFound(new { error = $"Device {id} not found." });
-            }
-            catch (Exception ex)
-            {
-                _apiResponse.Status = false;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
-                _apiResponse.Data = null;
-                _apiResponse.Errors = new List<string> { ex.Message };
-                return Ok(_apiResponse);
-            }
-        }
+                // ----------------------------------------------------
+                // 3. Start Sync
+                // ----------------------------------------------------
 
-        public class UpdateScheduleRequest
-        {
-            public bool IsEnabled { get; set; }
-            public string ScheduledTime { get; set; } = "00:00";
-            public string RepeatMode { get; set; } = "Daily";
-        }
+                _logger.LogInformation("[DeviceController] Sync Now started for Device {DeviceId}.",id);
 
-        [HttpPut("{id:int}/schedule")]
-        public async Task<ActionResult> UpdateSchedule(int id, [FromBody] UpdateScheduleRequest request, CancellationToken cancellationToken)
-        {
-            try
-            {
-                if (request == null)
+                var result = await _profileSyncService.SyncDeviceAllProfilesAsync(id, cancellationToken);
+
+                // ----------------------------------------------------
+                // 4. Return result
+                // ----------------------------------------------------
+
+                if (!result.Success)
                 {
-                    return BadRequest(new { error = "Request body is required." });
-                }
-
-                if (!TimeSpan.TryParse(request.ScheduledTime, out var ts))
-                {
-                    return BadRequest(new { error = "Invalid ScheduledTime format. Expected HH:mm or HH:mm:ss." });
-                }
-
-                using var conn = new Microsoft.Data.SqlClient.SqlConnection(_connectionString);
-                await conn.OpenAsync(cancellationToken);
-
-                // Get device time zone
-                string timeZoneId = "India Standard Time";
-                using (var getTzCmd = conn.CreateCommand())
-                {
-                    getTzCmd.CommandText = "SELECT TimeZoneId FROM Devices WHERE Id = @id";
-                    getTzCmd.Parameters.AddWithValue("@id", id);
-                    var tzObj = await getTzCmd.ExecuteScalarAsync(cancellationToken);
-                    if (tzObj == null || tzObj == DBNull.Value)
+                    return Ok(new APIResponse
                     {
-                        return NotFound(new { error = $"Device {id} not found." });
+                        Status = false,
+                        StatusCode = HttpStatusCode.BadRequest,
+                        Data = null,
+                        Errors = new List<string>
+                        {
+                            result.ErrorMessage ?? "Sync failed."
+                        }
+                    });
+                }
+
+                _logger.LogInformation("[DeviceController] Sync Now completed for Device {DeviceId}.",id);
+
+                return Ok(new APIResponse
+                {
+                    Status = true,
+                    StatusCode = HttpStatusCode.OK,
+                    Data = new
+                    {
+                        deviceId = id,
+                        status = "Completed",
+                        completedAt = GetIndiaStandardTime(),
+                        message = $"Sync completed successfully for device {device.Name}."
+                    },
+                    Errors = new List<string>()
+                });
+            }
+            catch (OperationCanceledException)
+            {
+                return Ok(new APIResponse
+                {
+                    Status = false,
+                    StatusCode = HttpStatusCode.BadRequest,
+                    Data = null,
+                    Errors = new List<string>
+                    {
+                        "Sync operation was cancelled."
                     }
-                    timeZoneId = Convert.ToString(tzObj) ?? "India Standard Time";
-                }
-
-                DateTime nowUtc = DateTime.UtcNow;
-                DateTime? nextRunAtUtc = request.IsEnabled
-                    ? PQM.Core.Helpers.ScheduleHelper.ComputeNextRunAtUtc(ts, timeZoneId, nowUtc)
-                    : null;
-
-                using (var upsertCmd = conn.CreateCommand())
-                {
-                    upsertCmd.CommandText = @"
-                        MERGE DeviceSyncSchedule AS target
-                        USING (SELECT @id AS DeviceId) AS source
-                        ON (target.DeviceId = source.DeviceId)
-                        WHEN MATCHED THEN
-                            UPDATE SET IsEnabled = @isEnabled, ScheduledTime = @scheduledTime, RepeatMode = @repeatMode, NextRunAtUtc = @nextRunAtUtc
-                        WHEN NOT MATCHED THEN
-                            INSERT (DeviceId, IsEnabled, ScheduledTime, RepeatMode, NextRunAtUtc)
-                            VALUES (@id, @isEnabled, @scheduledTime, @repeatMode, @nextRunAtUtc);";
-                    upsertCmd.Parameters.AddWithValue("@id", id);
-                    upsertCmd.Parameters.AddWithValue("@isEnabled", request.IsEnabled);
-                    upsertCmd.Parameters.AddWithValue("@scheduledTime", ts);
-                    upsertCmd.Parameters.AddWithValue("@repeatMode", request.RepeatMode ?? "Daily");
-                    upsertCmd.Parameters.AddWithValue("@nextRunAtUtc", (object?)nextRunAtUtc ?? DBNull.Value);
-
-                    await upsertCmd.ExecuteNonQueryAsync(cancellationToken);
-                }
-
-                _apiResponse.Status = true;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
-                _apiResponse.Data = new
-                {
-                    deviceId = id,
-                    isEnabled = request.IsEnabled,
-                    scheduledTime = ts.ToString(@"hh\:mm"),
-                    repeatMode = request.RepeatMode ?? "Daily",
-                    nextRunAtUtc = FormatUtcIso(nextRunAtUtc)
-                };
-                _apiResponse.Errors.Clear();
-                return Ok(_apiResponse);
+                });
             }
             catch (Exception ex)
             {
-                _apiResponse.Status = false;
-                _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
-                _apiResponse.Data = null;
-                _apiResponse.Errors = new List<string> { ex.Message };
-                return Ok(_apiResponse);
+                _logger.LogError(ex,"[DeviceController] TriggerDeviceSync failed for Device {DeviceId}.",id);
+
+                return Ok(new APIResponse
+                {
+                    Status = false,
+                    StatusCode = HttpStatusCode.BadRequest,
+                    Data = null,
+                    Errors = new List<string>
+                    {
+                        ex.Message
+                    }
+                });
             }
         }
     }

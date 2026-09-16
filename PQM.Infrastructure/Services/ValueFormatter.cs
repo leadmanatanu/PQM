@@ -1,23 +1,10 @@
-using System;
 using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
 using Gurux.DLMS;
 using Gurux.DLMS.Enums;
 
 namespace PQM.Infrastructure.Services
 {
-    /// <summary>
-    /// Standalone value formatter for the DLMS batch sync pipeline (DlmsMeterReader).
-    /// This is intentionally separate from DLMSReader.FormatValue(), which uses a different
-    /// array separator convention (", " comma-space) and is tied to the interactive/discover
-    /// read path. Do NOT merge these two formatters.
-    ///
-    /// The "yyyy-MM-dd HH:mm:ss" format produced for DateTime/GXDateTime values is a
-    /// fixed contract: ParameterValueController.Search() in Stage 2B depends on this exact
-    /// format for its ClockString.CompareTo(...) date range filtering. Do NOT change the
-    /// format string without updating the controller's ClockStringFormat constant too.
-    /// </summary>
+
     public static class ValueFormatter
     {
         public static string FormatValue(object? value)
@@ -42,9 +29,9 @@ namespace PQM.Infrastructure.Services
                     try
                     {
                         var gx = (GXDateTime)GXDLMSClient.ChangeType(bytes, DataType.DateTime);
-                        if (gx != null && gx.Value.DateTime.Year > 1)
+                        if (gx != null && DateTime.TryParse(gx.ToString(), out var gxDt) && gxDt.Year > 1)
                         {
-                            return gx.Value.DateTime.ToString("yyyy-MM-dd HH:mm:ss");
+                            return gxDt.ToString("yyyy-MM-dd HH:mm:ss");
                         }
                     }
                     catch
@@ -52,9 +39,9 @@ namespace PQM.Infrastructure.Services
                         try
                         {
                             var gxDate = (GXDateTime)GXDLMSClient.ChangeType(bytes, DataType.Date);
-                            if (gxDate != null && gxDate.Value.DateTime.Year > 1)
+                            if (gxDate != null && DateTime.TryParse(gxDate.ToString(), out var gxDateDt) && gxDateDt.Year > 1)
                             {
-                                return gxDate.Value.DateTime.ToString("yyyy-MM-dd HH:mm:ss");
+                                return gxDateDt.ToString("yyyy-MM-dd HH:mm:ss");
                             }
                         }
                         catch { }
@@ -76,19 +63,21 @@ namespace PQM.Infrastructure.Services
                 return dateTimeOffset.DateTime.ToString("yyyy-MM-dd HH:mm:ss");
             }
 
-            // GXDateTime -> extract inner DateTime, apply Year <= 1 guard.
+            // GXDateTime -> use raw local components as sent by the meter.
+            // gxDateTime.Value.DateTime applies an embedded deviation/offset that is
+            // wrong on this meter, shifting the time by hours. Use ToString() instead,
+            // which reflects the raw components without offset correction.
             // Guard is required: meters occasionally return GXDateTime values with
             // Year=0 or Year=1 for wildcarded/invalid timestamps. Formatting these
             // produces nonsense like "0001-01-01 00:00:00" which would corrupt the
             // sync watermark and the display value. Return empty string instead.
             if (value is GXDateTime gxDateTime)
             {
-                var dt = gxDateTime.Value.DateTime;
-                if (dt.Year <= 1)
+                if (DateTime.TryParse(gxDateTime.ToString(), out var dt) && dt.Year > 1)
                 {
-                    return string.Empty;
+                    return dt.ToString("yyyy-MM-dd HH:mm:ss");
                 }
-                return dt.ToString("yyyy-MM-dd HH:mm:ss");
+                return string.Empty;
             }
 
             // IEnumerable (non-string, non-byte[]) -> recursive "[a|b|c]" format.
@@ -114,12 +103,6 @@ namespace PQM.Infrastructure.Services
             // Fallback: everything else uses ToString().
             return value.ToString() ?? string.Empty;
         }
-
-        /// <summary>
-        /// Sanitizes raw string values from ReadingValues, DeviceLatestReadings, or DeviceEvents.
-        /// Strips legacy bracketed DLMS structure format (e.g. "[0.001|Current]" -> "0.001").
-        /// Decodes DLMS octet-string date/time hex values (e.g. "07EA071BFF0C13FFFF014A00" -> "2026-07-27 12:19:00").
-        /// </summary>
         public static string CleanValue(string? rawValue)
         {
             if (string.IsNullOrWhiteSpace(rawValue))
@@ -148,7 +131,6 @@ namespace PQM.Infrastructure.Services
 
             return trimmed;
         }
-
         private static bool TryFormatDlmsHexOctetString(string hexStr, out string formattedDate)
         {
             formattedDate = string.Empty;
@@ -182,9 +164,9 @@ namespace PQM.Infrastructure.Services
                 try
                 {
                     var gx = (GXDateTime)GXDLMSClient.ChangeType(bytes, DataType.DateTime);
-                    if (gx != null && gx.Value.DateTime.Year > 1)
+                    if (gx != null && DateTime.TryParse(gx.ToString(), out var gxDt) && gxDt.Year > 1)
                     {
-                        formattedDate = gx.Value.DateTime.ToString("yyyy-MM-dd HH:mm:ss");
+                        formattedDate = gxDt.ToString("yyyy-MM-dd HH:mm:ss");
                         return true;
                     }
                 }
@@ -193,9 +175,9 @@ namespace PQM.Infrastructure.Services
                     try
                     {
                         var gxDate = (GXDateTime)GXDLMSClient.ChangeType(bytes, DataType.Date);
-                        if (gxDate != null && gxDate.Value.DateTime.Year > 1)
+                        if (gxDate != null && DateTime.TryParse(gxDate.ToString(), out var gxDateDt) && gxDateDt.Year > 1)
                         {
-                            formattedDate = gxDate.Value.DateTime.ToString("yyyy-MM-dd HH:mm:ss");
+                            formattedDate = gxDateDt.ToString("yyyy-MM-dd HH:mm:ss");
                             return true;
                         }
                     }

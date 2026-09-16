@@ -1,10 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Linq;
-using System.Threading.Tasks;
 using Microsoft.Data.SqlClient;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using PQM.Core.Entities;
 
@@ -16,11 +10,8 @@ namespace PQM.Infrastructure.Services
         public int RowsRead { get; set; }
         public int RowsWritten { get; set; }
         public int RowsSkipped { get; set; }
-        public DateTime? NewWatermarkUtc { get; set; }
+        public DateTime? NewWatermarkIST { get; set; }
         public string? ErrorMessage { get; set; }
-
-        public override string ToString() =>
-            $"SyncResult [Success={Success}, RowsRead={RowsRead}, RowsWritten={RowsWritten}, RowsSkipped={RowsSkipped}, NewWatermarkUtc={NewWatermarkUtc:yyyy-MM-dd HH:mm:ss UTC}, Error={ErrorMessage ?? "None"}]";
     }
 
     public class DeviceSyncResult
@@ -52,20 +43,13 @@ namespace PQM.Infrastructure.Services
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
-        /// <summary>
-        /// Checks whether a sync or scan is currently in progress for the specified device.
-        /// </summary>
-        public bool IsDeviceSyncing(int deviceId) => IsLocked(deviceId);
-
         public static bool TryAcquireLock(int deviceId)
         {
-            if (_lockAcquiredTimes.TryGetValue(deviceId, out var acquiredAt))
+            if (_lockAcquiredTimes.TryGetValue(deviceId, out var acquiredAt) &&
+                DateTime.UtcNow - acquiredAt > TimeSpan.FromMinutes(90))
             {
-                if (DateTime.UtcNow - acquiredAt > TimeSpan.FromMinutes(45))
-                {
-                    _activeDeviceSyncs.TryRemove(deviceId, out _);
-                    _lockAcquiredTimes.TryRemove(deviceId, out _);
-                }
+                _activeDeviceSyncs.TryRemove(deviceId, out _);
+                _lockAcquiredTimes.TryRemove(deviceId, out _);
             }
 
             if (_activeDeviceSyncs.TryAdd(deviceId, 1))
@@ -73,6 +57,7 @@ namespace PQM.Infrastructure.Services
                 _lockAcquiredTimes[deviceId] = DateTime.UtcNow;
                 return true;
             }
+
             return false;
         }
 
@@ -82,196 +67,123 @@ namespace PQM.Infrastructure.Services
             _lockAcquiredTimes.TryRemove(deviceId, out _);
         }
 
-        public static bool IsLocked(int deviceId)
+        public async Task<DeviceSyncResult> SyncDeviceAllProfilesAsync(int deviceId, CancellationToken cancellationToken = default)
         {
-            if (_lockAcquiredTimes.TryGetValue(deviceId, out var acquiredAt))
-            {
-                if (DateTime.UtcNow - acquiredAt > TimeSpan.FromMinutes(45))
-                {
-                    _activeDeviceSyncs.TryRemove(deviceId, out _);
-                    _lockAcquiredTimes.TryRemove(deviceId, out _);
-                    return false;
-                }
-            }
-            return _activeDeviceSyncs.ContainsKey(deviceId);
-        }
-
-        /// <summary>
-        /// Executes a full multi-profile sweep for a device under a SINGLE DlmsMeterReader connection/session.
-        /// Connects once, reads all catalog profiles, updates device status, and disassociates cleanly once.
-        /// </summary>
-        public async Task<DeviceSyncResult> SyncDeviceAllProfilesAsync(int deviceId, System.Threading.CancellationToken cancellationToken = default)
-        {
-            var deviceResult = new DeviceSyncResult { DeviceId = deviceId };
+            var result = new DeviceSyncResult { DeviceId = deviceId };
 
             if (!TryAcquireLock(deviceId))
             {
-                deviceResult.Success = false;
-                deviceResult.AlreadyInProgress = true;
-                deviceResult.ErrorMessage = $"Sync already in progress for device {deviceId}.";
-                _logger.LogInformation("[ProfileSyncService] Device {DeviceId} is already undergoing a sync. Concurrent request skipped.", deviceId);
-                return deviceResult;
+                result.ErrorMessage = $"Sync already in progress for device {deviceId}.";
+                result.AlreadyInProgress = true;
+                return result;
             }
 
-            _logger.LogInformation("[ProfileSyncService] Concurrency lock ACQUIRED for Device {DeviceId}.", deviceId);
+            DateTime syncExecutionTimeIST = TimeZoneInfo.ConvertTimeFromUtc(
+                DateTime.UtcNow,
+                TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
 
-            DateTime syncExecutionTimeUtc = DateTime.UtcNow;
-            long historyId = 0;
-            bool isTimedOut = false;
-
-            try
-            {
-                historyId = await InsertSyncHistoryStartAsync(deviceId, syncExecutionTimeUtc);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "[ProfileSyncService] Failed to insert initial DeviceSyncHistory record for Device {DeviceId}.", deviceId);
-            }
-
-            // Generous 45-minute outer safety timeout for complete per-device sweep
             using var hardCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            hardCts.CancelAfter(TimeSpan.FromMinutes(45));
+            hardCts.CancelAfter(TimeSpan.FromMinutes(90));
             var syncToken = hardCts.Token;
 
             try
             {
-                Device? device = await LoadDeviceAsync(deviceId);
+                var device = await LoadDeviceAsync(deviceId);
+
                 if (device == null)
                 {
-                    deviceResult.Success = false;
-                    deviceResult.ErrorMessage = $"Device with Id={deviceId} not found.";
-                    _logger.LogError("[ProfileSyncService] {ErrorMessage}", deviceResult.ErrorMessage);
-                    return deviceResult;
+                    result.ErrorMessage = $"Device with Id={deviceId} not found.";
+                    return result;
                 }
 
-                deviceResult.DeviceName = device.Name;
-                TimeZoneInfo deviceTz = GetDeviceTimeZone(device.TimeZoneId);
+                result.DeviceName = device.Name;
 
-                _logger.LogInformation("[ProfileSyncService] Starting single-session profile sweep for Device {DeviceId} ('{DeviceName}')...", deviceId, device.Name);
+                await using var reader = new DlmsMeterReader(device, verboseLogging: false);
 
-                await using (var reader = new DlmsMeterReader(device, verboseLogging: false))
+                try
                 {
-                    try
+                    await reader.ConnectAsync(syncToken);
+                    await reader.ReadAssociationViewAsync(syncToken);
+
+                    foreach (var kvp in ProfileCatalog.AllProfiles)
                     {
-                        await reader.ConnectAsync(syncToken);
-                        await reader.ReadAssociationViewAsync(syncToken);
+                        syncToken.ThrowIfCancellationRequested();
 
-                        // Loop through all catalog profiles under the SAME open session
-                        foreach (var kvp in ProfileCatalog.AllProfiles)
+                        string obisCode = kvp.Key;
+                        result.ProfilesAttempted++;
+
+                        using var profileCts = CancellationTokenSource.CreateLinkedTokenSource(syncToken);
+
+                        TimeSpan timeout = obisCode switch
                         {
-                            syncToken.ThrowIfCancellationRequested();
+                            "1.0.99.1.0.255" => TimeSpan.FromMinutes(30),
+                            "1.0.99.2.0.255" => TimeSpan.FromMinutes(10),
+                            _ => TimeSpan.FromMinutes(5)
+                        };
 
-                            string obisCode = kvp.Key;
-                            deviceResult.ProfilesAttempted++;
+                        profileCts.CancelAfter(timeout);
 
-                            using var profileCts = CancellationTokenSource.CreateLinkedTokenSource(syncToken);
-                            TimeSpan timeout = obisCode switch
-                            {
-                                "1.0.99.1.0.255" => TimeSpan.FromMinutes(30), // Block Load Profile
-                                "1.0.99.2.0.255" => TimeSpan.FromMinutes(15), // Daily Load Profile
-                                _ => TimeSpan.FromMinutes(10)
-                            };
-                            profileCts.CancelAfter(timeout);
-                            var profileToken = profileCts.Token;
+                        try
+                        {
+                            var profileResult = await SyncSingleProfileOnOpenReaderAsync(
+                                reader, device, obisCode, syncExecutionTimeIST, profileCts.Token);
 
-                            try
-                            {
-                                var profileSyncRes = await SyncSingleProfileOnOpenReaderAsync(reader, device, obisCode, deviceTz, syncExecutionTimeUtc, profileToken);
-                                deviceResult.ProfileResults[obisCode] = profileSyncRes;
+                            result.ProfileResults[obisCode] = profileResult;
 
-                                if (profileSyncRes.Success)
-                                {
-                                    deviceResult.ProfilesSucceeded++;
-                                    deviceResult.TotalRowsRead += profileSyncRes.RowsRead;
-                                    deviceResult.TotalRowsWritten += profileSyncRes.RowsWritten;
-                                    deviceResult.TotalRowsSkipped += profileSyncRes.RowsSkipped;
-                                }
-                            }
-                            catch (OperationCanceledException) when (profileCts.IsCancellationRequested && !syncToken.IsCancellationRequested)
+                            if (profileResult.Success)
                             {
-                                _logger.LogWarning("[ProfileSyncService] Profile '{ObisCode}' timed out after {Minutes} minutes for Device {DeviceId}. Continuing remaining profiles...", obisCode, Math.Round(timeout.TotalMinutes), deviceId);
-                                deviceResult.ProfileResults[obisCode] = new SyncResult
-                                {
-                                    Success = false,
-                                    ErrorMessage = $"Profile read timed out after {Math.Round(timeout.TotalMinutes)} minutes"
-                                };
-                            }
-                            catch (OperationCanceledException) when (syncToken.IsCancellationRequested)
-                            {
-                                isTimedOut = true;
-                                throw; // Outer safety timeout
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.LogWarning(ex, "[ProfileSyncService] Profile '{ObisCode}' failed for Device {DeviceId}. Continuing remaining profiles...", obisCode, deviceId);
-                                deviceResult.ProfileResults[obisCode] = new SyncResult
-                                {
-                                    Success = false,
-                                    ErrorMessage = ex.Message
-                                };
+                                result.ProfilesSucceeded++;
+                                result.TotalRowsRead += profileResult.RowsRead;
+                                result.TotalRowsWritten += profileResult.RowsWritten;
+                                result.TotalRowsSkipped += profileResult.RowsSkipped;
                             }
                         }
-
-                        deviceResult.Success = deviceResult.ProfilesSucceeded > 0;
+                        catch (OperationCanceledException) when (
+                            profileCts.IsCancellationRequested && !syncToken.IsCancellationRequested)
+                        {
+                            result.ProfileResults[obisCode] = new SyncResult
+                            {
+                                Success = false,
+                                ErrorMessage = $"Profile read timed out after {Math.Round(timeout.TotalMinutes)} minutes"
+                            };
+                        }
+                        catch (OperationCanceledException) when (syncToken.IsCancellationRequested)
+                        {
+                            throw;
+                        }
+                        catch (Exception ex)
+                        {
+                            result.ProfileResults[obisCode] = new SyncResult
+                            {
+                                Success = false,
+                                ErrorMessage = ex.Message
+                            };
+                        }
                     }
-                    catch (OperationCanceledException) when (syncToken.IsCancellationRequested)
-                    {
-                        isTimedOut = true;
-                        _logger.LogWarning("[ProfileSyncService] Sync timed out after 5 minutes for Device {DeviceId}.", deviceId);
-                        deviceResult.Success = false;
-                        deviceResult.ErrorMessage = "Sync timed out after 5 minutes";
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "[ProfileSyncService] Failed to establish DLMS session with Device {DeviceId} ('{DeviceName}').", deviceId, device.Name);
-                        deviceResult.Success = false;
-                        deviceResult.ErrorMessage = $"Connection failure: {ex.Message}";
-                    }
-                } // DisconnectAsync() executes here automatically, sending WRAPPER RLRQ frame!
 
-                string newStatus = deviceResult.Success ? "Online" : "Error";
-                string? lastError = deviceResult.Success ? null : deviceResult.ErrorMessage;
-                await UpdateDeviceStatusInDbAsync(deviceId, newStatus, syncExecutionTimeUtc, lastError);
+                    result.Success = result.ProfilesSucceeded > 0;
+                }
+                catch (OperationCanceledException) when (syncToken.IsCancellationRequested)
+                {
+                    result.ErrorMessage = "Sync timed out after 90 minutes";
+                }
+                catch (Exception ex)
+                {
+                    result.ErrorMessage = $"Connection failure: {ex.Message}";
+                }
 
-                _logger.LogInformation(
-                    "[ProfileSyncService] Completed single-session profile sweep for Device {DeviceId} ('{DeviceName}'). " +
-                    "Status={Status}, Succeeded={Succeeded}/{Attempted}, TotalWritten={TotalWritten}, TotalSkipped={TotalSkipped}",
-                    deviceId, device.Name, newStatus, deviceResult.ProfilesSucceeded, deviceResult.ProfilesAttempted, deviceResult.TotalRowsWritten, deviceResult.TotalRowsSkipped);
-
-                return deviceResult;
+                await UpdateDeviceStatusInDbAsync(deviceId, syncExecutionTimeIST);
+                return result;
             }
             catch (OperationCanceledException) when (syncToken.IsCancellationRequested)
             {
-                isTimedOut = true;
-                _logger.LogWarning("[ProfileSyncService] Hard cancellation timeout reached for Device {DeviceId}.", deviceId);
-                deviceResult.Success = false;
-                deviceResult.ErrorMessage = "Sync timed out after 5 minutes";
-                await UpdateDeviceStatusInDbAsync(deviceId, "Error", syncExecutionTimeUtc, "Sync timed out after 5 minutes");
-                return deviceResult;
+                result.ErrorMessage = "Sync timed out after 90 minutes";
+                await UpdateDeviceStatusInDbAsync(deviceId, syncExecutionTimeIST);
+                return result;
             }
             finally
             {
-                if (historyId > 0)
-                {
-                    try
-                    {
-                        string historyStatus = isTimedOut ? "TimedOut" : (deviceResult.Success ? "Success" : "Failed");
-                        await UpdateSyncHistoryCompletionAsync(
-                            historyId,
-                            historyStatus,
-                            DateTime.UtcNow,
-                            deviceResult.ErrorMessage,
-                            deviceResult.ProfilesSucceeded,
-                            deviceResult.TotalRowsWritten);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "[ProfileSyncService] Failed to update DeviceSyncHistory record {HistoryId} in finally block.", historyId);
-                    }
-                }
-
                 ReleaseLock(deviceId);
-                _logger.LogInformation("[ProfileSyncService] Concurrency lock RELEASED for Device {DeviceId}.", deviceId);
             }
         }
 
@@ -279,42 +191,30 @@ namespace PQM.Infrastructure.Services
             DlmsMeterReader reader,
             Device device,
             string obisCode,
-            TimeZoneInfo deviceTz,
-            DateTime syncExecutionTimeUtc,
-            System.Threading.CancellationToken cancellationToken = default)
+            DateTime syncExecutionTimeIST,
+            CancellationToken cancellationToken = default)
         {
             var result = new SyncResult();
             bool isTimeSeries = ProfileCatalog.TimeSeriesProfiles.ContainsKey(obisCode);
-            bool isStaticOrMetadata = ProfileCatalog.StaticOrMetadataProfiles.ContainsKey(obisCode);
-
             int profileId = await EnsureProfileAsync(obisCode, isTimeSeries);
 
-            DateTime? startTimeLocal = null;
-            DateTime? currentWatermarkUtc = null;
+            DateTime? currentWatermarkIST = null;
 
             if (isTimeSeries)
-            {
-                currentWatermarkUtc = await GetLastReadWatermarkUtcAsync(device.Id, profileId);
-                if (currentWatermarkUtc.HasValue)
-                {
-                    DateTime watermarkWithSafetyUtc = currentWatermarkUtc.Value.AddHours(-1);
-                    startTimeLocal = TimeZoneInfo.ConvertTimeFromUtc(watermarkWithSafetyUtc, deviceTz);
-                }
-            }
+                currentWatermarkIST = await GetLastReadWatermarkIST(device.Id, profileId);
 
-            IReadOnlyList<ProfileColumnInfo> columns;
-            var profileObj = reader.GetProfileObjects().FirstOrDefault(p => p.LogicalName == obisCode);
-            if (profileObj != null)
-            {
-                columns = await reader.ReadCaptureObjectsAsync(profileObj, cancellationToken);
-            }
-            else
-            {
-                columns = new List<ProfileColumnInfo>();
-            }
+            var profileObj = reader.GetProfileObjects()
+                .FirstOrDefault(p => p.LogicalName == obisCode);
+
+            IReadOnlyList<ProfileColumnInfo> columns = profileObj != null
+                ? await reader.ReadCaptureObjectsAsync(profileObj, cancellationToken)
+                : new List<ProfileColumnInfo>();
 
             var parameterMap = await EnsureParametersAsync(profileId, columns);
-            var rows = await reader.ReadProfileAllEntriesAsync(obisCode, startTimeLocal, cancellationToken);
+
+            var rows = await reader.ReadProfileAllEntriesAsync(
+                obisCode, currentWatermarkIST, cancellationToken);
+
             result.RowsRead = rows.Count;
 
             if (rows.Count == 0)
@@ -323,178 +223,10 @@ namespace PQM.Infrastructure.Services
                 return result;
             }
 
-            return await SaveReadingSessionAsync(device.Id, profileId, obisCode, isTimeSeries, deviceTz, rows, columns, parameterMap, currentWatermarkUtc, syncExecutionTimeUtc);
-        }
-
-        private async Task<int> GetOrCreateParameterForColumnAsync(
-            SqlConnection conn,
-            SqlTransaction tx,
-            int profileId,
-            int colIndex,
-            IReadOnlyList<ProfileColumnInfo> columns)
-        {
-            string obis = (colIndex < columns.Count && !string.IsNullOrEmpty(columns[colIndex].LogicalName))
-                ? columns[colIndex].LogicalName
-                : $"Param_{profileId}_{colIndex}";
-
-            string name = (colIndex < columns.Count && !string.IsNullOrEmpty(columns[colIndex].Description))
-                ? columns[colIndex].Description
-                : obis;
-
-            using (var cmd = conn.CreateCommand())
-            {
-                cmd.Transaction = tx;
-                cmd.CommandText = "SELECT Id FROM Parameters WHERE ProfileId = @pid AND ObisCode = @obis";
-                cmd.Parameters.AddWithValue("@pid", profileId);
-                cmd.Parameters.AddWithValue("@obis", obis);
-                var existing = await cmd.ExecuteScalarAsync();
-                if (existing != null && existing != DBNull.Value)
-                {
-                    return Convert.ToInt32(existing);
-                }
-            }
-
-            using (var cmd = conn.CreateCommand())
-            {
-                cmd.Transaction = tx;
-                cmd.CommandText = @"INSERT INTO Parameters (ProfileId, Name, ObisCode, AttributeIndex, IsHistorical, IsVisible, CreatedAt)
-                                    VALUES (@pid, @name, @obis, 2, 1, 1, GETUTCDATE());
-                                    SELECT SCOPE_IDENTITY();";
-                cmd.Parameters.AddWithValue("@pid", profileId);
-                cmd.Parameters.AddWithValue("@name", name);
-                cmd.Parameters.AddWithValue("@obis", obis);
-                var newId = await cmd.ExecuteScalarAsync();
-                return Convert.ToInt32(newId);
-            }
-        }
-
-        private async Task UpdateDeviceStatusInDbAsync(int deviceId, string status, DateTime lastSyncUtc, string? lastError)
-        {
-            using var conn = new SqlConnection(_connectionString);
-            await conn.OpenAsync();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                UPDATE Devices 
-                SET Status = @status, 
-                    LastSync = @lastSync, 
-                    LastError = @lastError,
-                    LastConnectionAttempt = @lastSync
-                WHERE Id = @id";
-            cmd.Parameters.AddWithValue("@status", status);
-            cmd.Parameters.AddWithValue("@lastSync", lastSyncUtc);
-            cmd.Parameters.AddWithValue("@lastError", (object?)lastError ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@id", deviceId);
-
-            await cmd.ExecuteNonQueryAsync();
-        }
-
-        public async Task<SyncResult> SyncDeviceProfileAsync(int deviceId, string obisCode)
-        {
-            var result = new SyncResult();
-
-            try
-            {
-                // 1. Load Device entity
-                Device? device = await LoadDeviceAsync(deviceId);
-                if (device == null)
-                {
-                    result.Success = false;
-                    result.ErrorMessage = $"Device with Id={deviceId} not found.";
-                    _logger.LogError("[ProfileSyncService] {ErrorMessage}", result.ErrorMessage);
-                    return result;
-                }
-
-                // Determine Device TimeZone
-                TimeZoneInfo deviceTz = GetDeviceTimeZone(device.TimeZoneId);
-
-                // 2. Classify OBIS Code
-                bool isTimeSeries = ProfileCatalog.TimeSeriesProfiles.ContainsKey(obisCode);
-                bool isStaticOrMetadata = ProfileCatalog.StaticOrMetadataProfiles.ContainsKey(obisCode);
-
-                if (!isTimeSeries && !isStaticOrMetadata)
-                {
-                    _logger.LogWarning("[ProfileSyncService] OBIS code {ObisCode} not found in ProfileCatalog; treating as TimeSeries by default.", obisCode);
-                    isTimeSeries = true;
-                }
-
-                // Ensure Profile record exists in DB
-                int profileId = await EnsureProfileAsync(obisCode, isTimeSeries);
-
-                // 3 & 4. Determine Watermark / StartTime
-                DateTime? startTimeLocal = null;
-                DateTime? currentWatermarkUtc = null;
-
-                if (isTimeSeries)
-                {
-                    currentWatermarkUtc = await GetLastReadWatermarkUtcAsync(deviceId, profileId);
-                    if (currentWatermarkUtc.HasValue)
-                    {
-                        // Take LastReadTimestampUtc, subtract 1-hour safety overlap
-                        DateTime watermarkWithSafetyUtc = currentWatermarkUtc.Value.AddHours(-1);
-
-                        // Convert UTC watermark to device's local timezone
-                        startTimeLocal = TimeZoneInfo.ConvertTimeFromUtc(watermarkWithSafetyUtc, deviceTz);
-
-                        _logger.LogInformation(
-                            "[ProfileSyncService] TimeSeries sync for device {DeviceId} ('{DeviceName}'), profile '{ObisCode}': " +
-                            "Existing Watermark UTC = {WatermarkUtc:yyyy-MM-dd HH:mm:ss UTC} (with 1h safety = {WatermarkSafetyUtc:yyyy-MM-dd HH:mm:ss UTC}). " +
-                            "Converted Local StartTime = {StartTimeLocal:yyyy-MM-dd HH:mm:ss} (Tz: {TzId})",
-                            deviceId, device.Name, obisCode, currentWatermarkUtc.Value, watermarkWithSafetyUtc, startTimeLocal.Value, deviceTz.Id);
-                    }
-                    else
-                    {
-                        _logger.LogInformation(
-                            "[ProfileSyncService] TimeSeries sync for device {DeviceId} ('{DeviceName}'), profile '{ObisCode}': " +
-                            "No existing watermark state found. Performing full buffer read (startTime = null).",
-                            deviceId, device.Name, obisCode);
-                    }
-                }
-                else
-                {
-                    _logger.LogInformation(
-                        "[ProfileSyncService] Static/Metadata sync for device {DeviceId} ('{DeviceName}'), profile '{ObisCode}': " +
-                        "Performing full buffer read (watermarks not used).",
-                        deviceId, device.Name, obisCode);
-                }
-
-                // 5. Connect to meter and read profile rows
-                IReadOnlyList<ProfileRow> rows;
-                IReadOnlyList<ProfileColumnInfo> columns;
-
-                await using (var reader = new DlmsMeterReader(device, verboseLogging: false))
-                {
-                    await reader.ConnectAsync();
-                    await reader.ReadAssociationViewAsync();
-
-                    // Read capture objects to get column descriptors
-                    var profileObj = reader.GetProfileObjects().FirstOrDefault(p => p.LogicalName == obisCode);
-                    if (profileObj != null)
-                    {
-                        columns = await reader.ReadCaptureObjectsAsync(profileObj);
-                    }
-                    else
-                    {
-                        columns = new List<ProfileColumnInfo>();
-                    }
-
-                    rows = await reader.ReadProfileAllEntriesAsync(obisCode, startTimeLocal);
-                }
-
-                result.RowsRead = rows.Count;
-                _logger.LogInformation("[ProfileSyncService] Read {RowsCount} rows from meter for device {DeviceId}, profile '{ObisCode}'.", rows.Count, deviceId, obisCode);
-
-                var parameterMap = await EnsureParametersAsync(profileId, columns);
-                DateTime syncExecutionTimeUtc = DateTime.UtcNow;
-
-                return await SaveReadingSessionAsync(deviceId, profileId, obisCode, isTimeSeries, deviceTz, rows, columns, parameterMap, currentWatermarkUtc, syncExecutionTimeUtc);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[ProfileSyncService] Sync failed for device {DeviceId}, profile '{ObisCode}'.", deviceId, obisCode);
-                result.Success = false;
-                result.ErrorMessage = ex.Message;
-                return result;
-            }
+            return await SaveReadingSessionAsync(
+                device.Id, profileId, obisCode, isTimeSeries,
+                rows, columns, parameterMap,
+                currentWatermarkIST, syncExecutionTimeIST);
         }
 
         private async Task<SyncResult> SaveReadingSessionAsync(
@@ -502,12 +234,11 @@ namespace PQM.Infrastructure.Services
             int profileId,
             string obisCode,
             bool isTimeSeries,
-            TimeZoneInfo deviceTz,
             IReadOnlyList<ProfileRow> rows,
             IReadOnlyList<ProfileColumnInfo> columns,
             Dictionary<int, int> parameterMap,
-            DateTime? currentWatermarkUtc,
-            DateTime syncExecutionTimeUtc)
+            DateTime? currentWatermarkIST,
+            DateTime syncExecutionTimeIST)
         {
             var result = new SyncResult { RowsRead = rows.Count };
 
@@ -517,159 +248,144 @@ namespace PQM.Infrastructure.Services
                 return result;
             }
 
-            DateTime? maxWrittenEntryUtc = null;
+            DateTime? maxWrittenEntryIST = null;
 
-            using (var conn = new SqlConnection(_connectionString))
-            {
-                await conn.OpenAsync();
-                using var tx = conn.BeginTransaction();
-
-                try
-                {
-                    var existingTimestamps = await GetExistingEntryTimestampsUtcAsync(conn, tx, deviceId, profileId);
-
-                    for (int rIdx = 0; rIdx < rows.Count; rIdx++)
-                    {
-                        var row = rows[rIdx];
-
-                        DateTime? entryTimestampUtc = null;
-                        if (row.Timestamp.HasValue && row.Timestamp.Value.Year > 1)
-                        {
-                            try
-                            {
-                                var localDt = DateTime.SpecifyKind(row.Timestamp.Value, DateTimeKind.Unspecified);
-                                entryTimestampUtc = TimeZoneInfo.ConvertTimeToUtc(localDt, deviceTz);
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.LogWarning(ex, "[ProfileSyncService] Row {RIdx}: failed to convert local timestamp {LocalTs} to UTC.", rIdx, row.Timestamp);
-                                entryTimestampUtc = null;
-                            }
-                        }
-
-                        if (entryTimestampUtc.HasValue && existingTimestamps.Contains(entryTimestampUtc.Value))
-                        {
-                            result.RowsSkipped++;
-                            continue;
-                        }
-
-                        long sessionId = await InsertReadingSessionAsync(conn, tx, deviceId, profileId, syncExecutionTimeUtc, entryTimestampUtc);
-
-                        for (int cIdx = 0; cIdx < row.Values.Count; cIdx++)
-                        {
-                            int parameterId = 0;
-                            if (parameterMap.TryGetValue(cIdx, out int pid) && pid > 0)
-                            {
-                                parameterId = pid;
-                            }
-                            else
-                            {
-                                parameterId = await GetOrCreateParameterForColumnAsync(conn, tx, profileId, cIdx, columns);
-                                parameterMap[cIdx] = parameterId;
-                            }
-
-                            var cellObj = row.Values[cIdx];
-                            string formattedVal = ValueFormatter.FormatValue(cellObj);
-                            string? rawVal = cellObj?.ToString();
-                            double? numericVal = TryParseDouble(formattedVal);
-
-                            await InsertReadingValueAsync(conn, tx, sessionId, parameterId, formattedVal, rawVal, numericVal);
-                            await UpsertDeviceLatestReadingAsync(conn, tx, deviceId, parameterId, formattedVal, rawVal, syncExecutionTimeUtc);
-                        }
-
-                        result.RowsWritten++;
-                        if (entryTimestampUtc.HasValue)
-                        {
-                            existingTimestamps.Add(entryTimestampUtc.Value);
-                            if (!maxWrittenEntryUtc.HasValue || entryTimestampUtc.Value > maxWrittenEntryUtc.Value)
-                            {
-                                maxWrittenEntryUtc = entryTimestampUtc.Value;
-                            }
-                        }
-                    }
-
-                    if (isTimeSeries)
-                    {
-                        DateTime? watermarkToSave = maxWrittenEntryUtc ?? currentWatermarkUtc;
-                        if (watermarkToSave.HasValue)
-                        {
-                            await UpsertDeviceProfileSyncStateAsync(conn, tx, deviceId, profileId, watermarkToSave.Value, syncExecutionTimeUtc);
-                            result.NewWatermarkUtc = watermarkToSave;
-                        }
-                    }
-
-                    await tx.CommitAsync();
-                    result.Success = true;
-                    return result;
-                }
-                catch (Exception ex)
-                {
-                    await tx.RollbackAsync();
-                    _logger.LogError(ex, "[ProfileSyncService] Transaction failed for device {DeviceId}, profile '{ObisCode}'. Rollback executed.", deviceId, obisCode);
-                    result.Success = false;
-                    result.ErrorMessage = $"Database transaction error: {ex.Message}";
-                    return result;
-                }
-            }
-        }
-
-        // =========================================================
-        // HELPER METHODS
-        // =========================================================
-
-        private TimeZoneInfo GetDeviceTimeZone(string? timeZoneId)
-        {
-            if (!string.IsNullOrWhiteSpace(timeZoneId))
-            {
-                try
-                {
-                    return TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "[ProfileSyncService] Invalid TimeZoneId '{TimeZoneId}' on Device. Falling back to 'India Standard Time'.", timeZoneId);
-                }
-            }
+            using var conn = new SqlConnection(_connectionString);
+            await conn.OpenAsync();
+            using var tx = conn.BeginTransaction();
 
             try
             {
-                return TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
+                var existingTimestamps = await GetExistingEntryTimestampsIST(
+                    conn, tx, deviceId, profileId);
+
+                foreach (var row in rows)
+                {
+                    DateTime? entryTimestampIST =
+                        row.Timestamp.HasValue && row.Timestamp.Value.Year > 1
+                            ? row.Timestamp.Value
+                            : null;
+
+                    if (entryTimestampIST.HasValue &&
+                        existingTimestamps.Contains(entryTimestampIST.Value))
+                    {
+                        result.RowsSkipped++;
+                        continue;
+                    }
+
+                    long sessionId = await InsertReadingSessionAsync(
+                        conn, tx, deviceId, profileId,
+                        syncExecutionTimeIST, entryTimestampIST);
+
+                    for (int i = 0; i < row.Values.Count; i++)
+                    {
+                        int parameterId;
+
+                        if (!parameterMap.TryGetValue(i, out parameterId) || parameterId <= 0)
+                        {
+                            parameterId = await GetOrCreateParameterForColumnAsync(
+                                conn, tx, profileId, i, columns);
+                            parameterMap[i] = parameterId;
+                        }
+
+                        var value = row.Values[i];
+                        string formattedValue = ValueFormatter.FormatValue(value);
+
+                        await InsertReadingValueAsync(
+                            conn, tx, sessionId, parameterId,
+                            formattedValue,
+                            value?.ToString(),
+                            TryParseDouble(formattedValue));
+                    }
+
+                    result.RowsWritten++;
+
+                    if (entryTimestampIST.HasValue)
+                    {
+                        existingTimestamps.Add(entryTimestampIST.Value);
+
+                        if (!maxWrittenEntryIST.HasValue ||
+                            entryTimestampIST.Value > maxWrittenEntryIST.Value)
+                            maxWrittenEntryIST = entryTimestampIST.Value;
+                    }
+                }
+
+                if (isTimeSeries)
+                {
+                    DateTime? watermark = maxWrittenEntryIST ?? currentWatermarkIST;
+
+                    if (watermark.HasValue)
+                    {
+                        await UpsertDeviceProfileSyncStateAsync(
+                            conn, tx, deviceId, profileId,
+                            watermark.Value, syncExecutionTimeIST);
+
+                        result.NewWatermarkIST = watermark;
+                    }
+                }
+
+                await tx.CommitAsync();
+                result.Success = true;
+                return result;
             }
-            catch
+            catch (Exception ex)
             {
-                return TimeZoneInfo.Local;
+                await tx.RollbackAsync();
+                result.ErrorMessage = $"Database transaction error: {ex.Message}";
+                return result;
             }
+        }
+
+        private async Task UpdateDeviceStatusInDbAsync(int deviceId, DateTime lastSyncIST)
+        {
+            using var conn = new SqlConnection(_connectionString);
+            await conn.OpenAsync();
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "UPDATE Devices SET LastSyncAt = @lastSync WHERE Id = @id";
+            cmd.Parameters.AddWithValue("@lastSync", lastSyncIST);
+            cmd.Parameters.AddWithValue("@id", deviceId);
+
+            await cmd.ExecuteNonQueryAsync();
         }
 
         private async Task<Device?> LoadDeviceAsync(int deviceId)
         {
             using var conn = new SqlConnection(_connectionString);
             await conn.OpenAsync();
+
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"SELECT Id, Name, IP, PORT, ClientAddress, ServerAddress,
-                                       AuthenticationTypeId, Password, Timeout, TimeZoneId
-                                FROM Devices WHERE Id = @id";
+            cmd.CommandText = @"
+                SELECT Id, Name, IP, PORT, ClientAddress, ServerAddress,
+                       AuthenticationTypeId, Password, Timeout, TimeZoneId
+                FROM Devices WHERE Id = @id";
+
             cmd.Parameters.AddWithValue("@id", deviceId);
 
             using var reader = await cmd.ExecuteReaderAsync();
-            if (await reader.ReadAsync())
-            {
-                return new Device
-                {
-                    Id                   = reader.GetInt32(reader.GetOrdinal("Id")),
-                    Name                 = reader.GetString(reader.GetOrdinal("Name")),
-                    IP                   = reader.GetString(reader.GetOrdinal("IP")),
-                    PORT                 = reader.GetInt32(reader.GetOrdinal("PORT")),
-                    ClientAddress        = reader.IsDBNull(reader.GetOrdinal("ClientAddress"))        ? 16    : reader.GetInt32(reader.GetOrdinal("ClientAddress")),
-                    ServerAddress        = reader.IsDBNull(reader.GetOrdinal("ServerAddress"))        ? 1     : reader.GetInt32(reader.GetOrdinal("ServerAddress")),
-                    AuthenticationTypeId = reader.IsDBNull(reader.GetOrdinal("AuthenticationTypeId")) ? null  : reader.GetInt32(reader.GetOrdinal("AuthenticationTypeId")),
-                    Password             = reader.IsDBNull(reader.GetOrdinal("Password"))             ? null  : reader.GetString(reader.GetOrdinal("Password")),
-                    Timeout              = reader.IsDBNull(reader.GetOrdinal("Timeout"))              ? 30000 : reader.GetInt32(reader.GetOrdinal("Timeout")),
-                    TimeZoneId           = reader.IsDBNull(reader.GetOrdinal("TimeZoneId"))           ? null  : reader.GetString(reader.GetOrdinal("TimeZoneId"))
-                };
-            }
 
-            return null;
+            if (!await reader.ReadAsync())
+                return null;
+
+            return new Device
+            {
+                Id = reader.GetInt32(reader.GetOrdinal("Id")),
+                Name = reader.GetString(reader.GetOrdinal("Name")),
+                IP = reader.GetString(reader.GetOrdinal("IP")),
+                PORT = reader.GetInt32(reader.GetOrdinal("PORT")),
+                ClientAddress = reader.IsDBNull(reader.GetOrdinal("ClientAddress"))
+                    ? 16 : reader.GetInt32(reader.GetOrdinal("ClientAddress")),
+                ServerAddress = reader.IsDBNull(reader.GetOrdinal("ServerAddress"))
+                    ? 1 : reader.GetInt32(reader.GetOrdinal("ServerAddress")),
+                AuthenticationTypeId = reader.IsDBNull(reader.GetOrdinal("AuthenticationTypeId"))
+                    ? null : reader.GetInt32(reader.GetOrdinal("AuthenticationTypeId")),
+                Password = reader.IsDBNull(reader.GetOrdinal("Password"))
+                    ? null : reader.GetString(reader.GetOrdinal("Password")),
+                Timeout = reader.IsDBNull(reader.GetOrdinal("Timeout"))
+                    ? 30000 : reader.GetInt32(reader.GetOrdinal("Timeout")),
+                TimeZoneId = reader.IsDBNull(reader.GetOrdinal("TimeZoneId"))
+                    ? null : reader.GetString(reader.GetOrdinal("TimeZoneId"))
+            };
         }
 
         private async Task<int> EnsureProfileAsync(string obisCode, bool isTimeSeries)
@@ -677,171 +393,222 @@ namespace PQM.Infrastructure.Services
             using var conn = new SqlConnection(_connectionString);
             await conn.OpenAsync();
 
-            using (var cmd = conn.CreateCommand())
-            {
-                cmd.CommandText = "SELECT ProfileId FROM Profiles WHERE ObisCode = @obis";
-                cmd.Parameters.AddWithValue("@obis", obisCode);
-                var existingId = await cmd.ExecuteScalarAsync();
-                if (existingId != null && existingId != DBNull.Value)
-                {
-                    return Convert.ToInt32(existingId);
-                }
-            }
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT Id FROM Profiles WHERE ObisCode = @obis";
+            cmd.Parameters.AddWithValue("@obis", obisCode);
 
-            // Insert missing profile
-            using (var cmd = conn.CreateCommand())
-            {
-                string friendlyName = ProfileCatalog.AllProfiles.GetValueOrDefault(obisCode, obisCode);
-                string category = isTimeSeries ? "TimeSeries" : "Static";
+            var id = await cmd.ExecuteScalarAsync();
+            if (id != null && id != DBNull.Value)
+                return Convert.ToInt32(id);
 
-                cmd.CommandText = @"INSERT INTO Profiles (ObisCode, FriendlyName, Category)
-                                    VALUES (@obis, @name, @cat);
-                                    SELECT SCOPE_IDENTITY();";
-                cmd.Parameters.AddWithValue("@obis", obisCode);
-                cmd.Parameters.AddWithValue("@name", friendlyName);
-                cmd.Parameters.AddWithValue("@cat", category);
+            cmd.CommandText = @"
+                INSERT INTO Profiles (ObisCode, FriendlyName, Category)
+                VALUES (@obis, @name, @cat);
+                SELECT SCOPE_IDENTITY();";
 
-                var newId = await cmd.ExecuteScalarAsync();
-                return Convert.ToInt32(newId);
-            }
+            cmd.Parameters.AddWithValue("@name",
+                ProfileCatalog.AllProfiles.GetValueOrDefault(obisCode, obisCode));
+            cmd.Parameters.AddWithValue("@cat", isTimeSeries ? "TimeSeries" : "Static");
+
+            return Convert.ToInt32(await cmd.ExecuteScalarAsync());
         }
 
-        private async Task<DateTime?> GetLastReadWatermarkUtcAsync(int deviceId, int profileId)
+        private async Task<DateTime?> GetLastReadWatermarkIST(int deviceId, int profileId)
         {
             using var conn = new SqlConnection(_connectionString);
             await conn.OpenAsync();
+
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"SELECT LastReadTimestampUtc FROM DeviceProfileSyncState
-                                WHERE DeviceId = @did AND ProfileId = @pid";
+            cmd.CommandText = @"
+                SELECT LastReadTimestamp
+                FROM DeviceProfileSyncState
+                WHERE DeviceId = @did AND ProfileId = @pid";
+
             cmd.Parameters.AddWithValue("@did", deviceId);
             cmd.Parameters.AddWithValue("@pid", profileId);
 
-            var val = await cmd.ExecuteScalarAsync();
-            if (val != null && val != DBNull.Value)
-            {
-                return Convert.ToDateTime(val);
-            }
-            return null;
+            var value = await cmd.ExecuteScalarAsync();
+
+            return value == null || value == DBNull.Value
+                ? null
+                : Convert.ToDateTime(value);
         }
 
-        private async Task<Dictionary<int, int>> EnsureParametersAsync(int profileId, IReadOnlyList<ProfileColumnInfo> columns)
+        private async Task<Dictionary<int, int>> EnsureParametersAsync(
+            int profileId,
+            IReadOnlyList<ProfileColumnInfo> columns)
         {
             var map = new Dictionary<int, int>();
+
             using var conn = new SqlConnection(_connectionString);
             await conn.OpenAsync();
 
-            // Load existing parameters for this profile
-            var existingParams = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var existing = new Dictionary<string, int>(
+                StringComparer.OrdinalIgnoreCase);
+
             using (var cmd = conn.CreateCommand())
             {
-                cmd.CommandText = "SELECT Id, ObisCode FROM Parameters WHERE ProfileId = @pid";
+                cmd.CommandText =
+                    "SELECT Id, ObisCode FROM Parameters WHERE ProfileId = @pid";
                 cmd.Parameters.AddWithValue("@pid", profileId);
-                using var rdr = await cmd.ExecuteReaderAsync();
-                while (await rdr.ReadAsync())
+
+                using var reader = await cmd.ExecuteReaderAsync();
+
+                while (await reader.ReadAsync())
                 {
-                    int pId = rdr.GetInt32(0);
-                    string? obis = rdr.IsDBNull(1) ? null : rdr.GetString(1);
-                    if (!string.IsNullOrEmpty(obis) && !existingParams.ContainsKey(obis))
-                    {
-                        existingParams[obis] = pId;
-                    }
+                    if (!reader.IsDBNull(1))
+                        existing[reader.GetString(1)] = reader.GetInt32(0);
                 }
             }
 
             for (int i = 0; i < columns.Count; i++)
             {
                 var col = columns[i];
-                string obis = !string.IsNullOrEmpty(col.LogicalName) ? col.LogicalName : $"Col_{col.Index}";
+                string obis = !string.IsNullOrEmpty(col.LogicalName)
+                    ? col.LogicalName
+                    : $"Col_{col.Index}";
 
-                if (existingParams.TryGetValue(obis, out int paramId))
+                if (existing.TryGetValue(obis, out int id))
                 {
-                    map[i] = paramId;
-
-                    // Update metadata if Scaler/Unit was previously missing
-                    if (col.Scaler.HasValue || col.UnitCode.HasValue || !string.IsNullOrEmpty(col.Unit))
-                    {
-                        using var updateCmd = conn.CreateCommand();
-                        updateCmd.CommandText = @"
-                            UPDATE Parameters
-                            SET Scaler = ISNULL(Scaler, @scaler),
-                                UnitCode = ISNULL(UnitCode, @unitCode),
-                                Unit = ISNULL(Unit, @unit)
-                            WHERE Id = @id AND (Scaler IS NULL OR Unit IS NULL OR UnitCode IS NULL);";
-                        updateCmd.Parameters.AddWithValue("@scaler", (object?)col.Scaler ?? DBNull.Value);
-                        updateCmd.Parameters.AddWithValue("@unitCode", (object?)col.UnitCode ?? DBNull.Value);
-                        updateCmd.Parameters.AddWithValue("@unit", (object?)col.Unit ?? DBNull.Value);
-                        updateCmd.Parameters.AddWithValue("@id", paramId);
-                        await updateCmd.ExecuteNonQueryAsync();
-                    }
+                    map[i] = id;
+                    continue;
                 }
-                else
-                {
-                    // Create missing Parameter with full DLMS metadata
-                    using var cmd = conn.CreateCommand();
-                    cmd.CommandText = @"INSERT INTO Parameters (ProfileId, Name, ObisCode, ObjectType, AttributeIndex, Scaler, UnitCode, Unit, IsHistorical, IsVisible, CreatedAt)
-                                        VALUES (@pid, @name, @obis, @objType, @attrIdx, @scaler, @unitCode, @unit, 1, 1, GETUTCDATE());
-                                        SELECT SCOPE_IDENTITY();";
-                    cmd.Parameters.AddWithValue("@pid", profileId);
-                    cmd.Parameters.AddWithValue("@name", obis);
-                    cmd.Parameters.AddWithValue("@obis", obis);
-                    cmd.Parameters.AddWithValue("@objType", (object?)col.ObjectType ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@attrIdx", col.AttributeIndex);
-                    cmd.Parameters.AddWithValue("@scaler", (object?)col.Scaler ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@unitCode", (object?)col.UnitCode ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@unit", (object?)col.Unit ?? DBNull.Value);
 
-                    var newId = await cmd.ExecuteScalarAsync();
-                    int newParamId = Convert.ToInt32(newId);
-                    existingParams[obis] = newParamId;
-                    map[i] = newParamId;
-                }
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    INSERT INTO Parameters
+                    (ProfileId, Name, ObisCode, ObjectType, AttributeIndex,
+                     Scaler, UnitCode, Unit, IsHistorical, IsVisible, CreatedAt)
+                    VALUES
+                    (@pid, @name, @obis, @objType, @attrIdx,
+                     @scaler, @unitCode, @unit, 1, 1, GETUTCDATE());
+                    SELECT SCOPE_IDENTITY();";
+
+                cmd.Parameters.AddWithValue("@pid", profileId);
+                cmd.Parameters.AddWithValue("@name", obis);
+                cmd.Parameters.AddWithValue("@obis", obis);
+                cmd.Parameters.AddWithValue("@objType", (object?)col.ObjectType ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@attrIdx", col.AttributeIndex);
+                cmd.Parameters.AddWithValue("@scaler", (object?)col.Scaler ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@unitCode", (object?)col.UnitCode ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@unit", (object?)col.Unit ?? DBNull.Value);
+
+                int newId = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+                existing[obis] = newId;
+                map[i] = newId;
             }
 
             return map;
         }
 
-        private async Task<HashSet<DateTime>> GetExistingEntryTimestampsUtcAsync(SqlConnection conn, SqlTransaction tx, int deviceId, int profileId)
+        private async Task<int> GetOrCreateParameterForColumnAsync(
+            SqlConnection conn,
+            SqlTransaction tx,
+            int profileId,
+            int colIndex,
+            IReadOnlyList<ProfileColumnInfo> columns)
         {
-            var set = new HashSet<DateTime>();
+            string obis = colIndex < columns.Count &&
+                          !string.IsNullOrEmpty(columns[colIndex].LogicalName)
+                ? columns[colIndex].LogicalName
+                : $"Param_{profileId}_{colIndex}";
+
             using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
-            cmd.CommandText = @"SELECT EntryTimestampUtc FROM ReadingSessions
-                                WHERE DeviceId = @did AND ProfileId = @pid AND EntryTimestampUtc IS NOT NULL";
+            cmd.CommandText = "SELECT Id FROM Parameters WHERE ProfileId = @pid AND ObisCode = @obis";
+            cmd.Parameters.AddWithValue("@pid", profileId);
+            cmd.Parameters.AddWithValue("@obis", obis);
+
+            var existing = await cmd.ExecuteScalarAsync();
+
+            if (existing != null && existing != DBNull.Value)
+                return Convert.ToInt32(existing);
+
+            cmd.CommandText = @"
+                INSERT INTO Parameters
+                (ProfileId, Name, ObisCode, AttributeIndex, IsHistorical, IsVisible, CreatedAt)
+                VALUES (@pid, @name, @obis, 2, 1, 1, GETUTCDATE());
+                SELECT SCOPE_IDENTITY();";
+
+            cmd.Parameters.AddWithValue("@name",
+                colIndex < columns.Count &&
+                !string.IsNullOrEmpty(columns[colIndex].Description)
+                    ? columns[colIndex].Description
+                    : obis);
+
+            return Convert.ToInt32(await cmd.ExecuteScalarAsync());
+        }
+
+        private async Task<HashSet<DateTime>> GetExistingEntryTimestampsIST(
+            SqlConnection conn,
+            SqlTransaction tx,
+            int deviceId,
+            int profileId)
+        {
+            var result = new HashSet<DateTime>();
+
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = @"
+                SELECT EntryTimestamp
+                FROM ReadingSessions
+                WHERE DeviceId = @did
+                  AND ProfileId = @pid
+                  AND EntryTimestamp IS NOT NULL";
+
             cmd.Parameters.AddWithValue("@did", deviceId);
             cmd.Parameters.AddWithValue("@pid", profileId);
 
-            using var rdr = await cmd.ExecuteReaderAsync();
-            while (await rdr.ReadAsync())
-            {
-                var dt = rdr.GetDateTime(0);
-                set.Add(DateTime.SpecifyKind(dt, DateTimeKind.Utc));
-            }
+            using var reader = await cmd.ExecuteReaderAsync();
 
-            return set;
+            while (await reader.ReadAsync())
+                result.Add(DateTime.SpecifyKind(
+                    reader.GetDateTime(0),
+                    DateTimeKind.Unspecified));
+
+            return result;
         }
 
-        private async Task<long> InsertReadingSessionAsync(SqlConnection conn, SqlTransaction tx, int deviceId, int profileId, DateTime readTime, DateTime? entryTimestampUtc)
+        private async Task<long> InsertReadingSessionAsync(
+            SqlConnection conn,
+            SqlTransaction tx,
+            int deviceId,
+            int profileId,
+            DateTime readTimeIST,
+            DateTime? entryTimestampIST)
         {
             using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
-            cmd.CommandText = @"INSERT INTO ReadingSessions (DeviceId, ProfileId, ReadTime, EntryTimestampUtc)
-                                VALUES (@did, @pid, @rt, @et);
-                                SELECT SCOPE_IDENTITY();";
+            cmd.CommandText = @"
+                INSERT INTO ReadingSessions
+                (DeviceId, ProfileId, ReadTimeAt, EntryTimestamp)
+                VALUES (@did, @pid, @rt, @et);
+                SELECT SCOPE_IDENTITY();";
+
             cmd.Parameters.AddWithValue("@did", deviceId);
             cmd.Parameters.AddWithValue("@pid", profileId);
-            cmd.Parameters.AddWithValue("@rt", readTime);
-            cmd.Parameters.AddWithValue("@et", (object?)entryTimestampUtc ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@rt", readTimeIST);
+            cmd.Parameters.AddWithValue("@et", (object?)entryTimestampIST ?? DBNull.Value);
 
-            var id = await cmd.ExecuteScalarAsync();
-            return Convert.ToInt64(id);
+            return Convert.ToInt64(await cmd.ExecuteScalarAsync());
         }
 
-        private async Task InsertReadingValueAsync(SqlConnection conn, SqlTransaction tx, long sessionId, int parameterId, string value, string? rawValue, double? numericValue)
+        private async Task InsertReadingValueAsync(
+            SqlConnection conn,
+            SqlTransaction tx,
+            long sessionId,
+            int parameterId,
+            string value,
+            string? rawValue,
+            double? numericValue)
         {
             using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
-            cmd.CommandText = @"INSERT INTO ReadingValues (SessionId, ParameterId, Value, RawValue, ValueNumeric)
-                                VALUES (@sid, @pid, @val, @raw, @num)";
+            cmd.CommandText = @"
+                INSERT INTO ReadingValues
+                (SessionId, ParameterId, Value, RawValue, ValueNumeric)
+                VALUES (@sid, @pid, @val, @raw, @num)";
+
             cmd.Parameters.AddWithValue("@sid", sessionId);
             cmd.Parameters.AddWithValue("@pid", parameterId);
             cmd.Parameters.AddWithValue("@val", (object?)ValueFormatter.CleanValue(value) ?? DBNull.Value);
@@ -851,104 +618,36 @@ namespace PQM.Infrastructure.Services
             await cmd.ExecuteNonQueryAsync();
         }
 
-        private async Task UpsertDeviceLatestReadingAsync(SqlConnection conn, SqlTransaction tx, int deviceId, int parameterId, string value, string? rawValue, DateTime updatedAt)
-        {
-            using var cmd = conn.CreateCommand();
-            cmd.Transaction = tx;
-            cmd.CommandText = @"
-                MERGE DeviceLatestReadings AS target
-                USING (SELECT @did AS DeviceId, @pid AS ParameterId) AS source
-                ON (target.DeviceId = source.DeviceId AND target.ParameterId = source.ParameterId)
-                WHEN MATCHED THEN
-                    UPDATE SET target.Value = @val, target.RawValue = @raw, target.UpdatedAt = @updated
-                WHEN NOT MATCHED THEN
-                    INSERT (DeviceId, ParameterId, Value, RawValue, UpdatedAt)
-                    VALUES (@did, @pid, @val, @raw, @updated);";
-
-            cmd.Parameters.AddWithValue("@did", deviceId);
-            cmd.Parameters.AddWithValue("@pid", parameterId);
-            cmd.Parameters.AddWithValue("@val", (object?)ValueFormatter.CleanValue(value) ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@raw", (object?)rawValue ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@updated", updatedAt);
-
-            await cmd.ExecuteNonQueryAsync();
-        }
-
-        private async Task UpsertDeviceProfileSyncStateAsync(SqlConnection conn, SqlTransaction tx, int deviceId, int profileId, DateTime lastReadTimestampUtc, DateTime lastSyncedAt)
+        private async Task UpsertDeviceProfileSyncStateAsync(
+            SqlConnection conn,
+            SqlTransaction tx,
+            int deviceId,
+            int profileId,
+            DateTime lastReadTimestampIST,
+            DateTime lastSyncedAtIST)
         {
             using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
             cmd.CommandText = @"
                 MERGE DeviceProfileSyncState AS target
                 USING (SELECT @did AS DeviceId, @pid AS ProfileId) AS source
-                ON (target.DeviceId = source.DeviceId AND target.ProfileId = source.ProfileId)
+                ON target.DeviceId = source.DeviceId
+                   AND target.ProfileId = source.ProfileId
                 WHEN MATCHED THEN
-                    UPDATE SET target.LastReadTimestampUtc = @lr, target.LastSyncedAt = @ls
+                    UPDATE SET LastReadTimestamp = @lr, LastSyncedAt = @ls
                 WHEN NOT MATCHED THEN
-                    INSERT (DeviceId, ProfileId, LastReadTimestampUtc, LastSyncedAt)
+                    INSERT (DeviceId, ProfileId, LastReadTimestamp, LastSyncedAt)
                     VALUES (@did, @pid, @lr, @ls);";
 
             cmd.Parameters.AddWithValue("@did", deviceId);
             cmd.Parameters.AddWithValue("@pid", profileId);
-            cmd.Parameters.AddWithValue("@lr", lastReadTimestampUtc);
-            cmd.Parameters.AddWithValue("@ls", lastSyncedAt);
+            cmd.Parameters.AddWithValue("@lr", lastReadTimestampIST);
+            cmd.Parameters.AddWithValue("@ls", lastSyncedAtIST);
 
             await cmd.ExecuteNonQueryAsync();
         }
 
-        private static double? TryParseDouble(string input)
-        {
-            if (double.TryParse(input, out var val)) return val;
-            return null;
-        }
-
-        /// <summary>
-        /// Inserts a new DeviceSyncHistory row with Status='Running' and returns its generated Id.
-        /// </summary>
-        private async Task<long> InsertSyncHistoryStartAsync(int deviceId, DateTime startedAt)
-        {
-            using var conn = new SqlConnection(_connectionString);
-            await conn.OpenAsync();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                INSERT INTO DeviceSyncHistory (DeviceId, StartedAt, Status)
-                OUTPUT INSERTED.Id
-                VALUES (@deviceId, @startedAt, 'Running')";
-            cmd.Parameters.AddWithValue("@deviceId", deviceId);
-            cmd.Parameters.AddWithValue("@startedAt", startedAt);
-            var result = await cmd.ExecuteScalarAsync();
-            return Convert.ToInt64(result);
-        }
-
-        /// <summary>
-        /// Updates an existing DeviceSyncHistory row with completion data.
-        /// </summary>
-        private async Task UpdateSyncHistoryCompletionAsync(
-            long historyId,
-            string status,
-            DateTime completedAt,
-            string? errorMessage,
-            int? profilesRead,
-            int? rowsWritten)
-        {
-            using var conn = new SqlConnection(_connectionString);
-            await conn.OpenAsync();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                UPDATE DeviceSyncHistory
-                SET Status       = @status,
-                    CompletedAt  = @completedAt,
-                    ErrorMessage = @errorMessage,
-                    ProfilesRead = @profilesRead,
-                    RowsWritten  = @rowsWritten
-                WHERE Id = @id";
-            cmd.Parameters.AddWithValue("@id", historyId);
-            cmd.Parameters.AddWithValue("@status", status);
-            cmd.Parameters.AddWithValue("@completedAt", completedAt);
-            cmd.Parameters.AddWithValue("@errorMessage", (object?)errorMessage ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@profilesRead", (object?)profilesRead ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@rowsWritten", (object?)rowsWritten ?? DBNull.Value);
-            await cmd.ExecuteNonQueryAsync();
-        }
+        private static double? TryParseDouble(string input) =>
+            double.TryParse(input, out var value) ? value : null;
     }
 }

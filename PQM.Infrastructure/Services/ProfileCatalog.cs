@@ -1,23 +1,7 @@
-using System.Collections.Generic;
-using System.Linq;
+
 
 namespace PQM.Infrastructure.Services
 {
-    /// <summary>
-    /// Catalogue of all known meter profile OBIS codes, split into two groups:
-    ///
-    /// TimeSeriesProfiles   — produce time-stamped rows whose watermark (EntryTimestampUtc)
-    ///                        can advance with each sync. These are the profiles that drive
-    ///                        incremental sync in Stage 4.
-    ///
-    /// StaticOrMetadataProfiles — either read once (nameplate, manufacturer info) or hold
-    ///                            scaler/unit metadata rather than time-series measurement
-    ///                            history. These are synced less frequently or on demand.
-    ///
-    /// CLASSIFICATION NOTE: The five scaler profiles (1.0.94.91.3-7.255) belong in
-    /// StaticOrMetadataProfiles. They were previously misclassified as time-series in
-    /// an earlier revision and have been corrected here. Do not move them back.
-    /// </summary>
     public static class ProfileCatalog
     {
         public static readonly Dictionary<string, string> TimeSeriesProfiles = new()
@@ -31,7 +15,6 @@ namespace PQM.Infrastructure.Services
             { "0.0.99.98.3.255", "Transaction Events" },
             { "0.0.99.98.4.255", "Other Tamper Events" }
         };
-
         public static readonly Dictionary<string, string> StaticOrMetadataProfiles = new()
         {
             { "0.0.94.91.10.255", "Nameplate" },
@@ -44,12 +27,6 @@ namespace PQM.Infrastructure.Services
             { "0.128.187.0.128.255", "Manufacturer specific" },
             { "1.0.128.7.90.255",    "Man. specific" }
         };
-
-        /// <summary>All profiles merged — used to pre-populate GXDLMSClient.Objects
-        /// with any profiles not returned by the meter's association view.</summary>
-        public static Dictionary<string, string> AllProfiles =>
-            TimeSeriesProfiles
-                .Concat(StaticOrMetadataProfiles)
-                .ToDictionary(x => x.Key, x => x.Value);
+        public static Dictionary<string, string> AllProfiles =>TimeSeriesProfiles.Concat(StaticOrMetadataProfiles).ToDictionary(x => x.Key, x => x.Value);
     }
 }
