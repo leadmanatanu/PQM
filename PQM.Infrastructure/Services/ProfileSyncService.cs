@@ -206,10 +206,27 @@ namespace PQM.Infrastructure.Services
 
             var profileObj = reader.GetProfileObjects()
                 .FirstOrDefault(p => p.LogicalName == obisCode);
-
             IReadOnlyList<ProfileColumnInfo> columns = profileObj != null
                 ? await reader.ReadCaptureObjectsAsync(profileObj, cancellationToken)
                 : new List<ProfileColumnInfo>();
+
+            Console.WriteLine(
+                $"========== CAPTURE COLUMNS FOR {obisCode} =========="
+            );
+
+            for (int i = 0; i < columns.Count; i++)
+            {
+                var column = columns[i];
+
+                Console.WriteLine(
+                    $"Column[{i}] | " +
+                    $"OBIS={column.LogicalName} | " +
+                    $"ObjectType={column.ObjectType} | " +
+                    $"Attribute={column.AttributeIndex} | " +
+                    $"Scaler={column.Scaler} | " +
+                    $"Unit={column.Unit}"
+                );
+            }
 
             var parameterMap = await EnsureParametersAsync(profileId, columns);
 
@@ -290,7 +307,20 @@ namespace PQM.Infrastructure.Services
                         }
 
                         var value = row.Values[i];
+
                         string formattedValue = ValueFormatter.FormatValue(value);
+                        string cleanedValue = ValueFormatter.CleanValue(formattedValue);
+                        Console.WriteLine(
+                            $"[DB VALUE DEBUG] " +
+                            $"Index={i} | " +
+                            $"ParameterId={parameterId} | " +
+                            $"ColumnOBIS={(i < columns.Count ? columns[i].LogicalName : "N/A")} | " +
+                            $"Unit={(i < columns.Count ? columns[i].Unit : "N/A")} | " +
+                            $"Type={value?.GetType().FullName ?? "null"} | " +
+                            $"Original={value ?? "null"} | " +
+                            $"Formatted={formattedValue} | " +
+                            $"Cleaned={cleanedValue}"
+                        );
 
                         await InsertReadingValueAsync(
                             conn, tx, sessionId, parameterId,

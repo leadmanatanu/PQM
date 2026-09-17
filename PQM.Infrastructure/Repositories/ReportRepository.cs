@@ -32,6 +32,9 @@ namespace PQM.Infrastructure.Repositories
             string paramIdsCsv = searchParams.ParameterIds != null && searchParams.ParameterIds.Count > 0
                 ? string.Join(",", searchParams.ParameterIds.Where(id => id > 0))
                 : "";
+            string profileIdsCsv = searchParams.ProfileIds != null && searchParams.ProfileIds.Count > 0
+            ? string.Join(",", searchParams.ProfileIds.Where(id => id > 0))
+            : "";
 
             var sql = @"
                 WITH ScaledReadings AS (
@@ -52,7 +55,10 @@ namespace PQM.Infrastructure.Repositories
                     INNER JOIN Parameters p ON rv.ParameterId = p.Id
                     INNER JOIN ReadingSessions rs ON rv.SessionId = rs.Id
                     WHERE rs.DeviceId = {0}
-                      AND ({1} IS NULL OR p.ProfileId = {1})
+                      AND ({1} = '' OR p.ProfileId IN (
+                            SELECT CAST(value AS INT)
+                            FROM STRING_SPLIT({1}, ',')
+                        ))
                       AND ({2} IS NULL OR p.ObjectType = {2})
                       AND ({3} = '' OR p.Id IN (SELECT CAST(value AS INT) FROM STRING_SPLIT({3}, ',')))
                       AND rs.EntryTimestamp >= {4}
@@ -85,7 +91,7 @@ namespace PQM.Infrastructure.Repositories
             var rawRows = _db.Database.SqlQueryRaw<AggregatedReportRow>(
                 sql,
                 searchParams.DeviceId,
-                (object?)searchParams.ProfileId ?? DBNull.Value,
+                profileIdsCsv,
                 (object?)searchParams.ObjectType ?? DBNull.Value,
                 paramIdsCsv,
                 startDate,

@@ -470,8 +470,29 @@ namespace PQM.Infrastructure.Services
                     Values = values
                 };
 
-                var contentStr = string.Join(", ", values.Select(v => v?.ToString() ?? "null"));
-                Console.WriteLine($"[DEBUG ROW {rowIndex++}] Timestamp: {row.Timestamp:yyyy-MM-dd HH:mm:ss} | Content: {contentStr}");
+                //var contentStr = string.Join(", ", values.Select(v => v?.ToString() ?? "null"));
+                //Console.WriteLine($"[DEBUG ROW {rowIndex++}] Timestamp: {row.Timestamp:yyyy-MM-dd HH:mm:ss} | Content: {contentStr}");
+
+                Console.WriteLine(
+    $"========== DLMS ROW {rowIndex} =========="
+);
+
+                for (int i = 0; i < values.Count; i++)
+                {
+                    var v = values[i];
+
+                    Console.WriteLine(
+                        $"DLMS Value[{i}] | " +
+                        $"Type={v?.GetType().FullName ?? "null"} | " +
+                        $"Value={v ?? "null"}"
+                    );
+                }
+
+                Console.WriteLine(
+                    $"Timestamp={row.Timestamp:yyyy-MM-dd HH:mm:ss}"
+                );
+
+                rowIndex++;
 
                 rows.Add(row);
             }

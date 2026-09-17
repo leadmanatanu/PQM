@@ -12,6 +12,7 @@ namespace PQM.Core.DTOs
     {
         public int DeviceId { get; set; }
         public int? ProfileId { get; set; }
+        public List<int>? ProfileIds { get; set; }
         public int ParameterId { get; set; }
         public List<int>? ParameterIds { get; set; }
         public int PageNumber { get; set; }
