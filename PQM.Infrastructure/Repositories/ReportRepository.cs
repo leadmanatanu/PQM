@@ -43,11 +43,7 @@ namespace PQM.Infrastructure.Repositories
                         p.Name AS ParameterName,
                         p.ObjectType,
                         p.AggregationType,
-                        CASE
-                            WHEN p.Scaler IS NOT NULL AND p.Scaler <> 0
-                                THEN rv.ValueNumeric * POWER(10E0, CAST(p.Scaler AS FLOAT))
-                            ELSE rv.ValueNumeric
-                        END AS ScaledValueNumeric,
+                        rv.ValueNumeric AS ScaledValueNumeric,
                         DATEADD(minute,
                             (DATEDIFF(minute, '2000-01-01', rs.EntryTimestamp) / {6}) * {6},
                             '2000-01-01') AS BucketTimestamp

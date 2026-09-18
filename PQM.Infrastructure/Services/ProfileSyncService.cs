@@ -78,9 +78,7 @@ namespace PQM.Infrastructure.Services
                 return result;
             }
 
-            DateTime syncExecutionTimeIST = TimeZoneInfo.ConvertTimeFromUtc(
-                DateTime.UtcNow,
-                TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
+            DateTime syncExecutionTimeIST = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow,TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
 
             using var hardCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             hardCts.CancelAfter(TimeSpan.FromMinutes(90));
@@ -125,8 +123,7 @@ namespace PQM.Infrastructure.Services
 
                         try
                         {
-                            var profileResult = await SyncSingleProfileOnOpenReaderAsync(
-                                reader, device, obisCode, syncExecutionTimeIST, profileCts.Token);
+                            var profileResult = await SyncSingleProfileOnOpenReaderAsync(reader, device, obisCode, syncExecutionTimeIST, profileCts.Token);
 
                             result.ProfileResults[obisCode] = profileResult;
 
@@ -138,8 +135,7 @@ namespace PQM.Infrastructure.Services
                                 result.TotalRowsSkipped += profileResult.RowsSkipped;
                             }
                         }
-                        catch (OperationCanceledException) when (
-                            profileCts.IsCancellationRequested && !syncToken.IsCancellationRequested)
+                        catch (OperationCanceledException) when (profileCts.IsCancellationRequested && !syncToken.IsCancellationRequested)
                         {
                             result.ProfileResults[obisCode] = new SyncResult
                             {
@@ -199,40 +195,28 @@ namespace PQM.Infrastructure.Services
             int profileId = await EnsureProfileAsync(obisCode, isTimeSeries);
 
             DateTime? currentWatermarkIST = null;
+            int? lastEntriesInUse = null;
 
             if (isTimeSeries)
-                currentWatermarkIST = await GetLastReadWatermarkIST(device.Id, profileId);
+            {
+                var state = await GetLastReadWatermarkIST(device.Id, profileId);
+                currentWatermarkIST = state.WatermarkIST;
+                lastEntriesInUse = state.LastEntriesInUse;
+            }
 
-            var profileObj = reader.GetProfileObjects()
-                .FirstOrDefault(p => p.LogicalName == obisCode);
+            var profileObj = reader.GetProfileObjects().FirstOrDefault(p => p.LogicalName == obisCode);
             IReadOnlyList<ProfileColumnInfo> columns = profileObj != null
                 ? await reader.ReadCaptureObjectsAsync(profileObj, cancellationToken)
                 : new List<ProfileColumnInfo>();
 
-            Console.WriteLine(
-                $"========== CAPTURE COLUMNS FOR {obisCode} =========="
-            );
-
-            for (int i = 0; i < columns.Count; i++)
-            {
-                var column = columns[i];
-
-                Console.WriteLine(
-                    $"Column[{i}] | " +
-                    $"OBIS={column.LogicalName} | " +
-                    $"ObjectType={column.ObjectType} | " +
-                    $"Attribute={column.AttributeIndex} | " +
-                    $"Scaler={column.Scaler} | " +
-                    $"Unit={column.Unit}"
-                );
-            }
-
             var parameterMap = await EnsureParametersAsync(profileId, columns);
 
             var rows = await reader.ReadProfileAllEntriesAsync(
-                obisCode, currentWatermarkIST, cancellationToken);
+                obisCode, currentWatermarkIST, lastEntriesInUse, cancellationToken); // pass lastEntriesInUse
 
             result.RowsRead = rows.Count;
+
+            uint? newEntriesInUse = reader.GetProfileEntriesInUse(obisCode); // NEW — read after fetch
 
             if (rows.Count == 0)
             {
@@ -243,7 +227,8 @@ namespace PQM.Infrastructure.Services
             return await SaveReadingSessionAsync(
                 device.Id, profileId, obisCode, isTimeSeries,
                 rows, columns, parameterMap,
-                currentWatermarkIST, syncExecutionTimeIST);
+                currentWatermarkIST, syncExecutionTimeIST,
+                newEntriesInUse);   // NEW — pass through
         }
 
         private async Task<SyncResult> SaveReadingSessionAsync(
@@ -255,7 +240,8 @@ namespace PQM.Infrastructure.Services
             IReadOnlyList<ProfileColumnInfo> columns,
             Dictionary<int, int> parameterMap,
             DateTime? currentWatermarkIST,
-            DateTime syncExecutionTimeIST)
+            DateTime syncExecutionTimeIST,
+            uint? newEntriesInUse)
         {
             var result = new SyncResult { RowsRead = rows.Count };
 
@@ -282,6 +268,21 @@ namespace PQM.Infrastructure.Services
                         row.Timestamp.HasValue && row.Timestamp.Value.Year > 1
                             ? row.Timestamp.Value
                             : null;
+
+                    // NEW: reject rows whose timestamp is in the future relative to
+                    // this sync's actual execution time. This catches meter-clock drift
+                    // (the meter's RTC running ahead of real time) before it corrupts
+                    // the readings table.
+                    if (entryTimestampIST.HasValue && entryTimestampIST.Value > syncExecutionTimeIST.AddMinutes(5))
+                    {
+                        Console.WriteLine(
+                            $"[BAD TIMESTAMP] DeviceId={deviceId} ProfileId={profileId} " +
+                            $"Row timestamp {entryTimestampIST:yyyy-MM-dd HH:mm:ss} is after " +
+                            $"sync time {syncExecutionTimeIST:yyyy-MM-dd HH:mm:ss}. Skipping row."
+                        );
+                        result.RowsSkipped++;
+                        continue;
+                    }
 
                     if (entryTimestampIST.HasValue &&
                         existingTimestamps.Contains(entryTimestampIST.Value))
@@ -321,11 +322,17 @@ namespace PQM.Infrastructure.Services
                             $"Cleaned={cleanedValue}"
                         );
 
+                        //await InsertReadingValueAsync(
+                        //    conn, tx, sessionId, parameterId,
+                        //    formattedValue,
+                        //    value?.ToString(),
+                        //    TryParseDouble(formattedValue));
+
                         await InsertReadingValueAsync(
                             conn, tx, sessionId, parameterId,
-                            formattedValue,
+                            cleanedValue,                // ? Pass already-cleaned
                             value?.ToString(),
-                            TryParseDouble(formattedValue));
+                            TryParseDouble(cleanedValue));   // ? Use already-cleaned
                     }
 
                     result.RowsWritten++;
@@ -344,11 +351,12 @@ namespace PQM.Infrastructure.Services
                 {
                     DateTime? watermark = maxWrittenEntryIST ?? currentWatermarkIST;
 
+                    if (watermark.HasValue && watermark.Value > syncExecutionTimeIST)
+                        watermark = syncExecutionTimeIST;
+
                     if (watermark.HasValue)
                     {
-                        await UpsertDeviceProfileSyncStateAsync(
-                            conn, tx, deviceId, profileId,
-                            watermark.Value, syncExecutionTimeIST);
+                        await UpsertDeviceProfileSyncStateAsync(conn, tx, deviceId, profileId,watermark.Value, syncExecutionTimeIST,(int?)newEntriesInUse);  
 
                         result.NewWatermarkIST = watermark;
                     }
@@ -443,25 +451,29 @@ namespace PQM.Infrastructure.Services
             return Convert.ToInt32(await cmd.ExecuteScalarAsync());
         }
 
-        private async Task<DateTime?> GetLastReadWatermarkIST(int deviceId, int profileId)
+        private async Task<(DateTime? WatermarkIST, int? LastEntriesInUse)> GetLastReadWatermarkIST(int deviceId, int profileId)
         {
             using var conn = new SqlConnection(_connectionString);
             await conn.OpenAsync();
 
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                SELECT LastReadTimestamp
-                FROM DeviceProfileSyncState
-                WHERE DeviceId = @did AND ProfileId = @pid";
+        SELECT LastReadTimestamp, LastEntriesInUse
+        FROM DeviceProfileSyncState
+        WHERE DeviceId = @did AND ProfileId = @pid";
 
             cmd.Parameters.AddWithValue("@did", deviceId);
             cmd.Parameters.AddWithValue("@pid", profileId);
 
-            var value = await cmd.ExecuteScalarAsync();
+            using var reader = await cmd.ExecuteReaderAsync();
 
-            return value == null || value == DBNull.Value
-                ? null
-                : Convert.ToDateTime(value);
+            if (!await reader.ReadAsync())
+                return (null, null);
+
+            DateTime? watermark = reader.IsDBNull(0) ? null : reader.GetDateTime(0);
+            int? lastEntries = reader.IsDBNull(1) ? null : reader.GetInt32(1);
+
+            return (watermark, lastEntries);
         }
 
         private async Task<Dictionary<int, int>> EnsureParametersAsync(
@@ -649,30 +661,32 @@ namespace PQM.Infrastructure.Services
         }
 
         private async Task UpsertDeviceProfileSyncStateAsync(
-            SqlConnection conn,
-            SqlTransaction tx,
-            int deviceId,
-            int profileId,
-            DateTime lastReadTimestampIST,
-            DateTime lastSyncedAtIST)
+     SqlConnection conn,
+     SqlTransaction tx,
+     int deviceId,
+     int profileId,
+     DateTime lastReadTimestampIST,
+     DateTime lastSyncedAtIST,
+     int? lastEntriesInUse)   
         {
             using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
             cmd.CommandText = @"
-                MERGE DeviceProfileSyncState AS target
-                USING (SELECT @did AS DeviceId, @pid AS ProfileId) AS source
-                ON target.DeviceId = source.DeviceId
-                   AND target.ProfileId = source.ProfileId
-                WHEN MATCHED THEN
-                    UPDATE SET LastReadTimestamp = @lr, LastSyncedAt = @ls
-                WHEN NOT MATCHED THEN
-                    INSERT (DeviceId, ProfileId, LastReadTimestamp, LastSyncedAt)
-                    VALUES (@did, @pid, @lr, @ls);";
+        MERGE DeviceProfileSyncState AS target
+        USING (SELECT @did AS DeviceId, @pid AS ProfileId) AS source
+        ON target.DeviceId = source.DeviceId
+           AND target.ProfileId = source.ProfileId
+        WHEN MATCHED THEN
+            UPDATE SET LastReadTimestamp = @lr, LastSyncedAt = @ls, LastEntriesInUse = @le
+        WHEN NOT MATCHED THEN
+            INSERT (DeviceId, ProfileId, LastReadTimestamp, LastSyncedAt, LastEntriesInUse)
+            VALUES (@did, @pid, @lr, @ls, @le);";
 
             cmd.Parameters.AddWithValue("@did", deviceId);
             cmd.Parameters.AddWithValue("@pid", profileId);
             cmd.Parameters.AddWithValue("@lr", lastReadTimestampIST);
             cmd.Parameters.AddWithValue("@ls", lastSyncedAtIST);
+            cmd.Parameters.AddWithValue("@le", (object?)lastEntriesInUse ?? DBNull.Value);
 
             await cmd.ExecuteNonQueryAsync();
         }

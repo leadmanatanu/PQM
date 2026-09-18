@@ -130,6 +130,9 @@ namespace PQM.Infrastructure.Migrations
                     b.Property<int>("DeviceId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("LastEntriesInUse")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("LastReadTimestamp")
                         .HasColumnType("datetime2");
 

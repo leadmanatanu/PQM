@@ -352,70 +352,38 @@ namespace PQM.Infrastructure.Services
 
             return result;
         }
-        public async Task<IReadOnlyList<ProfileRow>> ReadProfileAllEntriesAsync(string obisCode,DateTime? startTime = null,System.Threading.CancellationToken cancellationToken = default)
+        public async Task<IReadOnlyList<ProfileRow>> ReadProfileAllEntriesAsync(
+    string obisCode,
+    DateTime? startTime = null,
+    int? lastEntriesInUse = null,   
+    CancellationToken cancellationToken = default)
         {
             EnsureConnected();
             cancellationToken.ThrowIfCancellationRequested();
 
-            var profile = _client.Objects
-                .OfType<GXDLMSProfileGeneric>()
-                .FirstOrDefault(o => o.LogicalName == obisCode);
-
+            var profile = _client.Objects.OfType<GXDLMSProfileGeneric>().FirstOrDefault(o => o.LogicalName == obisCode);
             if (profile == null)
-                throw new InvalidOperationException($"Profile object ({obisCode}) not found in meter objects. Call ReadAssociationViewAsync() first.");
+                throw new InvalidOperationException($"Profile object ({obisCode}) not found in meter objects.");
 
             await ReadCaptureObjectsAsync(profile, cancellationToken);
 
-            // --- Attempt 1: Selective access by date range ---
-            try
+            uint currentEntriesInUse = profile.EntriesInUse > 0 ? profile.EntriesInUse : 100;
+
+            // Decide start entry
+            uint startEntry = 1;
+            if (lastEntriesInUse.HasValue && lastEntriesInUse.Value > 0 && currentEntriesInUse > lastEntriesInUse.Value)
             {
-                var start = new GXDateTime(startTime ?? new DateTime(2000, 1, 1));
-                var end = new GXDateTime(DateTime.Now);
-
-                start.Skip = DateTimeSkips.Deviation | DateTimeSkips.Status;
-                end.Skip = DateTimeSkips.Deviation | DateTimeSkips.Status;
-
-                var requests = _client.ReadRowsByRange(profile, start, end);
-                GXReplyData? reply = null;
-
-                foreach (var request in requests)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    reply = await SendAndReceiveAsync(request, cancellationToken);
-                    if (reply != null && reply.Error != 0)
-                    {
-                        Console.WriteLine($"[INFO] Range access request for {obisCode} returned DLMS error {reply.Error}. Breaking range read...");
-                        break;
-                    }
-                }
-
-                if (reply != null && reply.Error == 0)
-                {
-                    var rows = ConvertProfileRows(reply.Value);
-                    Console.WriteLine($"[ReadProfileAllEntriesAsync] Range access succeeded for {obisCode}: {rows.Count} rows.");
-                    return rows;
-                }
-                else if (reply != null && reply.Error != 0)
-                {
-                    Console.WriteLine($"[INFO] Range access for {obisCode} returned error {reply.Error}. Falling back to entry access...");
-                }
+                startEntry = (uint)(lastEntriesInUse.Value + 1); // FAST PATH: only new entries
+                Console.WriteLine($"[INFO] Incremental read for {obisCode}: entries {startEntry}..{currentEntriesInUse}");
             }
-            catch (OperationCanceledException)
+            else
             {
-                throw;
+                Console.WriteLine($"[INFO] Full read for {obisCode}: entries 1..{currentEntriesInUse} (no state or buffer reset)");
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[INFO] Selective access by range failed for {obisCode}: {ex.Message}. Falling back to entry access...");
-            }
-
-            // --- Attempt 2: ReadRowsByEntry (full buffer by entry index) ---
-            uint entryCount = profile.EntriesInUse > 0 ? profile.EntriesInUse : 100;
-            Console.WriteLine($"[INFO] Reading {obisCode} by entry index (1 to {entryCount})...");
 
             try
             {
-                var entryRequests = _client.ReadRowsByEntry(profile, 1, entryCount);
+                var entryRequests = _client.ReadRowsByEntry(profile, startEntry, currentEntriesInUse - startEntry + 1);
                 GXReplyData? entryReply = null;
 
                 foreach (var request in entryRequests)
@@ -427,25 +395,17 @@ namespace PQM.Infrastructure.Services
                 if (entryReply != null && entryReply.Error == 0)
                 {
                     var rows = ConvertProfileRows(entryReply.Value);
-                    if (rows.Count > 0)
-                    {
-                        Console.WriteLine($"[ReadProfileAllEntriesAsync] Entry access succeeded for {obisCode}: {rows.Count} rows.");
-                        return rows;
-                    }
+                    Console.WriteLine($"[ReadProfileAllEntriesAsync] Read succeeded for {obisCode}: {rows.Count} rows.");
+                    return rows;
                 }
             }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
+            catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
-                Console.WriteLine($"[INFO] ReadRowsByEntry failed for {obisCode}: {ex.Message}. Falling back to raw attribute-2 buffer read...");
+                Console.WriteLine($"[INFO] ReadRowsByEntry failed for {obisCode}: {ex.Message}. Falling back to raw buffer read...");
             }
 
-            // --- Attempt 3: Raw attribute-2 buffer read (last resort) ---
             cancellationToken.ThrowIfCancellationRequested();
-            Console.WriteLine($"[INFO] Fallback: reading raw attribute-2 buffer for {obisCode}...");
             var value = await ReadObjectAsync(profile, 2, cancellationToken);
             return ConvertProfileRows(value);
         }
@@ -464,22 +424,40 @@ namespace PQM.Infrastructure.Services
 
                 var values = rowEnumerable.Cast<object?>().ToList();
 
+                // 🔴 NEW: Extract timestamp and remove it from values
+                DateTime? timestamp = ExtractTimestamp(values.ToArray());
+
+                var cleanedValues = new List<object?>(values);
+
+                if (timestamp.HasValue)
+                {
+                    // Find and remove the timestamp value from the list
+                    for (int i = 0; i < cleanedValues.Count; i++)
+                    {
+                        if (cleanedValues[i] is DateTime dt &&
+                            dt.Year > 1 &&
+                            dt == timestamp.Value)
+                        {
+                            cleanedValues.RemoveAt(i);
+                            Console.WriteLine($"[ROW {rowIndex}] Timestamp removed from position {i}. Cleaned values: {cleanedValues.Count}");
+                            break;
+                        }
+                    }
+                }
+
                 var row = new ProfileRow
                 {
-                    Timestamp = ExtractTimestamp(values.ToArray()),
-                    Values = values
+                    Timestamp = timestamp,
+                    Values = cleanedValues  // ← NOW CLEAN, WITHOUT TIMESTAMP!
                 };
 
-                //var contentStr = string.Join(", ", values.Select(v => v?.ToString() ?? "null"));
-                //Console.WriteLine($"[DEBUG ROW {rowIndex++}] Timestamp: {row.Timestamp:yyyy-MM-dd HH:mm:ss} | Content: {contentStr}");
-
                 Console.WriteLine(
-    $"========== DLMS ROW {rowIndex} =========="
-);
+                    $"========== DLMS ROW {rowIndex} =========="
+                );
 
-                for (int i = 0; i < values.Count; i++)
+                for (int i = 0; i < cleanedValues.Count; i++)
                 {
-                    var v = values[i];
+                    var v = cleanedValues[i];
 
                     Console.WriteLine(
                         $"DLMS Value[{i}] | " +
@@ -718,16 +696,27 @@ namespace PQM.Infrastructure.Services
                     return dateTimeOffset.DateTime;
                 }
 
+                //if (value is GXDateTime gxDateTime)
+                //{
+                //    // Use raw local components as sent by the meter.
+                //    // gxDateTime.Value.DateTime applies an embedded deviation/offset
+                //    // that is wrong on this meter, shifting the time by hours.
+                //    if (DateTime.TryParse(gxDateTime.ToString(), out var localDt))
+                //    {
+                //        if (localDt.Year <= 1 || localDt.Year >= 9999)
+                //            continue;
+                //        return localDt;
+                //    }
+                //}
+
                 if (value is GXDateTime gxDateTime)
                 {
-                    // Use raw local components as sent by the meter.
-                    // gxDateTime.Value.DateTime applies an embedded deviation/offset
-                    // that is wrong on this meter, shifting the time by hours.
-                    if (DateTime.TryParse(gxDateTime.ToString(), out var localDt))
+                    var localDt = ExtractDateTimeDirect(gxDateTime);
+                    if (localDt.HasValue)
                     {
-                        if (localDt.Year <= 1 || localDt.Year >= 9999)
+                        if (localDt.Value.Year <= 1 || localDt.Value.Year >= 9999)
                             continue;
-                        return localDt;
+                        return localDt.Value;
                     }
                 }
 
@@ -946,6 +935,32 @@ namespace PQM.Infrastructure.Services
                     catch { }
                 }
             }
+        }
+        private static DateTime? ExtractDateTimeDirect(GXDateTime gx)
+        {
+            if (gx == null)
+                return null;
+
+            try
+            {
+                var dt = gx.Value.DateTime; // raw components, no deviation applied by us
+                if (dt.Year <= 1 || dt.Year >= 9999)
+                    return null;
+
+                return new DateTime(
+                    dt.Year, dt.Month, dt.Day,
+                    dt.Hour, dt.Minute, dt.Second,
+                    DateTimeKind.Unspecified);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+        public uint? GetProfileEntriesInUse(string obisCode)
+        {
+            var profile = _client.Objects.OfType<GXDLMSProfileGeneric>().FirstOrDefault(o => o.LogicalName == obisCode);
+            return profile != null && profile.EntriesInUse > 0 ? (uint?)profile.EntriesInUse : null;
         }
         public void Dispose()
         {

@@ -134,6 +134,7 @@ namespace PQM.Infrastructure.Migrations
                         .Annotation("SqlServer:Identity", "1, 1"),
                     LastReadTimestamp = table.Column<DateTime>(type: "datetime2", nullable: true),
                     LastSyncedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    LastEntriesInUse = table.Column<int>(type: "int", nullable: true),
                     DeviceId = table.Column<int>(type: "int", nullable: false),
                     ProfileId = table.Column<int>(type: "int", nullable: false)
                 },

@@ -73,9 +73,10 @@ namespace PQM.Infrastructure.Services
             // sync watermark and the display value. Return empty string instead.
             if (value is GXDateTime gxDateTime)
             {
-                if (DateTime.TryParse(gxDateTime.ToString(), out var dt) && dt.Year > 1)
+                var dt = ExtractDateTimeDirect(gxDateTime);
+                if (dt.HasValue && dt.Value.Year > 1)
                 {
-                    return dt.ToString("yyyy-MM-dd HH:mm:ss");
+                    return dt.Value.ToString("yyyy-MM-dd HH:mm:ss");
                 }
                 return string.Empty;
             }
@@ -113,11 +114,22 @@ namespace PQM.Infrastructure.Services
             var trimmed = rawValue.Trim();
 
             // Strip bracketed DLMS structure format from historical rows, e.g. "[0.001|Current]" -> "0.001"
+            //if (trimmed.StartsWith("[") && trimmed.EndsWith("]"))
+            //{
+            //    var inner = trimmed.Substring(1, trimmed.Length - 2);
+            //    var parts = inner.Split('|');
+            //    if (parts.Length == 2)
+            //    {
+            //        trimmed = parts[0].Trim();
+            //    }
+            //}
+
+            // Strip bracketed DLMS structure format from historical rows
             if (trimmed.StartsWith("[") && trimmed.EndsWith("]"))
             {
                 var inner = trimmed.Substring(1, trimmed.Length - 2);
                 var parts = inner.Split('|');
-                if (parts.Length == 2)
+                if (parts.Length >= 1)  // ✅ HANDLE ANY NUMBER OF PARTS
                 {
                     trimmed = parts[0].Trim();
                 }
@@ -164,9 +176,10 @@ namespace PQM.Infrastructure.Services
                 try
                 {
                     var gx = (GXDateTime)GXDLMSClient.ChangeType(bytes, DataType.DateTime);
-                    if (gx != null && DateTime.TryParse(gx.ToString(), out var gxDt) && gxDt.Year > 1)
+                    var dt = ExtractDateTimeDirect(gx);
+                    if (dt.HasValue && dt.Value.Year > 1)
                     {
-                        formattedDate = gxDt.ToString("yyyy-MM-dd HH:mm:ss");
+                        formattedDate = dt.Value.ToString("yyyy-MM-dd HH:mm:ss");
                         return true;
                     }
                 }
@@ -175,9 +188,10 @@ namespace PQM.Infrastructure.Services
                     try
                     {
                         var gxDate = (GXDateTime)GXDLMSClient.ChangeType(bytes, DataType.Date);
-                        if (gxDate != null && DateTime.TryParse(gxDate.ToString(), out var gxDateDt) && gxDateDt.Year > 1)
+                        var dateDt = ExtractDateTimeDirect(gxDate);
+                        if (dateDt.HasValue && dateDt.Value.Year > 1)
                         {
-                            formattedDate = gxDateDt.ToString("yyyy-MM-dd HH:mm:ss");
+                            formattedDate = dateDt.Value.ToString("yyyy-MM-dd HH:mm:ss");
                             return true;
                         }
                     }
@@ -187,6 +201,27 @@ namespace PQM.Infrastructure.Services
             catch { }
 
             return false;
+        }
+        private static DateTime? ExtractDateTimeDirect(GXDateTime gx)
+        {
+            if (gx == null)
+                return null;
+
+            try
+            {
+                var dt = gx.Value.DateTime;
+                if (dt.Year <= 1 || dt.Year >= 9999)
+                    return null;
+
+                return new DateTime(
+                    dt.Year, dt.Month, dt.Day,
+                    dt.Hour, dt.Minute, dt.Second,
+                    DateTimeKind.Unspecified);
+            }
+            catch
+            {
+                return null;
+            }
         }
     }
 }

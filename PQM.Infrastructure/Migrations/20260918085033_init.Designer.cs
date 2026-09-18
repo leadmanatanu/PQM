@@ -12,7 +12,7 @@ using PQM.Infrastructure;
 namespace PQM.Infrastructure.Migrations
 {
     [DbContext(typeof(DataContext))]
-    [Migration("20260916060851_init")]
+    [Migration("20260918085033_init")]
     partial class init
     {
         /// <inheritdoc />
@@ -131,6 +131,9 @@ namespace PQM.Infrastructure.Migrations
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<int>("DeviceId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("LastEntriesInUse")
                         .HasColumnType("int");
 
                     b.Property<DateTime?>("LastReadTimestamp")
