@@ -9,6 +9,8 @@
     public class LiveScanItemResult
     {
         public int ParameterId { get; set; }
+        public int? ProfileId { get; set; }
+        public string ProfileName { get; set; } = "";
         public string ParameterName { get; set; } = "";
         public string ObisCode { get; set; } = "";
         public string Value { get; set; } = "";
@@ -19,6 +21,7 @@
     public class LiveScanParameterInfo
     {
         public int Id { get; set; }
+        public int? ProfileId { get; set; }
         public string Name { get; set; } = string.Empty;
         public string ObisCode { get; set; } = string.Empty;
         public string? ObjectType { get; set; }

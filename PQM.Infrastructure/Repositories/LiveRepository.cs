@@ -71,6 +71,7 @@ namespace PQM.Infrastructure.Repositories
                 .Select(p => new LiveScanParameterInfo
                 {
                     Id = p.Id,
+                    ProfileId = p.ProfileId,
                     Name = p.Name,
                     ObisCode = p.ObisCode!,
                     ObjectType = p.ObjectType,

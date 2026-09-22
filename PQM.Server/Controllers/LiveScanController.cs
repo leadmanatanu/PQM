@@ -103,17 +103,44 @@ namespace PQM.Server.Controllers
                 _apiResponse.StatusCode =
                     System.Net.HttpStatusCode.OK;
 
+                var profiles = await _liveRepository.GetProfilesAsync(ct);
+
+                var profileLookup = profiles.ToDictionary(
+                    p => p.Id,
+                    p => string.IsNullOrWhiteSpace(p.FriendlyName)
+                        ? p.ObisCode
+                        : p.FriendlyName
+                );
+
+                foreach (var item in items)
+                {
+                    if (item.ProfileId.HasValue &&
+                        profileLookup.TryGetValue(item.ProfileId.Value, out var profileName))
+                    {
+                        item.ProfileName = profileName;
+                    }
+                }
+                var groups = items
+                    .GroupBy(x => new
+                    {
+                        x.ProfileId,
+                        x.ProfileName
+                    })
+                    .Select(g => new
+                    {
+                        profileId = g.Key.ProfileId,
+                        profileName = g.Key.ProfileName,
+                        items = g.ToList()
+                    })
+                    .ToList();
+
                 _apiResponse.Data = new
                 {
                     scannedAt = GetIndiaStandardTime().ToString("o"),
-
                     deviceId = id,
-
                     deviceName = device.Name,
-
-                    items
+                    groups
                 };
-
                 _apiResponse.Errors.Clear();
 
                 return Ok(_apiResponse);
@@ -274,6 +301,7 @@ namespace PQM.Server.Controllers
                     new LiveScanItemResult
                     {
                         ParameterId = param.Id,
+                        ProfileId = param.ProfileId,
                         ParameterName = param.Name,
                         ObisCode = param.ObisCode,
                         Unit = param.Unit
