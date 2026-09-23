@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PQM.Core.Entities;
+using PQM.Server.Entities;
 
 namespace PQM.Infrastructure
 {
@@ -16,6 +17,7 @@ namespace PQM.Infrastructure
         public DbSet<ReadingSession> ReadingSessions { get; set; } = null!;
         public DbSet<ReadingValue> ReadingValues { get; set; } = null!;
         public DbSet<DeviceProfileSyncState> DeviceProfileSyncStates { get; set; } = null!;
+        public DbSet<Notification> Notifications { get; set; } = null!;
 
         public DataContext(DbContextOptions<DataContext> options) : base(options)
         {

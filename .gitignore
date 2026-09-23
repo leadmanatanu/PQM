@@ -363,3 +363,6 @@ MigrationBackup/
 FodyWeavers.xsd
 
 
+/PQM.Core/Interfaces/Repositories/INotificationRepository.cs
+*.cs
+/PQM.Infrastructure/DataContext.cs

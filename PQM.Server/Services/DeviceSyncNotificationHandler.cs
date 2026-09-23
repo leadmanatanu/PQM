@@ -9,9 +9,7 @@ namespace PQM.Server.Services
         private readonly IHubContext<DeviceHub> _hubContext;
         private readonly ILogger<DeviceSyncNotificationHandler> _logger;
 
-        public DeviceSyncNotificationHandler(
-            IHubContext<DeviceHub> hubContext,
-            ILogger<DeviceSyncNotificationHandler> logger)
+        public DeviceSyncNotificationHandler(IHubContext<DeviceHub> hubContext, ILogger<DeviceSyncNotificationHandler> logger)
         {
             _hubContext = hubContext;
             _logger = logger;

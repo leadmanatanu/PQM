@@ -39,7 +39,7 @@ namespace PQM.Infrastructure.Services
         private readonly string _connectionString;
         private readonly ILogger<ProfileSyncService> _logger;
         private readonly IEventPublisher _eventPublisher;
-        private const int TimeSeriesBatchSize = 500;
+        private const int TimeSeriesBatchSize = 100;
         private const int LastSyncProfileId = 15;
 
         public ProfileSyncService(string connectionString, ILogger<ProfileSyncService> logger, IEventPublisher eventPublisher)
@@ -73,7 +73,7 @@ namespace PQM.Infrastructure.Services
             _lockAcquiredTimes.TryRemove(deviceId, out _);
         }
 
-        public async Task<DeviceSyncResult> SyncDeviceAllProfilesAsync(int deviceId,CancellationToken cancellationToken = default)
+        public async Task<DeviceSyncResult> SyncDeviceAllProfilesAsync(int deviceId, CancellationToken cancellationToken = default)
         {
             var result = new DeviceSyncResult
             {
@@ -515,14 +515,7 @@ namespace PQM.Infrastructure.Services
             await cmd.ExecuteNonQueryAsync();
         }
 
-        private async Task UpsertDeviceProfileSyncStateAsync(
-     SqlConnection conn,
-     SqlTransaction tx,
-     int deviceId,
-     int profileId,
-     DateTime lastReadTimestampIST,
-     DateTime lastSyncedAtIST,
-     int? lastEntriesInUse)   
+        private async Task UpsertDeviceProfileSyncStateAsync(SqlConnection conn, SqlTransaction tx, int deviceId, int profileId, DateTime lastReadTimestampIST, DateTime lastSyncedAtIST, int? lastEntriesInUse)
         {
             using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
@@ -658,14 +651,12 @@ namespace PQM.Infrastructure.Services
                         continue;
                     }
 
-                    long sessionId = await InsertReadingSessionAsync(
-                        conn, tx, deviceId, profileId, syncExecutionTimeIST, entryTimestampIST);
+                    long sessionId = await InsertReadingSessionAsync(conn, tx, deviceId, profileId, syncExecutionTimeIST, entryTimestampIST);
 
                     // NEW
                     if (entryTimestampIST.HasValue && profileId == LastSyncProfileId)
                     {
-                        if (!maxLastSyncCandidate.HasValue || entryTimestampIST.Value > maxLastSyncCandidate.Value)
-                            maxLastSyncCandidate = entryTimestampIST.Value;
+                        if (!maxLastSyncCandidate.HasValue || entryTimestampIST.Value > maxLastSyncCandidate.Value) maxLastSyncCandidate = entryTimestampIST.Value;
                     }
 
                     for (int i = 0; i < row.Values.Count; i++)
