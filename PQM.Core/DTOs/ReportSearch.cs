@@ -39,4 +39,5 @@ namespace PQM.Core.DTOs
         public int? ProfileId { get; set; }          // NEW
         public string? ProfileName { get; set; }      // NEW, filled in controller like LiveScanController does
     }
+
 }
