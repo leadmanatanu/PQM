@@ -52,7 +52,7 @@ namespace PQM.Core.Entities
         }
         public string? Password { get; set; }
         public int? Timeout { get; set; } = 30000;
-       
+        
 
         public string? TimeZoneId { get; set; }
         public int? MeterTypeId { get; set; }

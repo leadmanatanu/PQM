@@ -353,62 +353,96 @@ namespace PQM.Infrastructure.Services
             return result;
         }
         public async Task<IReadOnlyList<ProfileRow>> ReadProfileAllEntriesAsync(
-    string obisCode,
-    DateTime? startTime = null,
-    int? lastEntriesInUse = null,   
-    CancellationToken cancellationToken = default)
+            string obisCode,
+            DateTime? startTime = null,
+            int? lastEntriesInUse = null,
+            CancellationToken cancellationToken = default)
         {
             EnsureConnected();
             cancellationToken.ThrowIfCancellationRequested();
 
-            var profile = _client.Objects.OfType<GXDLMSProfileGeneric>().FirstOrDefault(o => o.LogicalName == obisCode);
+            var profile = _client.Objects
+                .OfType<GXDLMSProfileGeneric>()
+                .FirstOrDefault(o => o.LogicalName == obisCode);
+
             if (profile == null)
-                throw new InvalidOperationException($"Profile object ({obisCode}) not found in meter objects.");
+                throw new InvalidOperationException(
+                    $"Profile object ({obisCode}) not found in meter objects.");
 
             await ReadCaptureObjectsAsync(profile, cancellationToken);
 
-            uint currentEntriesInUse = profile.EntriesInUse > 0 ? profile.EntriesInUse : 100;
+            uint currentEntriesInUse =
+                profile.EntriesInUse > 0 ? profile.EntriesInUse : 100;
 
-            // Decide start entry
             uint startEntry = 1;
-            if (lastEntriesInUse.HasValue && lastEntriesInUse.Value > 0 && currentEntriesInUse > lastEntriesInUse.Value)
+
+            if (lastEntriesInUse.HasValue &&
+                lastEntriesInUse.Value > 0 &&
+                currentEntriesInUse > lastEntriesInUse.Value)
             {
-                startEntry = (uint)(lastEntriesInUse.Value + 1); // FAST PATH: only new entries
-                Console.WriteLine($"[INFO] Incremental read for {obisCode}: entries {startEntry}..{currentEntriesInUse}");
+                startEntry = (uint)(lastEntriesInUse.Value + 1);
+
+                Console.WriteLine(
+                    $"[INFO] Incremental read for {obisCode}: " +
+                    $"entries {startEntry}..{currentEntriesInUse}");
             }
             else
             {
-                Console.WriteLine($"[INFO] Full read for {obisCode}: entries 1..{currentEntriesInUse} (no state or buffer reset)");
+                Console.WriteLine(
+                    $"[INFO] Full read for {obisCode}: " +
+                    $"entries 1..{currentEntriesInUse}");
             }
 
             try
             {
-                var entryRequests = _client.ReadRowsByEntry(profile, startEntry, currentEntriesInUse - startEntry + 1);
+                var entryRequests = _client.ReadRowsByEntry(
+                    profile,
+                    startEntry,
+                    currentEntriesInUse - startEntry + 1);
+
                 GXReplyData? entryReply = null;
 
                 foreach (var request in entryRequests)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    entryReply = await SendAndReceiveAsync(request, cancellationToken);
+
+                    entryReply = await SendAndReceiveAsync(
+                        request,
+                        cancellationToken);
                 }
 
                 if (entryReply != null && entryReply.Error == 0)
                 {
                     var rows = ConvertProfileRows(entryReply.Value);
-                    Console.WriteLine($"[ReadProfileAllEntriesAsync] Read succeeded for {obisCode}: {rows.Count} rows.");
+
+                    Console.WriteLine(
+                        $"[ReadProfileAllEntriesAsync] Read succeeded for " +
+                        $"{obisCode}: {rows.Count} rows.");
+
                     return rows;
                 }
             }
-            catch (OperationCanceledException) { throw; }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
-                Console.WriteLine($"[INFO] ReadRowsByEntry failed for {obisCode}: {ex.Message}. Falling back to raw buffer read...");
+                Console.WriteLine(
+                    $"[INFO] ReadRowsByEntry failed for {obisCode}: " +
+                    $"{ex.Message}. Falling back to raw buffer read...");
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            var value = await ReadObjectAsync(profile, 2, cancellationToken);
+
+            var value = await ReadObjectAsync(
+                profile,
+                2,
+                cancellationToken);
+
             return ConvertProfileRows(value);
         }
+
         private static IReadOnlyList<ProfileRow> ConvertProfileRows(object? value)
         {
             var rows = new List<ProfileRow>();

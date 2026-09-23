@@ -1,13 +1,15 @@
 using Microsoft.EntityFrameworkCore;
+using PQM.Core.Events;
 using PQM.Core.Interfaces.Repositories;
 using PQM.Infrastructure;
+using PQM.Infrastructure.Events;
 using PQM.Infrastructure.Repositories;
 using PQM.Infrastructure.Services;
+using PQM.Server.Hubs;
+using PQM.Server.Services;
 using Serilog;
 using Serilog.Events;
 using System.Text.Json.Serialization;
-using PQM.Server.Hubs;
-using PQM.Server.Services;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -54,7 +56,10 @@ try
     builder.Services.AddScoped<IReportRepository, ReportRepository>();
     builder.Services.AddSingleton<INetworkReachabilityService, NetworkReachabilityService>();
 
-    builder.Services.AddScoped<ProfileSyncService>(sp => new ProfileSyncService(connectionString, sp.GetRequiredService<ILogger<ProfileSyncService>>()));
+    builder.Services.AddSingleton<IEventPublisher, EventPublisher>();
+    builder.Services.AddSingleton<IEventHandler<DeviceSyncCompletedEvent>, DeviceSyncNotificationHandler>();
+    builder.Services.AddScoped<ProfileSyncService>(sp => new ProfileSyncService(connectionString,sp.GetRequiredService<ILogger<ProfileSyncService>>(),sp.GetRequiredService<IEventPublisher>()));
+
 
     builder.Services.AddSignalR();
     builder.Services.AddHostedService<DevicePingBackgroundService>();

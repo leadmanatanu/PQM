@@ -1,6 +1,8 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using PQM.Core.Entities;
+using PQM.Core.Events;
+
 
 namespace PQM.Infrastructure.Services
 {
@@ -36,11 +38,15 @@ namespace PQM.Infrastructure.Services
 
         private readonly string _connectionString;
         private readonly ILogger<ProfileSyncService> _logger;
+        private readonly IEventPublisher _eventPublisher;
+        private const int TimeSeriesBatchSize = 500;
+        private const int LastSyncProfileId = 15;
 
-        public ProfileSyncService(string connectionString, ILogger<ProfileSyncService> logger)
+        public ProfileSyncService(string connectionString, ILogger<ProfileSyncService> logger, IEventPublisher eventPublisher)
         {
             _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _eventPublisher = eventPublisher ?? throw new ArgumentNullException(nameof(eventPublisher));
         }
 
         public static bool TryAcquireLock(int deviceId)
@@ -67,9 +73,12 @@ namespace PQM.Infrastructure.Services
             _lockAcquiredTimes.TryRemove(deviceId, out _);
         }
 
-        public async Task<DeviceSyncResult> SyncDeviceAllProfilesAsync(int deviceId, CancellationToken cancellationToken = default)
+        public async Task<DeviceSyncResult> SyncDeviceAllProfilesAsync(int deviceId,CancellationToken cancellationToken = default)
         {
-            var result = new DeviceSyncResult { DeviceId = deviceId };
+            var result = new DeviceSyncResult
+            {
+                DeviceId = deviceId
+            };
 
             if (!TryAcquireLock(deviceId))
             {
@@ -78,10 +87,21 @@ namespace PQM.Infrastructure.Services
                 return result;
             }
 
-            DateTime syncExecutionTimeIST = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow,TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
+            // This is the time when the sync operation started.
+            // It is NOT the meter reading timestamp.
+            DateTime syncExecutionTimeIST =
+                TimeZoneInfo.ConvertTimeFromUtc(
+                    DateTime.UtcNow,
+                    TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
 
-            using var hardCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            // This will contain the latest meter-data timestamp
+            // successfully saved from all profiles.
+
+            using var hardCts =
+                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
             hardCts.CancelAfter(TimeSpan.FromMinutes(90));
+
             var syncToken = hardCts.Token;
 
             try
@@ -96,11 +116,13 @@ namespace PQM.Infrastructure.Services
 
                 result.DeviceName = device.Name;
 
-                await using var reader = new DlmsMeterReader(device, verboseLogging: false);
+                await using var reader =
+                    new DlmsMeterReader(device, verboseLogging: false);
 
                 try
                 {
                     await reader.ConnectAsync(syncToken);
+
                     await reader.ReadAssociationViewAsync(syncToken);
 
                     foreach (var kvp in ProfileCatalog.AllProfiles)
@@ -108,42 +130,32 @@ namespace PQM.Infrastructure.Services
                         syncToken.ThrowIfCancellationRequested();
 
                         string obisCode = kvp.Key;
+
                         result.ProfilesAttempted++;
-
-                        using var profileCts = CancellationTokenSource.CreateLinkedTokenSource(syncToken);
-
-                        TimeSpan timeout = obisCode switch
-                        {
-                            "1.0.99.1.0.255" => TimeSpan.FromMinutes(30),
-                            "1.0.99.2.0.255" => TimeSpan.FromMinutes(10),
-                            _ => TimeSpan.FromMinutes(5)
-                        };
-
-                        profileCts.CancelAfter(timeout);
 
                         try
                         {
-                            var profileResult = await SyncSingleProfileOnOpenReaderAsync(reader, device, obisCode, syncExecutionTimeIST, profileCts.Token);
+                            var profileResult =
+                                await SyncSingleProfileOnOpenReaderAsync(
+                                    reader,
+                                    device,
+                                    obisCode,
+                                    syncExecutionTimeIST,
+                                    syncToken);
 
                             result.ProfileResults[obisCode] = profileResult;
 
                             if (profileResult.Success)
                             {
                                 result.ProfilesSucceeded++;
+
                                 result.TotalRowsRead += profileResult.RowsRead;
                                 result.TotalRowsWritten += profileResult.RowsWritten;
                                 result.TotalRowsSkipped += profileResult.RowsSkipped;
                             }
                         }
-                        catch (OperationCanceledException) when (profileCts.IsCancellationRequested && !syncToken.IsCancellationRequested)
-                        {
-                            result.ProfileResults[obisCode] = new SyncResult
-                            {
-                                Success = false,
-                                ErrorMessage = $"Profile read timed out after {Math.Round(timeout.TotalMinutes)} minutes"
-                            };
-                        }
-                        catch (OperationCanceledException) when (syncToken.IsCancellationRequested)
+                        catch (OperationCanceledException)
+                            when (syncToken.IsCancellationRequested)
                         {
                             throw;
                         }
@@ -159,22 +171,22 @@ namespace PQM.Infrastructure.Services
 
                     result.Success = result.ProfilesSucceeded > 0;
                 }
-                catch (OperationCanceledException) when (syncToken.IsCancellationRequested)
+                catch (OperationCanceledException)
+                    when (syncToken.IsCancellationRequested)
                 {
-                    result.ErrorMessage = "Sync timed out after 90 minutes";
+                    result.ErrorMessage = "Sync timed out after 90 minutes.";
                 }
                 catch (Exception ex)
                 {
                     result.ErrorMessage = $"Connection failure: {ex.Message}";
                 }
 
-                await UpdateDeviceStatusInDbAsync(deviceId, syncExecutionTimeIST);
+
                 return result;
             }
             catch (OperationCanceledException) when (syncToken.IsCancellationRequested)
             {
-                result.ErrorMessage = "Sync timed out after 90 minutes";
-                await UpdateDeviceStatusInDbAsync(deviceId, syncExecutionTimeIST);
+                result.ErrorMessage = "Sync timed out after 90 minutes.";
                 return result;
             }
             finally
@@ -230,163 +242,6 @@ namespace PQM.Infrastructure.Services
                 currentWatermarkIST, syncExecutionTimeIST,
                 newEntriesInUse);   // NEW — pass through
         }
-
-        private async Task<SyncResult> SaveReadingSessionAsync(
-            int deviceId,
-            int profileId,
-            string obisCode,
-            bool isTimeSeries,
-            IReadOnlyList<ProfileRow> rows,
-            IReadOnlyList<ProfileColumnInfo> columns,
-            Dictionary<int, int> parameterMap,
-            DateTime? currentWatermarkIST,
-            DateTime syncExecutionTimeIST,
-            uint? newEntriesInUse)
-        {
-            var result = new SyncResult { RowsRead = rows.Count };
-
-            if (rows.Count == 0)
-            {
-                result.Success = true;
-                return result;
-            }
-
-            DateTime? maxWrittenEntryIST = null;
-
-            using var conn = new SqlConnection(_connectionString);
-            await conn.OpenAsync();
-            using var tx = conn.BeginTransaction();
-
-            try
-            {
-                var existingTimestamps = await GetExistingEntryTimestampsIST(
-                    conn, tx, deviceId, profileId);
-
-                foreach (var row in rows)
-                {
-                    DateTime? entryTimestampIST =
-                        row.Timestamp.HasValue && row.Timestamp.Value.Year > 1
-                            ? row.Timestamp.Value
-                            : null;
-
-                    // NEW: reject rows whose timestamp is in the future relative to
-                    // this sync's actual execution time. This catches meter-clock drift
-                    // (the meter's RTC running ahead of real time) before it corrupts
-                    // the readings table.
-                    if (entryTimestampIST.HasValue && entryTimestampIST.Value > syncExecutionTimeIST.AddMinutes(5))
-                    {
-                        Console.WriteLine(
-                            $"[BAD TIMESTAMP] DeviceId={deviceId} ProfileId={profileId} " +
-                            $"Row timestamp {entryTimestampIST:yyyy-MM-dd HH:mm:ss} is after " +
-                            $"sync time {syncExecutionTimeIST:yyyy-MM-dd HH:mm:ss}. Skipping row."
-                        );
-                        result.RowsSkipped++;
-                        continue;
-                    }
-
-                    if (entryTimestampIST.HasValue &&
-                        existingTimestamps.Contains(entryTimestampIST.Value))
-                    {
-                        result.RowsSkipped++;
-                        continue;
-                    }
-
-                    long sessionId = await InsertReadingSessionAsync(
-                        conn, tx, deviceId, profileId,
-                        syncExecutionTimeIST, entryTimestampIST);
-
-                    for (int i = 0; i < row.Values.Count; i++)
-                    {
-                        int parameterId;
-
-                        if (!parameterMap.TryGetValue(i, out parameterId) || parameterId <= 0)
-                        {
-                            parameterId = await GetOrCreateParameterForColumnAsync(
-                                conn, tx, profileId, i, columns);
-                            parameterMap[i] = parameterId;
-                        }
-
-                        var value = row.Values[i];
-
-                        string formattedValue = ValueFormatter.FormatValue(value);
-                        string cleanedValue = ValueFormatter.CleanValue(formattedValue);
-                        Console.WriteLine(
-                            $"[DB VALUE DEBUG] " +
-                            $"Index={i} | " +
-                            $"ParameterId={parameterId} | " +
-                            $"ColumnOBIS={(i < columns.Count ? columns[i].LogicalName : "N/A")} | " +
-                            $"Unit={(i < columns.Count ? columns[i].Unit : "N/A")} | " +
-                            $"Type={value?.GetType().FullName ?? "null"} | " +
-                            $"Original={value ?? "null"} | " +
-                            $"Formatted={formattedValue} | " +
-                            $"Cleaned={cleanedValue}"
-                        );
-
-                        //await InsertReadingValueAsync(
-                        //    conn, tx, sessionId, parameterId,
-                        //    formattedValue,
-                        //    value?.ToString(),
-                        //    TryParseDouble(formattedValue));
-
-                        await InsertReadingValueAsync(
-                            conn, tx, sessionId, parameterId,
-                            cleanedValue,                // ? Pass already-cleaned
-                            value?.ToString(),
-                            TryParseDouble(cleanedValue));   // ? Use already-cleaned
-                    }
-
-                    result.RowsWritten++;
-
-                    if (entryTimestampIST.HasValue)
-                    {
-                        existingTimestamps.Add(entryTimestampIST.Value);
-
-                        if (!maxWrittenEntryIST.HasValue ||
-                            entryTimestampIST.Value > maxWrittenEntryIST.Value)
-                            maxWrittenEntryIST = entryTimestampIST.Value;
-                    }
-                }
-
-                if (isTimeSeries)
-                {
-                    DateTime? watermark = maxWrittenEntryIST ?? currentWatermarkIST;
-
-                    if (watermark.HasValue && watermark.Value > syncExecutionTimeIST)
-                        watermark = syncExecutionTimeIST;
-
-                    if (watermark.HasValue)
-                    {
-                        await UpsertDeviceProfileSyncStateAsync(conn, tx, deviceId, profileId,watermark.Value, syncExecutionTimeIST,(int?)newEntriesInUse);  
-
-                        result.NewWatermarkIST = watermark;
-                    }
-                }
-
-                await tx.CommitAsync();
-                result.Success = true;
-                return result;
-            }
-            catch (Exception ex)
-            {
-                await tx.RollbackAsync();
-                result.ErrorMessage = $"Database transaction error: {ex.Message}";
-                return result;
-            }
-        }
-
-        private async Task UpdateDeviceStatusInDbAsync(int deviceId, DateTime lastSyncIST)
-        {
-            using var conn = new SqlConnection(_connectionString);
-            await conn.OpenAsync();
-
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = "UPDATE Devices SET LastSyncAt = @lastSync WHERE Id = @id";
-            cmd.Parameters.AddWithValue("@lastSync", lastSyncIST);
-            cmd.Parameters.AddWithValue("@id", deviceId);
-
-            await cmd.ExecuteNonQueryAsync();
-        }
-
         private async Task<Device?> LoadDeviceAsync(int deviceId)
         {
             using var conn = new SqlConnection(_connectionString);
@@ -690,8 +545,262 @@ namespace PQM.Infrastructure.Services
 
             await cmd.ExecuteNonQueryAsync();
         }
+        private async Task<SyncResult> SaveReadingSessionAsync(
+            int deviceId,
+            int profileId,
+            string obisCode,
+            bool isTimeSeries,
+            IReadOnlyList<ProfileRow> rows,
+            IReadOnlyList<ProfileColumnInfo> columns,
+            Dictionary<int, int> parameterMap,
+            DateTime? currentWatermarkIST,
+            DateTime syncExecutionTimeIST,
+            uint? newEntriesInUse)
+        {
+            if (rows.Count == 0)
+                return new SyncResult { Success = true };
 
-        private static double? TryParseDouble(string input) =>
-            double.TryParse(input, out var value) ? value : null;
+            // Static/metadata profiles: unchanged — one transaction, no batching.
+            if (!isTimeSeries)
+            {
+                return await SaveBatchAsync(
+                    deviceId, profileId, isTimeSeries, rows, columns, parameterMap,
+                    currentWatermarkIST, syncExecutionTimeIST, newEntriesInUse,
+                    sharedExistingTimestamps: null);
+            }
+
+            // Time-series profiles: split into 500-row batches, each its own transaction.
+            // Time-series profiles: fetch duplicates ONCE, split into 500-row batches
+            var existingTimestamps = await GetExistingEntryTimestampsIST(deviceId, profileId);
+
+            var aggregate = new SyncResult { RowsRead = rows.Count };
+            DateTime? runningWatermark = currentWatermarkIST;
+
+            for (int offset = 0; offset < rows.Count; offset += TimeSeriesBatchSize)
+            {
+                var batchRows = rows.Skip(offset).Take(TimeSeriesBatchSize).ToList();
+
+                var batchResult = await SaveBatchAsync(
+                    deviceId, profileId, isTimeSeries, batchRows, columns, parameterMap,
+                    runningWatermark, syncExecutionTimeIST, newEntriesInUse,
+                    existingTimestamps);  // ← Pass shared set, not null
+
+                aggregate.RowsWritten += batchResult.RowsWritten;
+                aggregate.RowsSkipped += batchResult.RowsSkipped;
+
+                if (!batchResult.Success)
+                {
+                    aggregate.Success = false;
+                    aggregate.NewWatermarkIST = runningWatermark;
+                    aggregate.ErrorMessage = batchResult.ErrorMessage;
+                    return aggregate;
+                }
+
+                if (batchResult.NewWatermarkIST.HasValue)
+                    runningWatermark = batchResult.NewWatermarkIST;
+            }
+
+            aggregate.Success = true;
+            aggregate.NewWatermarkIST = runningWatermark;
+            return aggregate;
+        }
+
+        private async Task<SyncResult> SaveBatchAsync(
+            int deviceId,
+            int profileId,
+            bool isTimeSeries,
+            IReadOnlyList<ProfileRow> batchRows,
+            IReadOnlyList<ProfileColumnInfo> columns,
+            Dictionary<int, int> parameterMap,
+            DateTime? currentWatermarkIST,
+            DateTime syncExecutionTimeIST,
+            uint? newEntriesInUse,
+            HashSet<DateTime>? sharedExistingTimestamps)
+        {
+            var result = new SyncResult { RowsRead = batchRows.Count };
+            DateTime? maxWrittenEntryIST = null;
+            DateTime? maxLastSyncCandidate = null;   // NEW
+
+            using var conn = new SqlConnection(_connectionString);
+            await conn.OpenAsync();
+            using var tx = conn.BeginTransaction();
+
+            try
+            {
+                // Static profiles still fetch duplicates inside their own transaction, exactly
+                // as before. Time-series profiles reuse the shared set passed in.
+                var existingTimestamps = sharedExistingTimestamps
+                    ?? await GetExistingEntryTimestampsIST(conn, tx, deviceId, profileId);
+
+                var newlyWritten = new List<DateTime>();
+                var lastSyncUpdates = new List<DateTime>();   // NEW
+
+                foreach (var row in batchRows)
+                {
+                    DateTime? entryTimestampIST =
+                        row.Timestamp.HasValue && row.Timestamp.Value.Year > 1
+                            ? row.Timestamp.Value
+                            : null;
+
+                    if (entryTimestampIST.HasValue && entryTimestampIST.Value > syncExecutionTimeIST.AddMinutes(5))
+                    {
+                        Console.WriteLine(
+                            $"[BAD TIMESTAMP] DeviceId={deviceId} ProfileId={profileId} " +
+                            $"Row timestamp {entryTimestampIST:yyyy-MM-dd HH:mm:ss} is after " +
+                            $"sync time {syncExecutionTimeIST:yyyy-MM-dd HH:mm:ss}. Skipping row.");
+                        result.RowsSkipped++;
+                        continue;
+                    }
+
+                    if (entryTimestampIST.HasValue && existingTimestamps.Contains(entryTimestampIST.Value))
+                    {
+                        result.RowsSkipped++;
+                        continue;
+                    }
+
+                    long sessionId = await InsertReadingSessionAsync(
+                        conn, tx, deviceId, profileId, syncExecutionTimeIST, entryTimestampIST);
+
+                    // NEW
+                    if (entryTimestampIST.HasValue && profileId == LastSyncProfileId)
+                    {
+                        if (!maxLastSyncCandidate.HasValue || entryTimestampIST.Value > maxLastSyncCandidate.Value)
+                            maxLastSyncCandidate = entryTimestampIST.Value;
+                    }
+
+                    for (int i = 0; i < row.Values.Count; i++)
+                    {
+                        int parameterId;
+
+                        if (!parameterMap.TryGetValue(i, out parameterId) || parameterId <= 0)
+                        {
+                            parameterId = await GetOrCreateParameterForColumnAsync(conn, tx, profileId, i, columns);
+                            parameterMap[i] = parameterId;
+                        }
+
+                        var value = row.Values[i];
+                        string formattedValue = ValueFormatter.FormatValue(value);
+                        string cleanedValue = ValueFormatter.CleanValue(formattedValue);
+
+                        await InsertReadingValueAsync(
+                            conn, tx, sessionId, parameterId,
+                            cleanedValue, value?.ToString(), TryParseDouble(cleanedValue));
+                    }
+
+                    result.RowsWritten++;
+
+                    if (entryTimestampIST.HasValue)
+                    {
+                        newlyWritten.Add(entryTimestampIST.Value);
+
+                        if (!maxWrittenEntryIST.HasValue || entryTimestampIST.Value > maxWrittenEntryIST.Value)
+                            maxWrittenEntryIST = entryTimestampIST.Value;
+                    }
+                }
+                if (result.RowsWritten > 0)
+                {
+                    DateTime? watermark = maxWrittenEntryIST ?? currentWatermarkIST ?? syncExecutionTimeIST;
+
+                    if (watermark.HasValue && watermark.Value > syncExecutionTimeIST)
+                        watermark = syncExecutionTimeIST;
+
+                    if (watermark.HasValue)
+                    {
+                        // Only update sync state table for TIME-SERIES profiles
+                        if (isTimeSeries)
+                        {
+                            await UpsertDeviceProfileSyncStateAsync(conn, tx, deviceId, profileId, watermark.Value, syncExecutionTimeIST, (int?)newEntriesInUse);
+                        }
+
+                        // ✅ NOW set NewWatermarkIST for ALL profiles (static + time-series)
+                        result.NewWatermarkIST = watermark;
+                    }
+                }
+
+                bool lastSyncAdvanced = false;
+                if (maxLastSyncCandidate.HasValue)
+                {
+                    lastSyncAdvanced = await UpdateDeviceLastSyncInTxAsync(conn, tx, deviceId, maxLastSyncCandidate.Value);
+                }
+
+                await tx.CommitAsync();
+
+                if (lastSyncAdvanced && maxLastSyncCandidate.HasValue)
+                {
+                    await _eventPublisher.PublishAsync(new DeviceSyncCompletedEvent
+                    {
+                        DeviceId = deviceId,
+                        LastSyncAt = maxLastSyncCandidate.Value
+                    });
+                }
+
+                // Only mark rows as "known" once this batch is actually committed —
+                // if we added them before commit, a rolled-back batch would poison
+                // the shared duplicate-check set for later batches.
+                if (sharedExistingTimestamps != null)
+                    foreach (var ts in newlyWritten)
+                        sharedExistingTimestamps.Add(ts);
+
+                result.Success = true;
+                return result;
+            }
+            catch (Exception ex)
+            {
+                await tx.RollbackAsync();
+                result.ErrorMessage = $"Database transaction error: {ex.Message}";
+                return result;
+            }
+        }
+
+        // New overload — pre-fetches duplicates once, outside any transaction,
+        // before the batch loop starts.
+        private async Task<HashSet<DateTime>> GetExistingEntryTimestampsIST(int deviceId, int profileId)
+        {
+            var result = new HashSet<DateTime>();
+
+            using var conn = new SqlConnection(_connectionString);
+            await conn.OpenAsync();
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+        SELECT EntryTimestamp
+        FROM ReadingSessions
+        WHERE DeviceId = @did
+          AND ProfileId = @pid
+          AND EntryTimestamp IS NOT NULL";
+
+            cmd.Parameters.AddWithValue("@did", deviceId);
+            cmd.Parameters.AddWithValue("@pid", profileId);
+
+            using var reader = await cmd.ExecuteReaderAsync();
+
+            while (await reader.ReadAsync())
+                result.Add(DateTime.SpecifyKind(reader.GetDateTime(0), DateTimeKind.Unspecified));
+
+            return result;
+        }
+
+        private static double? TryParseDouble(string input) => double.TryParse(input, out var value) ? value : null;
+
+        private async Task<bool> UpdateDeviceLastSyncInTxAsync(   // was: Task, now: Task<bool>
+      SqlConnection conn,
+      SqlTransaction tx,
+      int deviceId,
+      DateTime entryTimestampIST)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = @"
+        UPDATE Devices
+        SET LastSyncAt = @ts
+        WHERE Id = @id
+          AND (LastSyncAt IS NULL OR LastSyncAt < @ts)";
+
+            cmd.Parameters.Add("@ts", System.Data.SqlDbType.DateTime2).Value = entryTimestampIST;
+            cmd.Parameters.Add("@id", System.Data.SqlDbType.Int).Value = deviceId;
+
+            int rows = await cmd.ExecuteNonQueryAsync();
+            return rows > 0;   // NEW — true only if it actually moved LastSyncAt forward
+        }
     }
 }

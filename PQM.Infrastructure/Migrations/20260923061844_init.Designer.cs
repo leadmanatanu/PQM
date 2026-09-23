@@ -12,7 +12,7 @@ using PQM.Infrastructure;
 namespace PQM.Infrastructure.Migrations
 {
     [DbContext(typeof(DataContext))]
-    [Migration("20260918085033_init")]
+    [Migration("20260923061844_init")]
     partial class init
     {
         /// <inheritdoc />

@@ -3,11 +3,12 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using PQM.Core.Events;
 using PQM.Core.Interfaces.Repositories;
 using PQM.Infrastructure;
+using PQM.Infrastructure.Events;
 using PQM.Infrastructure.Repositories;
 using PQM.Infrastructure.Services;
-using System;
 
 namespace PQM.Console
 {
@@ -42,14 +43,19 @@ namespace PQM.Console
                     });
 
                     // Register DataContext as a proper EF Core DbContext (scoped by default).
-                    // Replace UseSqlServer with your provider if different.
-                    services.AddDbContext<DataContext>(options =>options.UseSqlServer(connectionString));
+                    services.AddDbContext<DataContext>(options => options.UseSqlServer(connectionString));
 
                     services.AddScoped<IDeviceRepository, DeviceRepository>();
                     services.AddScoped<INetworkReachabilityService, NetworkReachabilityService>();
 
-                    // Register Profile Sync Service
-                    services.AddSingleton<ProfileSyncService>(sp => new ProfileSyncService(connectionString, sp.GetRequiredService<ILogger<ProfileSyncService>>()));
+                    // ✅ Register Event Publisher ONLY (no handlers in console app)
+                    services.AddSingleton<IEventPublisher, EventPublisher>();
+
+                    // Register Profile Sync Service with IEventPublisher
+                    services.AddSingleton<ProfileSyncService>(sp => new ProfileSyncService(
+                        connectionString,
+                        sp.GetRequiredService<ILogger<ProfileSyncService>>(),
+                        sp.GetRequiredService<IEventPublisher>()));
 
                     // Register Background Worker
                     services.AddHostedService<DeviceConsoleRunnerService>();

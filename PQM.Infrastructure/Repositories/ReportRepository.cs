@@ -13,8 +13,8 @@ namespace PQM.Infrastructure.Repositories
             _db = db ?? throw new ArgumentNullException(nameof(db));
         }
 
-        public (int TotalTimestamps, List<ParameterValueSearch> Results) GetAggregatedReport(
-            ReportSearch searchParams, int intervalMinutes, int pageNumber, int pageSize)
+        public List<ParameterValueSearch> GetAggregatedReport(
+            ReportSearch searchParams, int intervalMinutes)
         {
             DateTime startDate = searchParams.StartDate != default
                 ? searchParams.StartDate
@@ -33,14 +33,15 @@ namespace PQM.Infrastructure.Repositories
                 ? string.Join(",", searchParams.ParameterIds.Where(id => id > 0))
                 : "";
             string profileIdsCsv = searchParams.ProfileIds != null && searchParams.ProfileIds.Count > 0
-            ? string.Join(",", searchParams.ProfileIds.Where(id => id > 0))
-            : "";
+                ? string.Join(",", searchParams.ProfileIds.Where(id => id > 0))
+                : "";
 
             var sql = @"
                 WITH ScaledReadings AS (
                     SELECT
                         p.Id AS ParameterId,
                         p.Name AS ParameterName,
+                        p.ProfileId AS ProfileId,
                         p.ObjectType,
                         p.AggregationType,
                         rv.ValueNumeric AS ScaledValueNumeric,
@@ -65,6 +66,7 @@ namespace PQM.Infrastructure.Repositories
                     SELECT
                         ParameterId,
                         ParameterName,
+                        ProfileId,
                         BucketTimestamp,
                         CASE
                             WHEN AggregationType = 'Max'
@@ -74,15 +76,16 @@ namespace PQM.Infrastructure.Repositories
                             ELSE CAST(ROUND(AVG(ScaledValueNumeric), 2) AS VARCHAR(50))
                         END AS AggregatedValue
                     FROM ScaledReadings
-                    GROUP BY ParameterId, ParameterName, AggregationType, BucketTimestamp
+                    GROUP BY ParameterId, ParameterName, ProfileId, AggregationType, BucketTimestamp
                 )
                 SELECT
                     ParameterId,
                     ParameterName,
+                    ProfileId,
                     BucketTimestamp AS DateStamp,
                     AggregatedValue AS Value
                 FROM AggregatedBuckets
-                ORDER BY ParameterId, BucketTimestamp";
+                ORDER BY ProfileId, ParameterId, BucketTimestamp";
 
             var rawRows = _db.Database.SqlQueryRaw<AggregatedReportRow>(
                 sql,
@@ -94,44 +97,16 @@ namespace PQM.Infrastructure.Repositories
                 endDate,
                 intervalMinutes).ToList();
 
-            var allReadings = rawRows.Select((r, idx) => new ParameterValueSearch
+            return rawRows.Select((r, idx) => new ParameterValueSearch
             {
                 Id = idx + 1,
                 ParameterId = r.ParameterId,
                 ParameterName = r.ParameterName,
+                ProfileId = r.ProfileId,
                 DateStamp = r.DateStamp,
                 Value = r.Value,
                 DeviceName = ""
             }).ToList();
-
-            var timestamps = allReadings
-                .Where(r => r.DateStamp.HasValue)
-                .Select(r => r.DateStamp!.Value)
-                .Distinct()
-                .OrderBy(t => t)
-                .ToList();
-
-            int totalTimestamps = timestamps.Count;
-            if (totalTimestamps == 0)
-                return (0, new List<ParameterValueSearch>());
-
-            int validPageNumber = pageNumber;
-
-            if ((validPageNumber - 1) * pageSize >= totalTimestamps)
-                validPageNumber = 1;
-
-            var pagedTimestamps = pageSize == int.MaxValue
-                ? timestamps
-                : timestamps.Skip((validPageNumber - 1) * pageSize).Take(pageSize).ToList();
-
-            var pagedTimestampsSet = new HashSet<DateTime>(pagedTimestamps);
-
-            var pagedReadings = allReadings
-                .Where(r => r.DateStamp.HasValue &&
-                            pagedTimestampsSet.Contains(r.DateStamp.Value))
-                .ToList();
-
-            return (totalTimestamps, pagedReadings);
         }
 
         private static DateTime GetIndiaStandardTime()
