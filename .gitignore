@@ -362,7 +362,6 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 
-
-/PQM.Core/Interfaces/Repositories/INotificationRepository.cs
-*.cs
-/PQM.Infrastructure/DataContext.cs
+
+
+# /PQM.Infrastructure/DataContext.cs
