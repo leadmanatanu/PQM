@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PQM.Infrastructure;
 
@@ -11,9 +12,11 @@ using PQM.Infrastructure;
 namespace PQM.Infrastructure.Migrations
 {
     [DbContext(typeof(DataContext))]
-    partial class DataContextModelSnapshot : ModelSnapshot
+    [Migration("20260924105204_AddSyncRunLogs")]
+    partial class AddSyncRunLogs
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -411,7 +414,7 @@ namespace PQM.Infrastructure.Migrations
 
                     b.HasIndex("RunId");
 
-                    b.ToTable("SyncDeviceRunLogs");
+                    b.ToTable("SyncDeviceRuns");
                 });
 
             modelBuilder.Entity("PQM.Core.Entities.SyncRunLogs", b =>
@@ -457,7 +460,7 @@ namespace PQM.Infrastructure.Migrations
 
                     b.HasIndex("ScheduleId");
 
-                    b.ToTable("SyncRunLogs");
+                    b.ToTable("SyncRuns");
                 });
 
             modelBuilder.Entity("PQM.Core.Entities.User", b =>

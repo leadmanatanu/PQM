@@ -186,7 +186,7 @@ namespace PQM.Infrastructure.Services
                 ReleaseLock(deviceId);
             }
         }
-        private async Task<SyncResult> SyncSingleProfileOnOpenReaderAsync(DlmsMeterReader reader,Device device,string obisCode,DateTime syncExecutionTimeIST,CancellationToken cancellationToken = default)
+        private async Task<SyncResult> SyncSingleProfileOnOpenReaderAsync(DlmsMeterReader reader, Device device, string obisCode, DateTime syncExecutionTimeIST, CancellationToken cancellationToken = default)
         {
             var result = new SyncResult();
             bool isTimeSeries = ProfileCatalog.TimeSeriesProfiles.ContainsKey(obisCode);
@@ -202,19 +202,21 @@ namespace PQM.Infrastructure.Services
                 lastEntriesInUse = state.LastEntriesInUse;
             }
 
+            var knownMeta = await GetKnownParameterMetaAsync(profileId);
+
             var profileObj = reader.GetProfileObjects().FirstOrDefault(p => p.LogicalName == obisCode);
             IReadOnlyList<ProfileColumnInfo> columns = profileObj != null
-                ? await reader.ReadCaptureObjectsAsync(profileObj, cancellationToken)
+                ? await reader.ReadCaptureObjectsAsync(profileObj, knownMeta, cancellationToken)
                 : new List<ProfileColumnInfo>();
 
             var parameterMap = await EnsureParametersAsync(profileId, columns);
 
             var rows = await reader.ReadProfileAllEntriesAsync(
-                obisCode, currentWatermarkIST, lastEntriesInUse, cancellationToken); // pass lastEntriesInUse
+                obisCode, currentWatermarkIST, lastEntriesInUse, cancellationToken);
 
             result.RowsRead = rows.Count;
 
-            uint? newEntriesInUse = reader.GetProfileEntriesInUse(obisCode); // NEW — read after fetch
+            uint? newEntriesInUse = reader.GetProfileEntriesInUse(obisCode);
 
             if (rows.Count == 0)
             {
@@ -226,7 +228,7 @@ namespace PQM.Infrastructure.Services
                 device.Id, profileId, obisCode, isTimeSeries,
                 rows, columns, parameterMap,
                 currentWatermarkIST, syncExecutionTimeIST,
-                newEntriesInUse);   // NEW — pass through
+                newEntriesInUse);
         }
         private async Task<Device?> LoadDeviceAsync(int deviceId)
         {
@@ -380,7 +382,7 @@ namespace PQM.Infrastructure.Services
 
             return map;
         }
-        private async Task<int> GetOrCreateParameterForColumnAsync(SqlConnection conn,SqlTransaction tx,int profileId,int colIndex,IReadOnlyList<ProfileColumnInfo> columns)
+        private async Task<int> GetOrCreateParameterForColumnAsync(SqlConnection conn, SqlTransaction tx, int profileId, int colIndex, IReadOnlyList<ProfileColumnInfo> columns)
         {
             string obis = colIndex < columns.Count &&
                           !string.IsNullOrEmpty(columns[colIndex].LogicalName)
@@ -412,7 +414,7 @@ namespace PQM.Infrastructure.Services
 
             return Convert.ToInt32(await cmd.ExecuteScalarAsync());
         }
-        private async Task<HashSet<DateTime>> GetExistingEntryTimestampsIST(SqlConnection conn,SqlTransaction tx,int deviceId,int profileId)
+        private async Task<HashSet<DateTime>> GetExistingEntryTimestampsIST(SqlConnection conn, SqlTransaction tx, int deviceId, int profileId)
         {
             var result = new HashSet<DateTime>();
 
@@ -437,7 +439,7 @@ namespace PQM.Infrastructure.Services
 
             return result;
         }
-        private async Task<long> InsertReadingSessionAsync(SqlConnection conn,SqlTransaction tx,int deviceId,int profileId,DateTime readTimeIST,DateTime? entryTimestampIST)
+        private async Task<long> InsertReadingSessionAsync(SqlConnection conn, SqlTransaction tx, int deviceId, int profileId, DateTime readTimeIST, DateTime? entryTimestampIST)
         {
             using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
@@ -454,7 +456,7 @@ namespace PQM.Infrastructure.Services
 
             return Convert.ToInt64(await cmd.ExecuteScalarAsync());
         }
-        private async Task InsertReadingValueAsync(SqlConnection conn,SqlTransaction tx,long sessionId,int parameterId,string value,string? rawValue,double? numericValue)
+        private async Task InsertReadingValueAsync(SqlConnection conn, SqlTransaction tx, long sessionId, int parameterId, string value, string? rawValue, double? numericValue)
         {
             using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
@@ -494,7 +496,7 @@ namespace PQM.Infrastructure.Services
 
             await cmd.ExecuteNonQueryAsync();
         }
-        private async Task<SyncResult> SaveReadingSessionAsync(int deviceId,int profileId,string obisCode,bool isTimeSeries,IReadOnlyList<ProfileRow> rows,IReadOnlyList<ProfileColumnInfo> columns,Dictionary<int, int> parameterMap,DateTime? currentWatermarkIST,DateTime syncExecutionTimeIST,uint? newEntriesInUse)
+        private async Task<SyncResult> SaveReadingSessionAsync(int deviceId, int profileId, string obisCode, bool isTimeSeries, IReadOnlyList<ProfileRow> rows, IReadOnlyList<ProfileColumnInfo> columns, Dictionary<int, int> parameterMap, DateTime? currentWatermarkIST, DateTime syncExecutionTimeIST, uint? newEntriesInUse)
         {
             if (rows.Count == 0)
                 return new SyncResult { Success = true };
@@ -543,7 +545,7 @@ namespace PQM.Infrastructure.Services
             aggregate.NewWatermarkIST = runningWatermark;
             return aggregate;
         }
-        private async Task<SyncResult> SaveBatchAsync(int deviceId,int profileId,bool isTimeSeries,IReadOnlyList<ProfileRow> batchRows,IReadOnlyList<ProfileColumnInfo> columns,Dictionary<int, int> parameterMap,DateTime? currentWatermarkIST,DateTime syncExecutionTimeIST,uint? newEntriesInUse,HashSet<DateTime>? sharedExistingTimestamps)
+        private async Task<SyncResult> SaveBatchAsync(int deviceId, int profileId, bool isTimeSeries, IReadOnlyList<ProfileRow> batchRows, IReadOnlyList<ProfileColumnInfo> columns, Dictionary<int, int> parameterMap, DateTime? currentWatermarkIST, DateTime syncExecutionTimeIST, uint? newEntriesInUse, HashSet<DateTime>? sharedExistingTimestamps)
         {
             var result = new SyncResult { RowsRead = batchRows.Count };
             DateTime? maxWrittenEntryIST = null;
@@ -703,7 +705,7 @@ namespace PQM.Infrastructure.Services
             return result;
         }
         private static double? TryParseDouble(string input) => double.TryParse(input, out var value) ? value : null;
-        private async Task<bool> UpdateDeviceLastSyncInTxAsync(SqlConnection conn,SqlTransaction tx,int deviceId,DateTime entryTimestampIST)
+        private async Task<bool> UpdateDeviceLastSyncInTxAsync(SqlConnection conn, SqlTransaction tx, int deviceId, DateTime entryTimestampIST)
         {
             using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
@@ -718,6 +720,31 @@ namespace PQM.Infrastructure.Services
 
             int rows = await cmd.ExecuteNonQueryAsync();
             return rows > 0;   // NEW — true only if it actually moved LastSyncAt forward
+        }
+        private async Task<Dictionary<string, (int? Scaler, int? UnitCode, string? Unit)>> GetKnownParameterMetaAsync(int profileId)
+        {
+            var map = new Dictionary<string, (int?, int?, string?)>(StringComparer.OrdinalIgnoreCase);
+
+            using var conn = new SqlConnection(_connectionString);
+            await conn.OpenAsync();
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+        SELECT ObisCode, Scaler, UnitCode, Unit
+        FROM Parameters
+        WHERE ProfileId = @pid AND ObisCode IS NOT NULL";
+            cmd.Parameters.AddWithValue("@pid", profileId);
+
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                map[reader.GetString(0)] = (
+                    reader.IsDBNull(1) ? null : reader.GetInt32(1),
+                    reader.IsDBNull(2) ? null : reader.GetInt32(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3));
+            }
+
+            return map;
         }
     }
 }

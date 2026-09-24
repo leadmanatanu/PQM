@@ -14,9 +14,7 @@ using System.Text.Json.Serialization;
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
     .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
-    .MinimumLevel.Override(
-        "Microsoft.EntityFrameworkCore.Database.Command",
-        LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command", LogEventLevel.Warning)
     .WriteTo.Console()
     .CreateLogger();
 
@@ -32,12 +30,11 @@ try
 
     builder.Host.UseSerilog();
 
-    builder.Services.AddControllers()
-        .AddJsonOptions(options =>
-        {
-            options.JsonSerializerOptions.ReferenceHandler =
-                ReferenceHandler.IgnoreCycles;
-        });
+    builder.Services.AddControllers().AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.ReferenceHandler =
+            ReferenceHandler.IgnoreCycles;
+    });
 
     builder.Services.AddOpenApi();
 
@@ -60,7 +57,7 @@ try
 
     builder.Services.AddSingleton<IEventPublisher, EventPublisher>();
     builder.Services.AddSingleton<IEventHandler<DeviceSyncCompletedEvent>, DeviceSyncNotificationHandler>();
-    builder.Services.AddScoped<ProfileSyncService>(sp => new ProfileSyncService(connectionString,sp.GetRequiredService<ILogger<ProfileSyncService>>(),sp.GetRequiredService<IEventPublisher>()));
+    builder.Services.AddScoped<ProfileSyncService>(sp => new ProfileSyncService(connectionString, sp.GetRequiredService<ILogger<ProfileSyncService>>(), sp.GetRequiredService<IEventPublisher>()));
 
 
     builder.Services.AddSignalR();

@@ -18,6 +18,8 @@ namespace PQM.Infrastructure
         public DbSet<ReadingValue> ReadingValues { get; set; } = null!;
         public DbSet<DeviceProfileSyncState> DeviceProfileSyncStates { get; set; } = null!;
         public DbSet<Notification> Notifications { get; set; } = null!;
+        public DbSet<SyncRunLogs> SyncRunLogs { get; set; }
+        public DbSet<SyncDeviceRunLogs> SyncDeviceRunLogs { get; set; }
 
         public DataContext(DbContextOptions<DataContext> options) : base(options)
         {
@@ -146,6 +148,31 @@ namespace PQM.Infrastructure
                     .WithMany()
                     .HasForeignKey(d => d.ProfileId)
                     .OnDelete(DeleteBehavior.NoAction);
+            });
+
+            modelBuilder.Entity<SyncRunLogs>(entity =>
+            {
+                entity.HasKey(x => x.Id);
+
+                entity.HasOne(x => x.Schedule)
+                    .WithMany()
+                    .HasForeignKey(x => x.ScheduleId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<SyncDeviceRunLogs>(entity =>
+            {
+                entity.HasKey(x => x.Id);
+
+                entity.HasOne(x => x.Run)
+                    .WithMany(x => x.DeviceRuns)
+                    .HasForeignKey(x => x.RunId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(x => x.Device)
+                    .WithMany()
+                    .HasForeignKey(x => x.DeviceId)
+                    .OnDelete(DeleteBehavior.Restrict);
             });
         }
 

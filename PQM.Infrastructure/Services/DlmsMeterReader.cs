@@ -19,7 +19,7 @@ namespace PQM.Infrastructure.Services
         private int _lastRequestBytesReceived;
         private bool _connected;
         private bool _isAssociated;
-        private static readonly ConcurrentDictionary<string, DateTime> _meterLastDisconnect= new ConcurrentDictionary<string, DateTime>();
+        private static readonly ConcurrentDictionary<string, DateTime> _meterLastDisconnect = new ConcurrentDictionary<string, DateTime>();
         public static int DefaultMeterCooldownSeconds { get; set; } = 8;
         private readonly int _meterCooldownSeconds;
         public DlmsMeterReader(Device device, bool verboseLogging = false, int meterCooldownSeconds = 0)
@@ -252,7 +252,7 @@ namespace PQM.Infrastructure.Services
                 Console.WriteLine("[FALLBACK] All known profile objects were present in the meter's association view.");
             }
         }
-        public async Task<object?> ReadObjectAsync(GXDLMSObject obj,int attributeIndex = 2,System.Threading.CancellationToken cancellationToken = default)
+        public async Task<object?> ReadObjectAsync(GXDLMSObject obj, int attributeIndex = 2, System.Threading.CancellationToken cancellationToken = default)
         {
             EnsureConnected();
             cancellationToken.ThrowIfCancellationRequested();
@@ -275,15 +275,13 @@ namespace PQM.Infrastructure.Services
         {
             return _client.Objects.OfType<GXDLMSProfileGeneric>().ToList();
         }
-        public async Task<IReadOnlyList<ProfileColumnInfo>> ReadCaptureObjectsAsync(GXDLMSProfileGeneric profile,System.Threading.CancellationToken cancellationToken = default)
+        public async Task<IReadOnlyList<ProfileColumnInfo>> ReadCaptureObjectsAsync(GXDLMSProfileGeneric profile, Dictionary<string, (int? Scaler, int? UnitCode, string? Unit)>? knownMeta = null, CancellationToken cancellationToken = default)
         {
             EnsureConnected();
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Read CaptureObjects (attribute 3) — populates profile.CaptureObjects
             await ReadObjectAsync(profile, 3, cancellationToken);
 
-            // Read EntriesInUse (attribute 7) — needed for ReadRowsByEntry fallback
             try
             {
                 await ReadObjectAsync(profile, 7, cancellationToken);
@@ -307,20 +305,22 @@ namespace PQM.Infrastructure.Services
                 int? unitCode = null;
                 string? unitStr = null;
 
-                if (targetObj is GXDLMSRegister reg)
+                if (knownMeta != null && knownMeta.TryGetValue(targetObj.LogicalName, out var cached))
+                {
+                    scaler = cached.Scaler;
+                    unitCode = cached.UnitCode;
+                    unitStr = cached.Unit;
+                }
+                else if (targetObj is GXDLMSRegister reg)
                 {
                     try
                     {
-                        // Attribute 3 contains Scaler and Unit metadata
                         await ReadObjectAsync(reg, 3, cancellationToken);
                         scaler = Convert.ToInt32(reg.Scaler);
                         unitCode = (int)reg.Unit;
                         unitStr = reg.Unit != Unit.None ? reg.Unit.ToString() : null;
                     }
-                    catch
-                    {
-                        // Fallback if attribute 3 is not supported by meter for this specific register
-                    }
+                    catch { }
                 }
                 else if (targetObj is GXDLMSDemandRegister demandReg)
                 {
@@ -331,10 +331,7 @@ namespace PQM.Infrastructure.Services
                         unitCode = (int)demandReg.Unit;
                         unitStr = demandReg.Unit != Unit.None ? demandReg.Unit.ToString() : null;
                     }
-                    catch
-                    {
-                        // Fallback if attribute 3 is not supported
-                    }
+                    catch { }
                 }
 
                 result.Add(new ProfileColumnInfo
@@ -352,7 +349,7 @@ namespace PQM.Infrastructure.Services
 
             return result;
         }
-        public async Task<IReadOnlyList<ProfileRow>> ReadProfileAllEntriesAsync(string obisCode,DateTime? startTime = null,int? lastEntriesInUse = null,CancellationToken cancellationToken = default)
+        public async Task<IReadOnlyList<ProfileRow>> ReadProfileAllEntriesAsync(string obisCode, DateTime? startTime = null, int? lastEntriesInUse = null, CancellationToken cancellationToken = default)
         {
             EnsureConnected();
             cancellationToken.ThrowIfCancellationRequested();
@@ -365,7 +362,7 @@ namespace PQM.Infrastructure.Services
                 throw new InvalidOperationException(
                     $"Profile object ({obisCode}) not found in meter objects.");
 
-            await ReadCaptureObjectsAsync(profile, cancellationToken);
+            await ReadCaptureObjectsAsync(profile, null, cancellationToken);
 
             uint currentEntriesInUse =
                 profile.EntriesInUse > 0 ? profile.EntriesInUse : 100;
@@ -389,6 +386,10 @@ namespace PQM.Infrastructure.Services
                     $"entries 1..{currentEntriesInUse}");
             }
 
+            // NEW — timing starts here, right after the log line you're seeing
+            var readSw = System.Diagnostics.Stopwatch.StartNew();
+            int requestCount = 0;
+
             try
             {
                 var entryRequests = _client.ReadRowsByEntry(
@@ -402,14 +403,23 @@ namespace PQM.Infrastructure.Services
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
+                    requestCount++;
+                    var reqSw = System.Diagnostics.Stopwatch.StartNew();
+
                     entryReply = await SendAndReceiveAsync(
                         request,
                         cancellationToken);
+
+                    reqSw.Stop();
+                    Console.WriteLine($"[TIMING] {obisCode} request #{requestCount} took {reqSw.ElapsedMilliseconds}ms");
                 }
 
                 if (entryReply != null && entryReply.Error == 0)
                 {
                     var rows = ConvertProfileRows(entryReply.Value);
+
+                    readSw.Stop();
+                    Console.WriteLine($"[TIMING] {obisCode}: TOTAL meter read time {readSw.ElapsedMilliseconds}ms for {rows.Count} rows across {requestCount} request(s)");
 
                     Console.WriteLine(
                         $"[ReadProfileAllEntriesAsync] Read succeeded for " +
@@ -435,6 +445,9 @@ namespace PQM.Infrastructure.Services
                 profile,
                 2,
                 cancellationToken);
+
+            readSw.Stop();
+            Console.WriteLine($"[TIMING] {obisCode}: TOTAL meter read time (fallback path) {readSw.ElapsedMilliseconds}ms");
 
             return ConvertProfileRows(value);
         }
@@ -506,7 +519,7 @@ namespace PQM.Infrastructure.Services
 
             return rows;
         }
-        private async Task<GXReplyData> SendAndReceiveAsync(byte[] request,System.Threading.CancellationToken cancellationToken = default)
+        private async Task<GXReplyData> SendAndReceiveAsync(byte[] request, System.Threading.CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             _lastRequestBytesReceived = 0;
@@ -525,7 +538,7 @@ namespace PQM.Infrastructure.Services
 
             return reply;
         }
-        private async SysTask SendAndReceiveAsync(byte[] request,GXReplyData reply,GXReplyData notify,System.Threading.CancellationToken cancellationToken = default)
+        private async SysTask SendAndReceiveAsync(byte[] request, GXReplyData reply, GXReplyData notify, System.Threading.CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var buffer = new GXByteBuffer();
@@ -573,8 +586,7 @@ namespace PQM.Infrastructure.Services
                 retries--;
                 if (retries > 0)
                 {
-                    if (_verboseLogging)
-                        Console.WriteLine("[RECV RETRY] No reply received. Retrying frame request...");
+                    Console.WriteLine("[RECV RETRY] No reply received. Retrying frame request...");
                     System.Threading.Thread.Sleep(500);
                 }
             }
@@ -838,8 +850,8 @@ namespace PQM.Infrastructure.Services
 
                     Console.WriteLine($"[DISCONNECT TRACE] ReleaseRequest count: {releaseReqs?.Length ?? 0}, DisconnectRequest frame: {(discReq != null ? BitConverter.ToString(discReq) : "null")}");
 
-                    var requests = (releaseReqs != null && releaseReqs.Length > 0) 
-                        ? releaseReqs 
+                    var requests = (releaseReqs != null && releaseReqs.Length > 0)
+                        ? releaseReqs
                         : (discReq != null ? new[] { discReq } : Array.Empty<byte[]>());
 
                     try
