@@ -4,7 +4,6 @@ using Gurux.DLMS.Enums;
 
 namespace PQM.Infrastructure.Services
 {
-
     public static class ValueFormatter
     {
         public static string FormatValue(object? value)

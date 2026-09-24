@@ -352,11 +352,7 @@ namespace PQM.Infrastructure.Services
 
             return result;
         }
-        public async Task<IReadOnlyList<ProfileRow>> ReadProfileAllEntriesAsync(
-            string obisCode,
-            DateTime? startTime = null,
-            int? lastEntriesInUse = null,
-            CancellationToken cancellationToken = default)
+        public async Task<IReadOnlyList<ProfileRow>> ReadProfileAllEntriesAsync(string obisCode,DateTime? startTime = null,int? lastEntriesInUse = null,CancellationToken cancellationToken = default)
         {
             EnsureConnected();
             cancellationToken.ThrowIfCancellationRequested();
@@ -442,7 +438,6 @@ namespace PQM.Infrastructure.Services
 
             return ConvertProfileRows(value);
         }
-
         private static IReadOnlyList<ProfileRow> ConvertProfileRows(object? value)
         {
             var rows = new List<ProfileRow>();

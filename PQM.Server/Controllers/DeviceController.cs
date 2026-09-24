@@ -22,7 +22,6 @@ namespace PQM.Server.Controllers
             _profileSyncService = profileSyncService;
             _reachability = reachability;
         }
-
         private static DateTime GetIndiaStandardTime()
         {
             return TimeZoneInfo.ConvertTimeFromUtc(
