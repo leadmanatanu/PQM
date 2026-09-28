@@ -24,40 +24,49 @@ namespace PQM.Console
                 .ConfigureAppConfiguration((hostingContext, config) =>
                 {
                     config.SetBasePath(AppContext.BaseDirectory);
-                    config.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+                    config.AddJsonFile(
+                        "appsettings.json",
+                        optional: false,
+                        reloadOnChange: true);
                     config.AddEnvironmentVariables();
                 })
                 .ConfigureServices((hostContext, services) =>
                 {
-                    string connectionString = hostContext.Configuration.GetConnectionString("DefaultConnection")
-                        ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+                    string connectionString =
+                        hostContext.Configuration.GetConnectionString("DefaultConnection")
+                        ?? throw new InvalidOperationException(
+                            "Connection string 'DefaultConnection' not found.");
 
-                    int meterCooldown = hostContext.Configuration.GetValue<int>("DlmsSettings:MeterCooldownSeconds", 8);
-                    DlmsMeterReader.DefaultMeterCooldownSeconds = meterCooldown > 0 ? meterCooldown : 8;
+                    services.AddDbContext<DataContext>(options =>
+                        options.UseSqlServer(connectionString));
 
-                    // Configure typed ConsoleOptions
+                    int meterCooldown =
+                        hostContext.Configuration.GetValue<int>(
+                            "DlmsSettings:MeterCooldownSeconds", 8);
+
+                    DlmsMeterReader.DefaultMeterCooldownSeconds =
+                        meterCooldown > 0 ? meterCooldown : 8;
+
                     services.Configure<ConsoleOptions>(options =>
                     {
                         options.DefaultConnection = connectionString;
-                        options.MeterCooldownSeconds = DlmsMeterReader.DefaultMeterCooldownSeconds;
+                        options.MeterCooldownSeconds =
+                            DlmsMeterReader.DefaultMeterCooldownSeconds;
                     });
-
-                    // Register DataContext as a proper EF Core DbContext (scoped by default).
-                    services.AddDbContext<DataContext>(options => options.UseSqlServer(connectionString));
 
                     services.AddScoped<IDeviceRepository, DeviceRepository>();
                     services.AddScoped<INetworkReachabilityService, NetworkReachabilityService>();
+                    services.AddScoped<ISyncRunLogRepository, SyncRunLogRepository>();
 
-                    // ✅ Register Event Publisher ONLY (no handlers in console app)
                     services.AddSingleton<IEventPublisher, EventPublisher>();
 
-                    // Register Profile Sync Service with IEventPublisher
-                    services.AddSingleton<ProfileSyncService>(sp => new ProfileSyncService(
-                        connectionString,
-                        sp.GetRequiredService<ILogger<ProfileSyncService>>(),
-                        sp.GetRequiredService<IEventPublisher>()));
+                    services.AddScoped<ProfileSyncService>(sp =>
+                        new ProfileSyncService(
+                            connectionString,
+                            sp.GetRequiredService<ILogger<ProfileSyncService>>(),
+                            sp.GetRequiredService<IEventPublisher>(),
+                            sp.GetRequiredService<ISyncRunLogRepository>()));
 
-                    // Register Background Worker
                     services.AddHostedService<DeviceConsoleRunnerService>();
                 })
                 .Build();

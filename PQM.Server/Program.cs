@@ -54,10 +54,16 @@ try
     builder.Services.AddScoped<IReportRepository, ReportRepository>();
     builder.Services.AddSingleton<INetworkReachabilityService, NetworkReachabilityService>();
     builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
+    builder.Services.AddScoped<ISyncRunLogRepository, SyncRunLogRepository>();
 
     builder.Services.AddSingleton<IEventPublisher, EventPublisher>();
     builder.Services.AddSingleton<IEventHandler<DeviceSyncCompletedEvent>, DeviceSyncNotificationHandler>();
-    builder.Services.AddScoped<ProfileSyncService>(sp => new ProfileSyncService(connectionString, sp.GetRequiredService<ILogger<ProfileSyncService>>(), sp.GetRequiredService<IEventPublisher>()));
+
+    builder.Services.AddScoped<ProfileSyncService>(sp => new ProfileSyncService(
+        connectionString,
+        sp.GetRequiredService<ILogger<ProfileSyncService>>(),
+        sp.GetRequiredService<IEventPublisher>(),
+        sp.GetRequiredService<ISyncRunLogRepository>()));
 
 
     builder.Services.AddSignalR();

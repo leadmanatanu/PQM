@@ -2,6 +2,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using PQM.Core.Entities;
 using PQM.Core.Events;
+using PQM.Core.Interfaces.Repositories;
 
 namespace PQM.Infrastructure.Services
 {
@@ -35,13 +36,18 @@ namespace PQM.Infrastructure.Services
         private readonly string _connectionString;
         private readonly ILogger<ProfileSyncService> _logger;
         private readonly IEventPublisher _eventPublisher;
+
+        private readonly ISyncRunLogRepository _syncRunLogRepository;
+
         private const int TimeSeriesBatchSize = 100;
         private const int LastSyncProfileId = 15;
-        public ProfileSyncService(string connectionString, ILogger<ProfileSyncService> logger, IEventPublisher eventPublisher)
+        public ProfileSyncService(string connectionString, ILogger<ProfileSyncService> logger, IEventPublisher eventPublisher, ISyncRunLogRepository syncRunLogRepository)
         {
             _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _eventPublisher = eventPublisher ?? throw new ArgumentNullException(nameof(eventPublisher));
+            _syncRunLogRepository = syncRunLogRepository ?? throw new ArgumentNullException(nameof(syncRunLogRepository));
+
         }
         public static bool TryAcquireLock(int deviceId)
         {
@@ -65,7 +71,10 @@ namespace PQM.Infrastructure.Services
             _activeDeviceSyncs.TryRemove(deviceId, out _);
             _lockAcquiredTimes.TryRemove(deviceId, out _);
         }
-        public async Task<DeviceSyncResult> SyncDeviceAllProfilesAsync(int deviceId, CancellationToken cancellationToken = default)
+        public async Task<DeviceSyncResult> SyncDeviceAllProfilesAsync(
+    int deviceId,
+    SyncDeviceRunLogs deviceRunLog,
+    CancellationToken cancellationToken = default)
         {
             var result = new DeviceSyncResult
             {
@@ -74,20 +83,64 @@ namespace PQM.Infrastructure.Services
 
             if (!TryAcquireLock(deviceId))
             {
-                result.ErrorMessage = $"Sync already in progress for device {deviceId}.";
-                result.AlreadyInProgress = true;
-                return result;
-            }
+                result.ErrorMessage =
+                    $"Sync already in progress for device {deviceId}.";
 
-            // This is the time when the sync operation started.
-            // It is NOT the meter reading timestamp.
-            DateTime syncExecutionTimeIST =
-                TimeZoneInfo.ConvertTimeFromUtc(
+                result.AlreadyInProgress = true;
+
+                var completedAt = TimeZoneInfo.ConvertTimeFromUtc(
                     DateTime.UtcNow,
                     TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
 
-            // This will contain the latest meter-data timestamp
-            // successfully saved from all profiles.
+                deviceRunLog.CompletedAt = completedAt;
+                deviceRunLog.DurationMs =
+                    (long)(completedAt - deviceRunLog.StartedAt)
+                        .TotalMilliseconds;
+
+                deviceRunLog.Outcome = "Failed";
+                deviceRunLog.ErrorMessage = result.ErrorMessage;
+                deviceRunLog.ExceptionDetails =
+                    "Device sync lock could not be acquired because another sync is already in progress.";
+
+                await _syncRunLogRepository.UpdateDeviceRunAsync(deviceRunLog);
+
+                return result;
+            }
+
+            var device = await LoadDeviceAsync(deviceId);
+
+            if (device == null)
+            {
+                result.ErrorMessage =
+                    $"Device {deviceId} not found.";
+
+                var completedAt = TimeZoneInfo.ConvertTimeFromUtc(
+                    DateTime.UtcNow,
+                    TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
+
+                deviceRunLog.CompletedAt = completedAt;
+                deviceRunLog.DurationMs =
+                    (long)(completedAt - deviceRunLog.StartedAt)
+                        .TotalMilliseconds;
+
+                deviceRunLog.Outcome = "Failed";
+                deviceRunLog.ErrorMessage = result.ErrorMessage;
+                deviceRunLog.ExceptionDetails =
+                    "Device could not be loaded from the database.";
+
+                await _syncRunLogRepository.UpdateDeviceRunAsync(deviceRunLog);
+
+                ReleaseLock(deviceId);
+
+                return result;
+            }
+
+            result.DeviceName = device.Name;
+
+            var syncExecutionTimeIST =
+                TimeZoneInfo.ConvertTimeFromUtc(
+                    DateTime.UtcNow,
+                    TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
 
             using var hardCts =
                 CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -98,16 +151,6 @@ namespace PQM.Infrastructure.Services
 
             try
             {
-                var device = await LoadDeviceAsync(deviceId);
-
-                if (device == null)
-                {
-                    result.ErrorMessage = $"Device with Id={deviceId} not found.";
-                    return result;
-                }
-
-                result.DeviceName = device.Name;
-
                 await using var reader =
                     new DlmsMeterReader(device, verboseLogging: false);
 
@@ -140,7 +183,6 @@ namespace PQM.Infrastructure.Services
                             if (profileResult.Success)
                             {
                                 result.ProfilesSucceeded++;
-
                                 result.TotalRowsRead += profileResult.RowsRead;
                                 result.TotalRowsWritten += profileResult.RowsWritten;
                                 result.TotalRowsSkipped += profileResult.RowsSkipped;
@@ -173,16 +215,36 @@ namespace PQM.Infrastructure.Services
                     result.ErrorMessage = $"Connection failure: {ex.Message}";
                 }
 
-
                 return result;
             }
-            catch (OperationCanceledException) when (syncToken.IsCancellationRequested)
+            catch (OperationCanceledException)
+                when (syncToken.IsCancellationRequested)
             {
                 result.ErrorMessage = "Sync timed out after 90 minutes.";
                 return result;
             }
             finally
             {
+                deviceRunLog.CompletedAt =
+                    TimeZoneInfo.ConvertTimeFromUtc(
+                        DateTime.UtcNow,
+                        TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
+
+                deviceRunLog.DurationMs =
+                    (long)(deviceRunLog.CompletedAt.Value - deviceRunLog.StartedAt)
+                    .TotalMilliseconds;
+
+                deviceRunLog.ProfilesAttempted = result.ProfilesAttempted;
+                deviceRunLog.ProfilesSucceeded = result.ProfilesSucceeded;
+
+                deviceRunLog.Outcome = result.Success
+                    ? "Success"
+                    : "Failed";
+
+                deviceRunLog.ErrorMessage = result.ErrorMessage;
+
+                await _syncRunLogRepository.UpdateDeviceRunAsync(deviceRunLog);
+
                 ReleaseLock(deviceId);
             }
         }

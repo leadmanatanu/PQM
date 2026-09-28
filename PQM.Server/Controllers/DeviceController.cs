@@ -15,12 +15,14 @@ namespace PQM.Server.Controllers
         private readonly ILogger<DeviceController> _logger;
         private readonly ProfileSyncService _profileSyncService;
         private readonly INetworkReachabilityService _reachability;
-        public DeviceController(IDeviceRepository deviceRepository,ILogger<DeviceController> logger,ProfileSyncService profileSyncService,INetworkReachabilityService reachability)
+        private readonly ISyncRunLogRepository _syncRunLogRepository;
+        public DeviceController(IDeviceRepository deviceRepository,ILogger<DeviceController> logger,ProfileSyncService profileSyncService,INetworkReachabilityService reachability, ISyncRunLogRepository syncRunLogRepository)
         {
             _deviceRepository = deviceRepository;
             _logger = logger;
             _profileSyncService = profileSyncService;
             _reachability = reachability;
+            _syncRunLogRepository = syncRunLogRepository;
         }
         private static DateTime GetIndiaStandardTime()
         {
@@ -400,9 +402,39 @@ namespace PQM.Server.Controllers
                 // 3. Start Sync
                 // ----------------------------------------------------
 
-                _logger.LogInformation("[DeviceController] Sync Now started for Device {DeviceId}.",id);
+                var runLog = new SyncRunLogs
+                {
+                    ScheduleId = device.DeviceSyncScheduleId ?? 0,
+                    StartedAt = GetIndiaStandardTime(),
+                    Status = SyncRunStatus.Running,
+                    TotalDevices = 1
+                };
 
-                var result = await _profileSyncService.SyncDeviceAllProfilesAsync(id, cancellationToken);
+                runLog = await _syncRunLogRepository
+     .CreateScheduleRunAsync(runLog);
+
+                var deviceRunLog = new SyncDeviceRunLogs
+                {
+                    RunId = runLog.Id,
+                    DeviceId = device.Id,
+                    IP = device.IP,
+                    Port = device.PORT,
+                    StartedAt = GetIndiaStandardTime(),
+                    Outcome = "Running"
+                };
+
+                deviceRunLog = await _syncRunLogRepository
+                    .CreateDeviceRunAsync(deviceRunLog);
+
+                _logger.LogInformation(
+                    "[DeviceController] Sync Now started for Device {DeviceId}.",
+                    id);
+
+                var result = await _profileSyncService
+                    .SyncDeviceAllProfilesAsync(
+                        id,
+                        deviceRunLog,
+                        cancellationToken);
 
                 // ----------------------------------------------------
                 // 4. Return result
