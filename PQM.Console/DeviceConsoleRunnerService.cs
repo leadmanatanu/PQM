@@ -22,7 +22,7 @@ namespace PQM.Console
             IServiceScopeFactory scopeFactory,
             IOptions<ConsoleOptions> options,
             ILogger<DeviceConsoleRunnerService> logger)
-        {
+        {   
             _scopeFactory = scopeFactory
                 ?? throw new ArgumentNullException(nameof(scopeFactory));
 
