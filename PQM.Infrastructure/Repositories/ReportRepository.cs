@@ -456,6 +456,42 @@ namespace PQM.Infrastructure.Repositories
             }
            
         }
+        public async Task<List<ProfileDropdownDto>> GetProfilesByDeviceIdAsync(int deviceId,CancellationToken cancellationToken)
+        {
+            return await _db.ReadingSessions
+                .Where(rs => rs.DeviceId == deviceId)
+                .Join(
+                    _db.Profiles,
+                    rs => rs.ProfileId,
+                    p => p.Id,
+                    (rs, p) => new ProfileDropdownDto
+                    {
+                        Id = p.Id,
+                        FriendlyName = p.FriendlyName,
+                        ObisCode = p.ObisCode
+                    })
+                .Distinct()
+                .OrderBy(p => p.FriendlyName)
+                .ToListAsync(cancellationToken);
+        }
+        public async Task<List<ParameterDropdownDto>> GetParametersByProfileIdAsync(int profileId,CancellationToken cancellationToken)
+        {
+            return await _db.Parameter
+                .Where(p => p.ProfileId == profileId)
+                .OrderBy(p => p.Name)
+                .Select(p => new ParameterDropdownDto
+                {
+                    Id = p.Id,
+                    Name = p.Name,
+                    ObisCode = p.ObisCode,
+                    Description = p.Description,
+                    DataType = p.DataType,
+                    ObjectType = p.ObjectType,
+                    AttributeIndex = p.AttributeIndex,
+                    ProfileId = p.ProfileId
+                })
+                .ToListAsync(cancellationToken);
+        }
         private static DateTime GetIndiaStandardTime()
         {
             return TimeZoneInfo.ConvertTimeFromUtc(

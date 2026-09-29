@@ -10,14 +10,10 @@ public class ReportController : ControllerBase
 {
     private readonly APIResponse _apiResponse = new();
     private readonly IReportRepository _reportRepository;
-    private readonly ILiveRepository _liveRepository;
 
-    public ReportController(
-        IReportRepository reportRepository,
-        ILiveRepository liveRepository)
+    public ReportController(IReportRepository reportRepository)
     {
         _reportRepository = reportRepository;
-        _liveRepository = liveRepository;
     }
 
     private static DateTime GetIndiaStandardTime()
@@ -56,13 +52,12 @@ public class ReportController : ControllerBase
             // Get profiles
             // ---------------------------------------------------------
 
-            var profiles =
-                await _liveRepository.GetProfilesAsync(cancellationToken);
+            var profiles = await _reportRepository.GetProfilesByDeviceIdAsync(searchParams.DeviceId,cancellationToken);
 
             var profileLookup = profiles.ToDictionary(
                 p => p.Id,
                 p => string.IsNullOrWhiteSpace(p.FriendlyName)
-                    ? p.ObisCode
+                    ? p.ObisCode ?? $"Profile {p.Id}"
                     : p.FriendlyName
             );
 
@@ -70,11 +65,9 @@ public class ReportController : ControllerBase
             // Find BlockLoad Profile
             // ---------------------------------------------------------
 
-            var blockLoadProfile = profiles.FirstOrDefault(p =>
-                string.Equals(
-                    string.IsNullOrWhiteSpace(p.FriendlyName)
-                        ? p.ObisCode
-                        : p.FriendlyName,
+            var blockLoadProfile = profiles.FirstOrDefault(p =>string.Equals(string.IsNullOrWhiteSpace(p.FriendlyName)
+            ? p.ObisCode
+            : p.FriendlyName,
                     "BlockLoad Profile",
                     StringComparison.OrdinalIgnoreCase
                 )
@@ -298,6 +291,84 @@ public class ReportController : ControllerBase
                 status = false,
                 message = ex.Message
             });
+        }
+    }
+
+    [HttpGet("profiles")]
+    public async Task<IActionResult> GetProfilesByDevice(
+    [FromQuery] int deviceId,
+    CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (deviceId <= 0)
+            {
+                return BadRequest(new
+                {
+                    status = false,
+                    message = "DeviceId is required."
+                });
+            }
+
+            var profiles =
+                await _reportRepository.GetProfilesByDeviceIdAsync(
+                    deviceId,
+                    cancellationToken);
+
+            return Ok(new
+            {
+                status = true,
+                data = profiles
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    status = false,
+                    message = ex.Message
+                });
+        }
+    }
+
+    [HttpGet("parameters")]
+    public async Task<IActionResult> GetParametersByProfile(
+    [FromQuery] int profileId,
+    CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (profileId <= 0)
+            {
+                return BadRequest(new
+                {
+                    status = false,
+                    message = "ProfileId is required."
+                });
+            }
+
+            var parameters =
+                await _reportRepository.GetParametersByProfileIdAsync(
+                    profileId,
+                    cancellationToken);
+
+            return Ok(new
+            {
+                status = true,
+                data = parameters
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    status = false,
+                    message = ex.Message
+                });
         }
     }
 }

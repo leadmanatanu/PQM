@@ -89,4 +89,32 @@ namespace PQM.Core.DTOs
 
         public string? ProfileName { get; set; }
     }
+
+    public class ProfileDropdownDto
+    {
+        public int Id { get; set; }
+
+        public string? FriendlyName { get; set; }
+
+        public string? ObisCode { get; set; }
+    }
+
+    public class ParameterDropdownDto
+    {
+        public int Id { get; set; }
+
+        public string Name { get; set; } = string.Empty;
+
+        public string? ObisCode { get; set; }
+
+        public string? Description { get; set; }
+
+        public string? DataType { get; set; }
+
+        public string? ObjectType { get; set; }
+
+        public int? AttributeIndex { get; set; }
+
+        public int ProfileId { get; set; }
+    }
 }

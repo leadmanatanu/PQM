@@ -4,16 +4,17 @@ namespace PQM.Core.Interfaces.Repositories
 {
     public interface IReportRepository
     {
-        // Used by the report UI.
-        // BlockLoad Profile timestamps are paginated.
-        // Other profiles return all timestamps.
+        Task<List<ProfileDropdownDto>> GetProfilesByDeviceIdAsync(
+            int deviceId,
+            CancellationToken cancellationToken);
+
+        Task<List<ParameterDropdownDto>> GetParametersByProfileIdAsync(
+            int profileId,
+            CancellationToken cancellationToken);
         AggregatedReportResult GetAggregatedReport(
             ReportSearch searchParams,
             int intervalMinutes);
 
-        // Used by Export.
-        // Returns ALL timestamps, including BlockLoad Profile.
-        // No pagination is applied.
         List<ParameterValueSearch> GetAggregatedReportForExport(
             ReportSearch searchParams,
             int intervalMinutes);
