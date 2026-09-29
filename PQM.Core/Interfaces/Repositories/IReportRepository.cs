@@ -1,9 +1,13 @@
 ﻿using PQM.Core.DTOs;
+using PQM.Core.Entities;
 
 namespace PQM.Core.Interfaces.Repositories
 {
     public interface IReportRepository
     {
+        Task<Device> GetDeviceByIdAsync(
+            int deviceId,
+            CancellationToken cancellationToken);
         Task<List<ProfileDropdownDto>> GetProfilesByDeviceIdAsync(
             int deviceId,
             CancellationToken cancellationToken);

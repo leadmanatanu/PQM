@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using PQM.Core.DTOs;
+using PQM.Core.Entities;
 using PQM.Core.Interfaces.Repositories;
 
 namespace PQM.Infrastructure.Repositories
@@ -84,17 +85,20 @@ namespace PQM.Infrastructure.Repositories
         SELECT
             p.Id AS ParameterId,
             p.Name AS ParameterName,
-            p.ProfileId,
+            p.ProfileId AS ProfileId,
+            p.ObjectType,
             p.AggregationType,
-            rv.ValueNumeric,
+            rv.ValueNumeric AS ScaledValueNumeric,
             DATEADD(
                 minute,
                 (DATEDIFF(minute, '2000-01-01', rs.EntryTimestamp) / {6}) * {6},
                 '2000-01-01'
             ) AS BucketTimestamp
         FROM ReadingValues rv
-        INNER JOIN ReadingSessions rs ON rv.SessionId = rs.Id
+
         INNER JOIN Parameters p ON rv.ParameterId = p.Id
+        INNER JOIN ReadingSessions rs ON rv.SessionId = rs.Id
+        
         INNER JOIN PagedBlockLoad pb
             ON pb.BucketTimestamp = DATEADD(
                 minute,
@@ -120,8 +124,9 @@ namespace PQM.Infrastructure.Repositories
             p.Id AS ParameterId,
             p.Name AS ParameterName,
             p.ProfileId,
+            p.ObjectType,
             p.AggregationType,
-            rv.ValueNumeric,
+            rv.ValueNumeric AS ScaledValueNumeric,
             DATEADD(
                 minute,
                 (DATEDIFF(minute, '2000-01-01', rs.EntryTimestamp) / {6}) * {6},
@@ -160,8 +165,8 @@ namespace PQM.Infrastructure.Repositories
                 WHEN AggregationType = 'Max'
                   OR ParameterName LIKE 'Cum%'
                   OR ParameterName LIKE 'Cumulative%'
-                THEN CAST(ROUND(MAX(ValueNumeric), 2) AS VARCHAR(50))
-                ELSE CAST(ROUND(AVG(ValueNumeric), 2) AS VARCHAR(50))
+                THEN CAST(ROUND(MAX(ScaledValueNumeric), 2) AS VARCHAR(50))
+                ELSE CAST(ROUND(AVG(ScaledValueNumeric), 2) AS VARCHAR(50))
             END AS Value
         FROM AllData
         GROUP BY
@@ -331,98 +336,56 @@ namespace PQM.Infrastructure.Repositories
                     : "";
 
                 var sql = @"
-        WITH ScaledReadings AS (
-            SELECT
-                p.Id AS ParameterId,
-                p.Name AS ParameterName,
-                p.ProfileId AS ProfileId,
-                p.ObjectType,
-                p.AggregationType,
-                rv.ValueNumeric AS ScaledValueNumeric,
-
-                DATEADD(
-                    minute,
-                    (DATEDIFF(
-                        minute,
-                        '2000-01-01',
-                        rs.EntryTimestamp
-                    ) / {6}) * {6},
-                    '2000-01-01'
-                ) AS BucketTimestamp
-
-            FROM ReadingValues rv
-
-            INNER JOIN Parameters p
-                ON rv.ParameterId = p.Id
-
-            INNER JOIN ReadingSessions rs
-                ON rv.SessionId = rs.Id
-
-            WHERE rs.DeviceId = {0}
-
-              AND ({1} = '' OR p.ProfileId IN (
-                    SELECT CAST(value AS INT)
-                    FROM STRING_SPLIT({1}, ',')
-              ))
-
-              AND ({2} IS NULL OR p.ObjectType = {2})
-
-              AND ({3} = '' OR p.Id IN (
-                    SELECT CAST(value AS INT)
-                    FROM STRING_SPLIT({3}, ',')
-              ))
-
-              AND rs.EntryTimestamp >= {4}
-              AND rs.EntryTimestamp <= {5}
-
-              AND rv.ValueNumeric IS NOT NULL
-        ),
-
-        AggregatedBuckets AS (
-            SELECT
-                ParameterId,
-                ParameterName,
-                ProfileId,
-                BucketTimestamp,
-
-                CASE
-                    WHEN AggregationType = 'Max'
-                         OR ParameterName LIKE 'Cum%'
-                         OR ParameterName LIKE 'Cumulative%'
-                    THEN CAST(
-                        ROUND(MAX(ScaledValueNumeric), 2)
-                        AS VARCHAR(50)
-                    )
-
-                    ELSE CAST(
-                        ROUND(AVG(ScaledValueNumeric), 2)
-                        AS VARCHAR(50)
-                    )
-                END AS AggregatedValue
-
-            FROM ScaledReadings
-
-            GROUP BY
-                ParameterId,
-                ParameterName,
-                ProfileId,
-                AggregationType,
-                BucketTimestamp
-        )
-
-        SELECT
-            ParameterId,
-            ParameterName,
-            ProfileId,
-            BucketTimestamp AS DateStamp,
-            AggregatedValue AS Value
-
-        FROM AggregatedBuckets
-
-        ORDER BY
-            ProfileId,
-            ParameterId,
-            BucketTimestamp";
+                WITH ScaledReadings AS (
+                    SELECT
+                        p.Id AS ParameterId,
+                        p.Name AS ParameterName,
+                        p.ProfileId,
+                        p.ObjectType,
+                        p.AggregationType,
+                        rv.ValueNumeric AS ScaledValueNumeric,
+                        DATEADD(minute,
+                            (DATEDIFF(minute, '2000-01-01', rs.EntryTimestamp) / {6}) * {6},
+                            '2000-01-01') AS BucketTimestamp
+                    FROM ReadingValues rv
+                    INNER JOIN Parameters p ON rv.ParameterId = p.Id
+                    INNER JOIN ReadingSessions rs ON rv.SessionId = rs.Id
+                    WHERE rs.DeviceId = {0}
+                      AND ({1} = '' OR p.ProfileId IN (
+                          SELECT CAST(value AS INT) FROM STRING_SPLIT({1}, ',')
+                      ))
+                      AND ({2} IS NULL OR p.ObjectType = {2})
+                      AND ({3} = '' OR p.Id IN (
+                          SELECT CAST(value AS INT) FROM STRING_SPLIT({3}, ',')
+                      ))
+                      AND rs.EntryTimestamp >= {4}
+                      AND rs.EntryTimestamp <= {5}
+                      AND rv.ValueNumeric IS NOT NULL
+                ),
+                AggregatedBuckets AS (
+                    SELECT
+                        ParameterId,
+                        ParameterName,
+                        ProfileId,
+                        BucketTimestamp,
+                        CASE
+                            WHEN AggregationType = 'Max'
+                              OR ParameterName LIKE 'Cum%'
+                              OR ParameterName LIKE 'Cumulative%'
+                            THEN CAST(ROUND(MAX(ScaledValueNumeric), 2) AS VARCHAR(50))
+                            ELSE CAST(ROUND(AVG(ScaledValueNumeric), 2) AS VARCHAR(50))
+                        END AS AggregatedValue
+                    FROM ScaledReadings
+                    GROUP BY ParameterId, ParameterName, ProfileId, AggregationType, BucketTimestamp
+                )
+                SELECT
+                    ParameterId,
+                    ParameterName,
+                    ProfileId,
+                    BucketTimestamp AS DateStamp,
+                    AggregatedValue AS Value
+                FROM AggregatedBuckets
+                ORDER BY ProfileId, ParameterId, BucketTimestamp";
 
                 var rawRows = _db.Database
                     .SqlQueryRaw<AggregatedReportRow>(
@@ -491,6 +454,21 @@ namespace PQM.Infrastructure.Repositories
                     ProfileId = p.ProfileId
                 })
                 .ToListAsync(cancellationToken);
+        }
+        public async Task<Device> GetDeviceByIdAsync(int deviceId,CancellationToken cancellationToken)
+        {
+            var device = await _db.Device
+                .FirstOrDefaultAsync(
+                    d => d.Id == deviceId,
+                    cancellationToken);
+
+            if (device == null)
+            {
+                throw new KeyNotFoundException(
+                    $"Device with Id {deviceId} was not found.");
+            }
+
+            return device;
         }
         private static DateTime GetIndiaStandardTime()
         {

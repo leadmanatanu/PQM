@@ -3,6 +3,7 @@ using PQM.Core.DTOs;
 using PQM.Core.Interfaces.Repositories;
 using PQM.Server.Models;
 using System.Text;
+using ClosedXML.Excel;
 
 [ApiController]
 [Route("api/report")]
@@ -60,7 +61,6 @@ public class ReportController : ControllerBase
                     ? p.ObisCode ?? $"Profile {p.Id}"
                     : p.FriendlyName
             );
-
             // ---------------------------------------------------------
             // Find BlockLoad Profile
             // ---------------------------------------------------------
@@ -160,138 +160,96 @@ public class ReportController : ControllerBase
     }
 
     [HttpGet("export")]
-    public IActionResult ExportAggregatedReport(
-        [FromQuery] ReportSearch searchParams)
+    public async Task<IActionResult> ExportAggregatedReport(
+    [FromQuery] ReportSearch searchParams,
+    CancellationToken cancellationToken)
     {
-        try
+        if (searchParams.DeviceId <= 0)
+            return BadRequest("DeviceId is required.");
+
+        var device = await _reportRepository.GetDeviceByIdAsync(
+    searchParams.DeviceId, cancellationToken);
+
+        var profiles = await _reportRepository.GetProfilesByDeviceIdAsync(
+            searchParams.DeviceId, cancellationToken);
+
+        var profileLookup = profiles.ToDictionary(
+            p => p.Id,
+            p => string.IsNullOrWhiteSpace(p.FriendlyName)
+                ? p.ObisCode ?? $"Profile {p.Id}"
+                : p.FriendlyName);
+
+        var data = _reportRepository.GetAggregatedReportForExport(
+            searchParams, searchParams.IntervalMinutes);
+
+        using var workbook = new XLWorkbook();
+        if (data == null || !data.Any())
         {
-            if (searchParams.DeviceId <= 0)
-            {
-                return BadRequest(new
+            return BadRequest("No report data found for the selected date range and profiles.");
+        }
+
+        foreach (var profileGroup in data.GroupBy(x => x.ProfileId))
+        {
+            var profileName = profileLookup.TryGetValue(
+    profileGroup.Key ?? 0, out var name)
+        ? name
+        : $"Profile_{profileGroup.Key}";
+            var sheetName = profileName.Length > 31
+                ? profileName[..31]
+                : profileName;
+
+            var ws = workbook.Worksheets.Add(sheetName);
+
+            var parameters = profileGroup
+                .GroupBy(x => x.ParameterId)
+                .Select(x => new
                 {
-                    status = false,
-                    message = "DeviceId is required."
-                });
-            }
-
-            int interval = searchParams.IntervalMinutes > 0
-                ? searchParams.IntervalMinutes
-                : 15;
-
-            // IMPORTANT:
-            // Export uses the separate method so pagination
-            // is NOT applied.
-            var readings =
-                _reportRepository.GetAggregatedReportForExport(
-                    searchParams,
-                    interval);
-
-            var timestamps = readings
-                .Where(r => r.DateStamp.HasValue)
-                .Select(r => r.DateStamp!.Value)
-                .Distinct()
-                .OrderBy(t => t)
+                    Id = x.Key,
+                    Name = x.First().ParameterName
+                })
                 .ToList();
 
-            var paramsMap = new Dictionary<int, string>();
+            ws.Cell(1, 1).Value = "Timestamp";
 
-            foreach (var r in readings)
+            for (int i = 0; i < parameters.Count; i++)
+                ws.Cell(1, i + 2).Value = parameters[i].Name;
+
+            var timestamps = profileGroup
+                .Select(x => x.DateStamp)
+                .Distinct()
+                .OrderBy(x => x)
+                .ToList();
+
+            for (int r = 0; r < timestamps.Count; r++)
             {
-                if (!paramsMap.ContainsKey(r.ParameterId))
+                ws.Cell(r + 2, 1).Value = timestamps[r];
+
+                for (int c = 0; c < parameters.Count; c++)
                 {
-                    paramsMap[r.ParameterId] = r.ParameterName;
+                    var value = profileGroup.FirstOrDefault(x =>
+                        x.ParameterId == parameters[c].Id &&
+                        x.DateStamp == timestamps[r]);
+
+                    if (value != null)
+                        ws.Cell(r + 2, c + 2).Value = value.Value;
                 }
             }
 
-            var cellLookup =
-                new Dictionary<int, Dictionary<DateTime, string>>();
-
-            foreach (var r in readings)
-            {
-                if (!r.DateStamp.HasValue)
-                    continue;
-
-                if (!cellLookup.TryGetValue(
-                        r.ParameterId,
-                        out var dict))
-                {
-                    dict = new Dictionary<DateTime, string>();
-                    cellLookup[r.ParameterId] = dict;
-                }
-
-                dict[r.DateStamp.Value] = r.Value;
-            }
-
-            var sb = new StringBuilder();
-
-            sb.AppendLine(
-                $"\"Report Type\",\"Interval Aggregated Report ({interval} min buckets)\"");
-
-            sb.AppendLine(
-                $"\"Generated At\",\"{GetIndiaStandardTime():yyyy-MM-dd HH:mm:ss}\"");
-
-            sb.AppendLine();
-
-            sb.Append("\"Parameter\"");
-
-            foreach (var ts in timestamps)
-            {
-                sb.Append(
-                    $",\"{ts:yyyy-MM-dd HH:mm:ss}\"");
-            }
-
-            sb.AppendLine();
-
-            foreach (var kvp in paramsMap)
-            {
-                int pId = kvp.Key;
-                string pName = kvp.Value;
-
-                sb.Append(
-                    $"\"{pName.Replace("\"", "\"\"")}\"");
-
-                foreach (var ts in timestamps)
-                {
-                    string val =
-                        cellLookup.TryGetValue(
-                            pId,
-                            out var dict) &&
-                        dict.TryGetValue(
-                            ts,
-                            out var v)
-                            ? v
-                            : "";
-
-                    sb.Append(
-                        $",\"{val.Replace("\"", "\"\"")}\"");
-                }
-
-                sb.AppendLine();
-            }
-
-            string fileName =
-                $"AggregatedReport_{interval}min_{GetIndiaStandardTime():yyyyMMdd_HHmmss}.xls";
-
-            byte[] bytes =
-                Encoding.UTF8.GetPreamble()
-                .Concat(
-                    Encoding.UTF8.GetBytes(sb.ToString())
-                )
-                .ToArray();
-
-            return File(
-                bytes,
-                "application/vnd.ms-excel",
-                fileName);
+            ws.Row(1).Style.Font.Bold = true;
+            ws.Column(1).Style.DateFormat.Format = "dd-MM-yyyy HH:mm:ss";
+            ws.Columns().AdjustToContents();
         }
-        catch (Exception ex)
-        {
-            return BadRequest(new
-            {
-                status = false,
-                message = ex.Message
-            });
-        }
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+
+        var fileName =
+            $"{device.Name}_{device.SerialNumber}.xlsx";
+
+        return File(
+            stream.ToArray(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            fileName);
     }
 
     [HttpGet("profiles")]
