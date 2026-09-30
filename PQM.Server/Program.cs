@@ -72,11 +72,16 @@ try
     builder.Services.AddCors(options =>
     {
         options.AddPolicy("AllowReactApp", policy =>
-            policy.SetIsOriginAllowed(origin => true)
-                  .AllowAnyMethod()
-                  .AllowAnyHeader()
-                  .AllowCredentials());
+        {
+            policy
+                .SetIsOriginAllowed(origin => true)
+                .AllowAnyMethod()
+                .AllowAnyHeader()
+                .AllowCredentials()
+                .WithExposedHeaders("Content-Disposition");
+        });
     });
+
 
     var app = builder.Build();
 

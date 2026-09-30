@@ -117,4 +117,13 @@ namespace PQM.Core.DTOs
 
         public int ProfileId { get; set; }
     }
+
+    public class ExportReportRow
+    {
+        public int ParameterId { get; set; }
+        public string ParameterName { get; set; } = string.Empty;
+        public int? ProfileId { get; set; }
+        public DateTime DateStamp { get; set; }
+        public double? Value { get; set; }          // float in SQL -> double
+    }
 }

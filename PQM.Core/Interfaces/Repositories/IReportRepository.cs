@@ -19,8 +19,13 @@ namespace PQM.Core.Interfaces.Repositories
             ReportSearch searchParams,
             int intervalMinutes);
 
-        List<ParameterValueSearch> GetAggregatedReportForExport(
+        //List<ParameterValueSearch> GetAggregatedReportForExport(
+        //    ReportSearch searchParams,
+        //    int intervalMinutes);
+
+        Task<List<ExportReportRow>> GetAggregatedReportForExport(
             ReportSearch searchParams,
-            int intervalMinutes);
+            int intervalMinutes,
+            CancellationToken cancellationToken = default);
     }
 }

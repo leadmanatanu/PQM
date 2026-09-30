@@ -1,9 +1,10 @@
+using ClosedXML.Excel;
 using Microsoft.AspNetCore.Mvc;
 using PQM.Core.DTOs;
+using PQM.Core.Entities;
 using PQM.Core.Interfaces.Repositories;
 using PQM.Server.Models;
 using System.Text;
-using ClosedXML.Excel;
 
 [ApiController]
 [Route("api/report")]
@@ -159,6 +160,99 @@ public class ReportController : ControllerBase
         }
     }
 
+    //[HttpGet("export")]
+    //public async Task<IActionResult> ExportAggregatedReport(
+    //[FromQuery] ReportSearch searchParams,
+    //CancellationToken cancellationToken)
+    //{
+    //    if (searchParams.DeviceId <= 0)
+    //        return BadRequest("DeviceId is required.");
+
+    //    var device = await _reportRepository.GetDeviceByIdAsync(
+    //searchParams.DeviceId, cancellationToken);
+
+    //    var profiles = await _reportRepository.GetProfilesByDeviceIdAsync(
+    //        searchParams.DeviceId, cancellationToken);
+
+    //    var profileLookup = profiles.ToDictionary(
+    //        p => p.Id,
+    //        p => string.IsNullOrWhiteSpace(p.FriendlyName)
+    //            ? p.ObisCode ?? $"Profile {p.Id}"
+    //            : p.FriendlyName);
+
+    //    var data = _reportRepository.GetAggregatedReportForExport(
+    //        searchParams, searchParams.IntervalMinutes);
+
+    //    using var workbook = new XLWorkbook();
+    //    if (data == null || !data.Any())
+    //    {
+    //        return BadRequest("No report data found for the selected date range and profiles.");
+    //    }
+
+    //    foreach (var profileGroup in data.GroupBy(x => x.ProfileId))
+    //    {
+    //        var profileName = profileLookup.TryGetValue(
+    //profileGroup.Key ?? 0, out var name)
+    //    ? name
+    //    : $"Profile_{profileGroup.Key}";
+    //        var sheetName = profileName.Length > 31
+    //            ? profileName[..31]
+    //            : profileName;
+
+    //        var ws = workbook.Worksheets.Add(sheetName);
+
+    //        var parameters = profileGroup
+    //            .GroupBy(x => x.ParameterId)
+    //            .Select(x => new
+    //            {
+    //                Id = x.Key,
+    //                Name = x.First().ParameterName
+    //            })
+    //            .ToList();
+
+    //        ws.Cell(1, 1).Value = "Timestamp";
+
+    //        for (int i = 0; i < parameters.Count; i++)
+    //            ws.Cell(1, i + 2).Value = parameters[i].Name;
+
+    //        var timestamps = profileGroup
+    //            .Select(x => x.DateStamp)
+    //            .Distinct()
+    //            .OrderBy(x => x)
+    //            .ToList();
+
+    //        for (int r = 0; r < timestamps.Count; r++)
+    //        {
+    //            ws.Cell(r + 2, 1).Value = timestamps[r];
+
+    //            for (int c = 0; c < parameters.Count; c++)
+    //            {
+    //                var value = profileGroup.FirstOrDefault(x =>
+    //                    x.ParameterId == parameters[c].Id &&
+    //                    x.DateStamp == timestamps[r]);
+
+    //                if (value != null)
+    //                    ws.Cell(r + 2, c + 2).Value = value.Value;
+    //            }
+    //        }
+
+    //        ws.Row(1).Style.Font.Bold = true;
+    //        ws.Column(1).Style.DateFormat.Format = "dd-MM-yyyy HH:mm:ss";
+    //        ws.Columns().AdjustToContents();
+    //    }
+
+    //    using var stream = new MemoryStream();
+    //    workbook.SaveAs(stream);
+
+    //    var fileName =
+    //        $"{device.Name}_{device.SerialNumber}.xlsx";
+
+    //    return File(
+    //        stream.ToArray(),
+    //        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    //        fileName);
+    //}
+
     [HttpGet("export")]
     public async Task<IActionResult> ExportAggregatedReport(
     [FromQuery] ReportSearch searchParams,
@@ -167,8 +261,9 @@ public class ReportController : ControllerBase
         if (searchParams.DeviceId <= 0)
             return BadRequest("DeviceId is required.");
 
-        var device = await _reportRepository.GetDeviceByIdAsync(
-    searchParams.DeviceId, cancellationToken);
+        Device device;
+        try { device = await _reportRepository.GetDeviceByIdAsync(searchParams.DeviceId, cancellationToken); }
+        catch (KeyNotFoundException) { return NotFound("Device not found."); }
 
         var profiles = await _reportRepository.GetProfilesByDeviceIdAsync(
             searchParams.DeviceId, cancellationToken);
@@ -177,79 +272,91 @@ public class ReportController : ControllerBase
             p => p.Id,
             p => string.IsNullOrWhiteSpace(p.FriendlyName)
                 ? p.ObisCode ?? $"Profile {p.Id}"
-                : p.FriendlyName);
+                : p.FriendlyName!);
 
-        var data = _reportRepository.GetAggregatedReportForExport(
-            searchParams, searchParams.IntervalMinutes);
+        var data = await _reportRepository.GetAggregatedReportForExport(
+            searchParams,
+            searchParams.IntervalMinutes,
+            cancellationToken);
+
+        if (data.Count == 0)
+            return BadRequest("No report data found for the selected date range and profiles.");
+
+        const int ExcelMaxRows = 1_048_575; // 1 header row
+        var usedSheetNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         using var workbook = new XLWorkbook();
-        if (data == null || !data.Any())
-        {
-            return BadRequest("No report data found for the selected date range and profiles.");
-        }
 
         foreach (var profileGroup in data.GroupBy(x => x.ProfileId))
         {
-            var profileName = profileLookup.TryGetValue(
-    profileGroup.Key ?? 0, out var name)
-        ? name
-        : $"Profile_{profileGroup.Key}";
-            var sheetName = profileName.Length > 31
-                ? profileName[..31]
-                : profileName;
-
-            var ws = workbook.Worksheets.Add(sheetName);
-
-            var parameters = profileGroup
-                .GroupBy(x => x.ParameterId)
-                .Select(x => new
-                {
-                    Id = x.Key,
-                    Name = x.First().ParameterName
-                })
-                .ToList();
-
-            ws.Cell(1, 1).Value = "Timestamp";
-
-            for (int i = 0; i < parameters.Count; i++)
-                ws.Cell(1, i + 2).Value = parameters[i].Name;
-
-            var timestamps = profileGroup
-                .Select(x => x.DateStamp)
-                .Distinct()
-                .OrderBy(x => x)
-                .ToList();
-
-            for (int r = 0; r < timestamps.Count; r++)
+            // ---- unique parameter columns (order preserved from SQL ORDER BY) ----
+            var paramIndex = new Dictionary<int, int>();
+            var headers = new List<string> { "Timestamp" };
+            foreach (var r in profileGroup)
             {
-                ws.Cell(r + 2, 1).Value = timestamps[r];
-
-                for (int c = 0; c < parameters.Count; c++)
+                if (!paramIndex.ContainsKey(r.ParameterId))
                 {
-                    var value = profileGroup.FirstOrDefault(x =>
-                        x.ParameterId == parameters[c].Id &&
-                        x.DateStamp == timestamps[r]);
-
-                    if (value != null)
-                        ws.Cell(r + 2, c + 2).Value = value.Value;
+                    paramIndex[r.ParameterId] = headers.Count;   // column offset (0 = timestamp)
+                    headers.Add(r.ParameterName);
                 }
             }
 
+            // ---- unique timestamps, sorted ----
+            var timestamps = profileGroup.Select(x => x.DateStamp).Distinct().OrderBy(x => x).ToList();
+            if (timestamps.Count > ExcelMaxRows)
+                return BadRequest("Too many timestamps for one Excel sheet. Increase interval or narrow the date range.");
+
+            var tsIndex = new Dictionary<DateTime, int>(timestamps.Count);
+            for (int i = 0; i < timestamps.Count; i++) tsIndex[timestamps[i]] = i;
+
+            // ---- pivot in ONE pass: O(N) instead of O(N * T * P) ----
+            var grid = new object?[timestamps.Count][];
+            for (int i = 0; i < grid.Length; i++)
+            {
+                grid[i] = new object?[headers.Count];
+                grid[i][0] = timestamps[i];
+            }
+            foreach (var r in profileGroup)
+                grid[tsIndex[r.DateStamp]][paramIndex[r.ParameterId]] = r.Value;
+
+            // ---- sheet ----
+            var ws = workbook.Worksheets.Add(
+                MakeSheetName(profileLookup.TryGetValue(profileGroup.Key ?? 0, out var n)
+                    ? n : $"Profile_{profileGroup.Key}", usedSheetNames));
+
+            ws.Cell(1, 1).InsertData(new[] { headers.ToArray() });   // header row
+            ws.Cell(2, 1).InsertData(grid);                          // bulk insert (much faster than cell-by-cell)
+
             ws.Row(1).Style.Font.Bold = true;
             ws.Column(1).Style.DateFormat.Format = "dd-MM-yyyy HH:mm:ss";
-            ws.Columns().AdjustToContents();
+            ws.Column(1).Width = 20;
+            for (int c = 2; c <= headers.Count; c++) ws.Column(c).Width = 18;
+            // NOTE: do NOT call ws.Columns().AdjustToContents() - it scans every cell.
         }
 
-        using var stream = new MemoryStream();
+        var stream = new MemoryStream();
         workbook.SaveAs(stream);
+        stream.Position = 0;   // no ToArray() copy
 
-        var fileName =
-            $"{device.Name}_{device.SerialNumber}.xlsx";
-
-        return File(
-            stream.ToArray(),
+        return File(stream,
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            fileName);
+            $"{device.Name}_{device.SerialNumber}.xlsx");
+    }
+
+    private static string MakeSheetName(string raw, HashSet<string> used)
+    {
+        var clean = new string(raw.Where(ch => !@":\/?*[]".Contains(ch)).ToArray()).Trim();
+        if (clean.Length == 0) clean = "Sheet";
+        if (clean.Length > 31) clean = clean[..31];
+
+        var name = clean;
+        int i = 2;
+        while (!used.Add(name))
+        {
+            var suffix = $"_{i++}";
+            name = clean[..Math.Min(clean.Length, 31 - suffix.Length)] + suffix;
+        }
+        return name;
     }
 
     [HttpGet("profiles")]
