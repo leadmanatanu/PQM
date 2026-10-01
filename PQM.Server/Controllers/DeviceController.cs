@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using PQM.Core.DTOs;
 using PQM.Core.Entities;
 using PQM.Core.Interfaces.Repositories;
 using PQM.Infrastructure.Services;
@@ -16,7 +17,13 @@ namespace PQM.Server.Controllers
         private readonly ProfileSyncService _profileSyncService;
         private readonly INetworkReachabilityService _reachability;
         private readonly ISyncRunLogRepository _syncRunLogRepository;
-        public DeviceController(IDeviceRepository deviceRepository,ILogger<DeviceController> logger,ProfileSyncService profileSyncService,INetworkReachabilityService reachability, ISyncRunLogRepository syncRunLogRepository)
+
+        public DeviceController(
+            IDeviceRepository deviceRepository,
+            ILogger<DeviceController> logger,
+            ProfileSyncService profileSyncService,
+            INetworkReachabilityService reachability,
+            ISyncRunLogRepository syncRunLogRepository)
         {
             _deviceRepository = deviceRepository;
             _logger = logger;
@@ -24,6 +31,7 @@ namespace PQM.Server.Controllers
             _reachability = reachability;
             _syncRunLogRepository = syncRunLogRepository;
         }
+
         private static DateTime GetIndiaStandardTime()
         {
             return TimeZoneInfo.ConvertTimeFromUtc(
@@ -31,18 +39,23 @@ namespace PQM.Server.Controllers
                 TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
         }
 
-        [HttpGet]
-        public async Task<ActionResult> GetAllDevices(CancellationToken cancellationToken)
+        [HttpGet("GetAll")]
+        public async Task<ActionResult> GetAllDevices(
+            [FromQuery] DeviceSearchRequest request,
+            CancellationToken cancellationToken)
         {
             try
             {
-                var devices = await _deviceRepository.GetAllAsync(cancellationToken);
+                var result = await _deviceRepository
+                    .GetDevicePagedResultAsync(
+                        request,
+                        cancellationToken);
 
                 return Ok(new APIResponse
                 {
                     Status = true,
                     StatusCode = HttpStatusCode.OK,
-                    Data = devices,
+                    Data = result,
                     Errors = new List<string>()
                 });
             }
@@ -65,15 +78,15 @@ namespace PQM.Server.Controllers
             }
         }
 
-        [HttpGet("{id:int}")]
-        public async Task<ActionResult> GetDeviceById(int id,CancellationToken cancellationToken)
+        [HttpGet("GetById/{id:int}")]
+        public async Task<ActionResult> GetDeviceById(
+            int id,
+            CancellationToken cancellationToken)
         {
             try
             {
-                var device =
-                    await _deviceRepository.GetByIdAsync(
-                        id,
-                        cancellationToken);
+                var device = await _deviceRepository
+                    .GetByIdAsync(id, cancellationToken);
 
                 if (device == null)
                 {
@@ -117,8 +130,10 @@ namespace PQM.Server.Controllers
             }
         }
 
-        [HttpPost]
-        public async Task<ActionResult> CreateDevice([FromBody] Device device,CancellationToken cancellationToken)
+        [HttpPost("Add")]
+        public async Task<ActionResult> CreateDevice(
+            [FromBody] Device device,
+            CancellationToken cancellationToken)
         {
             try
             {
@@ -136,13 +151,8 @@ namespace PQM.Server.Controllers
                     });
                 }
 
-                // Schedule is optional at repository level.
-                // Frontend can enforce "Add schedule first" validation.
-
-                var deviceId =
-                    await _deviceRepository.AddAsync(
-                        device,
-                        cancellationToken);
+                var deviceId = await _deviceRepository
+                    .AddAsync(device, cancellationToken);
 
                 return CreatedAtAction(
                     nameof(GetDeviceById),
@@ -178,8 +188,11 @@ namespace PQM.Server.Controllers
             }
         }
 
-        [HttpPut("{id:int}")]
-        public async Task<ActionResult> UpdateDevice(int id,[FromBody] Device device,CancellationToken cancellationToken)
+        [HttpPut("Update/{id:int}")]
+        public async Task<ActionResult> UpdateDevice(
+            int id,
+            [FromBody] Device device,
+            CancellationToken cancellationToken)
         {
             try
             {
@@ -211,10 +224,8 @@ namespace PQM.Server.Controllers
                     });
                 }
 
-                var updated =
-                    await _deviceRepository.UpdateAsync(
-                        device,
-                        cancellationToken);
+                var updated = await _deviceRepository
+                    .UpdateAsync(device, cancellationToken);
 
                 if (!updated)
                 {
@@ -262,15 +273,15 @@ namespace PQM.Server.Controllers
             }
         }
 
-        [HttpDelete("{id:int}")]
-        public async Task<ActionResult> DeleteDevice(int id,CancellationToken cancellationToken)
+        [HttpDelete("Delete/{id:int}")]
+        public async Task<ActionResult> DeleteDevice(
+            int id,
+            CancellationToken cancellationToken)
         {
             try
             {
-                var deleted =
-                    await _deviceRepository.DeleteAsync(
-                        id,
-                        cancellationToken);
+                var deleted = await _deviceRepository
+                    .DeleteAsync(id, cancellationToken);
 
                 if (!deleted)
                 {
@@ -318,12 +329,14 @@ namespace PQM.Server.Controllers
             }
         }
 
-        [HttpGet("meterTypes")]
-        public async Task<ActionResult> GetAllMeterTypes(CancellationToken cancellationToken)
+        [HttpGet("MeterTypes")]
+        public async Task<ActionResult> GetAllMeterTypes(
+            CancellationToken cancellationToken)
         {
             try
             {
-                var meterTypes =await _deviceRepository.GetMeterTypesAsync(cancellationToken);
+                var meterTypes = await _deviceRepository
+                    .GetMeterTypesAsync(cancellationToken);
 
                 return Ok(new APIResponse
                 {
@@ -353,15 +366,14 @@ namespace PQM.Server.Controllers
         }
 
         [HttpPost("{id:int}/sync")]
-        public async Task<ActionResult> TriggerDeviceSync(int id,CancellationToken cancellationToken)
+        public async Task<ActionResult> TriggerDeviceSync(
+            int id,
+            CancellationToken cancellationToken)
         {
             try
             {
-                // ----------------------------------------------------
-                // 1. Get device
-                // ----------------------------------------------------
-
-                var device = await _deviceRepository.GetByIdAsync(id,cancellationToken);
+                var device = await _deviceRepository
+                    .GetByIdAsync(id, cancellationToken);
 
                 if (device == null)
                 {
@@ -377,11 +389,12 @@ namespace PQM.Server.Controllers
                     });
                 }
 
-                // ----------------------------------------------------
-                // 2. Check device network connectivity
-                // ----------------------------------------------------
-
-                var reachable = await _reachability.IsReachableAsync(device.IP,device.PORT,5000,cancellationToken);
+                var reachable = await _reachability
+                    .IsReachableAsync(
+                        device.IP,
+                        device.PORT,
+                        5000,
+                        cancellationToken);
 
                 if (!reachable)
                 {
@@ -398,10 +411,6 @@ namespace PQM.Server.Controllers
                     });
                 }
 
-                // ----------------------------------------------------
-                // 3. Start Sync
-                // ----------------------------------------------------
-
                 var runLog = new SyncRunLogs
                 {
                     ScheduleId = device.DeviceSyncScheduleId ?? 0,
@@ -411,7 +420,7 @@ namespace PQM.Server.Controllers
                 };
 
                 runLog = await _syncRunLogRepository
-     .CreateScheduleRunAsync(runLog);
+                    .CreateScheduleRunAsync(runLog);
 
                 var deviceRunLog = new SyncDeviceRunLogs
                 {
@@ -436,10 +445,6 @@ namespace PQM.Server.Controllers
                         deviceRunLog,
                         cancellationToken);
 
-                // ----------------------------------------------------
-                // 4. Return result
-                // ----------------------------------------------------
-
                 if (!result.Success)
                 {
                     return Ok(new APIResponse
@@ -454,7 +459,9 @@ namespace PQM.Server.Controllers
                     });
                 }
 
-                _logger.LogInformation("[DeviceController] Sync Now completed for Device {DeviceId}.",id);
+                _logger.LogInformation(
+                    "[DeviceController] Sync Now completed for Device {DeviceId}.",
+                    id);
 
                 return Ok(new APIResponse
                 {
@@ -465,7 +472,8 @@ namespace PQM.Server.Controllers
                         deviceId = id,
                         status = "Completed",
                         completedAt = GetIndiaStandardTime(),
-                        message = $"Sync completed successfully for device {device.Name}."
+                        message =
+                            $"Sync completed successfully for device {device.Name}."
                     },
                     Errors = new List<string>()
                 });
@@ -485,7 +493,10 @@ namespace PQM.Server.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex,"[DeviceController] TriggerDeviceSync failed for Device {DeviceId}.",id);
+                _logger.LogError(
+                    ex,
+                    "[DeviceController] TriggerDeviceSync failed for Device {DeviceId}.",
+                    id);
 
                 return Ok(new APIResponse
                 {

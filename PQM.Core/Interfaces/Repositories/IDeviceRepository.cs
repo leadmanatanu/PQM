@@ -1,3 +1,4 @@
+using PQM.Core.DTOs;
 using PQM.Core.Entities;
 
 
@@ -12,5 +13,6 @@ namespace PQM.Core.Interfaces.Repositories
         Task<bool> DeleteAsync(int id,CancellationToken cancellationToken = default);
         Task<IEnumerable<MeterType>> GetMeterTypesAsync(CancellationToken cancellationToken = default);
         Task<string?> GetDuplicateFieldAsync(Device device,CancellationToken cancellationToken = default);
+        Task<DevicePagedResult> GetDevicePagedResultAsync(DeviceSearchRequest request, CancellationToken cancellationToken = default);
     }
 }

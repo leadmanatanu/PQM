@@ -37,7 +37,7 @@ namespace PQM.Core.Entities
     {
         public const string Running = "Running";
         public const string Success = "Success";
-        public const string PartialSuccess = "PartialSuccess";
+        public const string PartialSuccess = "Partial Success";
         public const string Failed = "Failed";
     }
 }
