@@ -1,20 +1,20 @@
 using Microsoft.EntityFrameworkCore;
+using PQM.Core.Events;
 using PQM.Core.Interfaces.Repositories;
 using PQM.Infrastructure;
+using PQM.Infrastructure.Events;
 using PQM.Infrastructure.Repositories;
 using PQM.Infrastructure.Services;
+using PQM.Server.Hubs;
+using PQM.Server.Services;
 using Serilog;
 using Serilog.Events;
 using System.Text.Json.Serialization;
-using PQM.Server.Hubs;
-using PQM.Server.Services;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
     .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
-    .MinimumLevel.Override(
-        "Microsoft.EntityFrameworkCore.Database.Command",
-        LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command", LogEventLevel.Warning)
     .WriteTo.Console()
     .CreateLogger();
 
@@ -27,14 +27,16 @@ try
     // Allow PQM Server to be accessed from office Wi-Fi
     builder.WebHost.UseUrls("http://0.0.0.0:5135");
 
+    //localhost only
+    //builder.WebHost.UseUrls("http://localhost:5135");
+
     builder.Host.UseSerilog();
 
-    builder.Services.AddControllers()
-        .AddJsonOptions(options =>
-        {
-            options.JsonSerializerOptions.ReferenceHandler =
-                ReferenceHandler.IgnoreCycles;
-        });
+    builder.Services.AddControllers().AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.ReferenceHandler =
+            ReferenceHandler.IgnoreCycles;
+    });
 
     builder.Services.AddOpenApi();
 
@@ -53,8 +55,18 @@ try
     builder.Services.AddScoped<ILiveRepository, LiveRepository>();
     builder.Services.AddScoped<IReportRepository, ReportRepository>();
     builder.Services.AddSingleton<INetworkReachabilityService, NetworkReachabilityService>();
+    builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
+    builder.Services.AddScoped<ISyncRunLogRepository, SyncRunLogRepository>();
 
-    builder.Services.AddScoped<ProfileSyncService>(sp => new ProfileSyncService(connectionString, sp.GetRequiredService<ILogger<ProfileSyncService>>()));
+    builder.Services.AddSingleton<IEventPublisher, EventPublisher>();
+    builder.Services.AddSingleton<IEventHandler<DeviceSyncCompletedEvent>, DeviceSyncNotificationHandler>();
+
+    builder.Services.AddScoped<ProfileSyncService>(sp => new ProfileSyncService(
+        connectionString,
+        sp.GetRequiredService<ILogger<ProfileSyncService>>(),
+        sp.GetRequiredService<IEventPublisher>(),
+        sp.GetRequiredService<ISyncRunLogRepository>()));
+
 
     builder.Services.AddSignalR();
     builder.Services.AddHostedService<DevicePingBackgroundService>();
@@ -62,11 +74,16 @@ try
     builder.Services.AddCors(options =>
     {
         options.AddPolicy("AllowReactApp", policy =>
-            policy.SetIsOriginAllowed(origin => true)
-                  .AllowAnyMethod()
-                  .AllowAnyHeader()
-                  .AllowCredentials());
+        {
+            policy
+                .SetIsOriginAllowed(origin => true)
+                .AllowAnyMethod()
+                .AllowAnyHeader()
+                .AllowCredentials()
+                .WithExposedHeaders("Content-Disposition");
+        });
     });
+
 
     var app = builder.Build();
 
@@ -158,6 +175,7 @@ try
         app.MapControllers();
 
         app.MapHub<DeviceHub>("/hubs/device");
+        app.MapHub<NotificationHub>("/hubs/notificationHub");
 
         app.MapFallbackToFile("/index.html");
 

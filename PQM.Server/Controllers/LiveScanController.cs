@@ -19,7 +19,7 @@ namespace PQM.Server.Controllers
         private readonly APIResponse _apiResponse;
         private static readonly ConcurrentDictionary<int, SemaphoreSlim> _deviceLocks = new();
 
-        public LiveScanController(IDeviceRepository deviceRepository,ILiveRepository liveRepository,ILogger<LiveScanController> logger,INetworkReachabilityService reachability)
+        public LiveScanController(IDeviceRepository deviceRepository, ILiveRepository liveRepository, ILogger<LiveScanController> logger, INetworkReachabilityService reachability)
         {
             _deviceRepository = deviceRepository ?? throw new ArgumentNullException(nameof(deviceRepository));
             _liveRepository = liveRepository ?? throw new ArgumentNullException(nameof(liveRepository));
@@ -35,16 +35,16 @@ namespace PQM.Server.Controllers
         }
 
         [HttpPost("{id:int}/live-scan")]
-        public async Task<ActionResult> LiveScan(int id,[FromBody] LiveScanRequest? request,CancellationToken cancellationToken)
+        public async Task<ActionResult> LiveScan(int id, [FromBody] LiveScanRequest? request, CancellationToken cancellationToken)
         {
             // Overall live-scan timeout
-            using var timeoutCts =new CancellationTokenSource(TimeSpan.FromSeconds(600));
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(600));
 
-            using var linkedCts =CancellationTokenSource.CreateLinkedTokenSource(cancellationToken,timeoutCts.Token);
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
             var ct = linkedCts.Token;
 
-            var device =await _deviceRepository.GetByIdAsync(id,ct);
+            var device = await _deviceRepository.GetByIdAsync(id, ct);
 
             if (device == null)
             {
@@ -57,7 +57,7 @@ namespace PQM.Server.Controllers
             var deviceLock = GetDeviceLock(id);
 
             // Do not queue another scan for the same device
-            bool acquired = await deviceLock.WaitAsync(TimeSpan.Zero,cancellationToken);
+            bool acquired = await deviceLock.WaitAsync(TimeSpan.Zero, cancellationToken);
 
             if (!acquired)
             {
@@ -73,12 +73,12 @@ namespace PQM.Server.Controllers
                     "A previous scan on this device is still in progress. If this persists, the device may be unresponsive — try again shortly."
                     };
 
-                return StatusCode(409,_apiResponse);
+                return StatusCode(409, _apiResponse);
             }
 
             try
             {
-                bool reachable =await _reachability.IsReachableAsync(device.IP,device.PORT,5000,ct);
+                bool reachable = await _reachability.IsReachableAsync(device.IP, device.PORT, 5000, ct);
 
                 if (!reachable)
                 {
@@ -97,23 +97,50 @@ namespace PQM.Server.Controllers
                     return Ok(_apiResponse);
                 }
 
-                var items = await ReadLiveValuesFromMeterAsync(device,request?.ProfileIds,request?.ParameterIds,ct);
+                var items = await ReadLiveValuesFromMeterAsync(device, request?.ProfileIds, request?.ParameterIds, ct);
 
                 _apiResponse.Status = true;
                 _apiResponse.StatusCode =
                     System.Net.HttpStatusCode.OK;
 
+                var profiles = await _liveRepository.GetProfilesAsync(ct);
+
+                var profileLookup = profiles.ToDictionary(
+                    p => p.Id,
+                    p => string.IsNullOrWhiteSpace(p.FriendlyName)
+                        ? p.ObisCode
+                        : p.FriendlyName
+                );
+
+                foreach (var item in items)
+                {
+                    if (item.ProfileId.HasValue &&
+                        profileLookup.TryGetValue(item.ProfileId.Value, out var profileName))
+                    {
+                        item.ProfileName = profileName;
+                    }
+                }
+                var groups = items
+                    .GroupBy(x => new
+                    {
+                        x.ProfileId,
+                        x.ProfileName
+                    })
+                    .Select(g => new
+                    {
+                        profileId = g.Key.ProfileId,
+                        profileName = g.Key.ProfileName,
+                        items = g.ToList()
+                    })
+                    .ToList();
+
                 _apiResponse.Data = new
                 {
                     scannedAt = GetIndiaStandardTime().ToString("o"),
-
                     deviceId = id,
-
                     deviceName = device.Name,
-
-                    items
+                    groups
                 };
-
                 _apiResponse.Errors.Clear();
 
                 return Ok(_apiResponse);
@@ -195,7 +222,7 @@ namespace PQM.Server.Controllers
         }
 
         [HttpGet("parameters")]
-        public async Task<ActionResult> GetParameters([FromQuery] int? deviceId,[FromQuery] int? profileId,[FromQuery] int? meterTypeId,CancellationToken cancellationToken)
+        public async Task<ActionResult> GetParameters([FromQuery] int? deviceId, [FromQuery] int? profileId, [FromQuery] int? meterTypeId, CancellationToken cancellationToken)
         {
             try
             {
@@ -274,6 +301,7 @@ namespace PQM.Server.Controllers
                     new LiveScanItemResult
                     {
                         ParameterId = param.Id,
+                        ProfileId = param.ProfileId,
                         ParameterName = param.Name,
                         ObisCode = param.ObisCode,
                         Unit = param.Unit

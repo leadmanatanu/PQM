@@ -19,7 +19,7 @@ namespace PQM.Infrastructure.Services
         private int _lastRequestBytesReceived;
         private bool _connected;
         private bool _isAssociated;
-        private static readonly ConcurrentDictionary<string, DateTime> _meterLastDisconnect= new ConcurrentDictionary<string, DateTime>();
+        private static readonly ConcurrentDictionary<string, DateTime> _meterLastDisconnect = new ConcurrentDictionary<string, DateTime>();
         public static int DefaultMeterCooldownSeconds { get; set; } = 8;
         private readonly int _meterCooldownSeconds;
         public DlmsMeterReader(Device device, bool verboseLogging = false, int meterCooldownSeconds = 0)
@@ -252,7 +252,7 @@ namespace PQM.Infrastructure.Services
                 Console.WriteLine("[FALLBACK] All known profile objects were present in the meter's association view.");
             }
         }
-        public async Task<object?> ReadObjectAsync(GXDLMSObject obj,int attributeIndex = 2,System.Threading.CancellationToken cancellationToken = default)
+        public async Task<object?> ReadObjectAsync(GXDLMSObject obj, int attributeIndex = 2, System.Threading.CancellationToken cancellationToken = default)
         {
             EnsureConnected();
             cancellationToken.ThrowIfCancellationRequested();
@@ -275,15 +275,13 @@ namespace PQM.Infrastructure.Services
         {
             return _client.Objects.OfType<GXDLMSProfileGeneric>().ToList();
         }
-        public async Task<IReadOnlyList<ProfileColumnInfo>> ReadCaptureObjectsAsync(GXDLMSProfileGeneric profile,System.Threading.CancellationToken cancellationToken = default)
+        public async Task<IReadOnlyList<ProfileColumnInfo>> ReadCaptureObjectsAsync(GXDLMSProfileGeneric profile, Dictionary<string, (int? Scaler, int? UnitCode, string? Unit)>? knownMeta = null, CancellationToken cancellationToken = default)
         {
             EnsureConnected();
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Read CaptureObjects (attribute 3) — populates profile.CaptureObjects
             await ReadObjectAsync(profile, 3, cancellationToken);
 
-            // Read EntriesInUse (attribute 7) — needed for ReadRowsByEntry fallback
             try
             {
                 await ReadObjectAsync(profile, 7, cancellationToken);
@@ -307,20 +305,22 @@ namespace PQM.Infrastructure.Services
                 int? unitCode = null;
                 string? unitStr = null;
 
-                if (targetObj is GXDLMSRegister reg)
+                if (knownMeta != null && knownMeta.TryGetValue(targetObj.LogicalName, out var cached))
+                {
+                    scaler = cached.Scaler;
+                    unitCode = cached.UnitCode;
+                    unitStr = cached.Unit;
+                }
+                else if (targetObj is GXDLMSRegister reg)
                 {
                     try
                     {
-                        // Attribute 3 contains Scaler and Unit metadata
                         await ReadObjectAsync(reg, 3, cancellationToken);
                         scaler = Convert.ToInt32(reg.Scaler);
                         unitCode = (int)reg.Unit;
                         unitStr = reg.Unit != Unit.None ? reg.Unit.ToString() : null;
                     }
-                    catch
-                    {
-                        // Fallback if attribute 3 is not supported by meter for this specific register
-                    }
+                    catch { }
                 }
                 else if (targetObj is GXDLMSDemandRegister demandReg)
                 {
@@ -331,10 +331,7 @@ namespace PQM.Infrastructure.Services
                         unitCode = (int)demandReg.Unit;
                         unitStr = demandReg.Unit != Unit.None ? demandReg.Unit.ToString() : null;
                     }
-                    catch
-                    {
-                        // Fallback if attribute 3 is not supported
-                    }
+                    catch { }
                 }
 
                 result.Add(new ProfileColumnInfo
@@ -352,7 +349,7 @@ namespace PQM.Infrastructure.Services
 
             return result;
         }
-        public async Task<IReadOnlyList<ProfileRow>> ReadProfileAllEntriesAsync(string obisCode,DateTime? startTime = null,System.Threading.CancellationToken cancellationToken = default)
+        public async Task<IReadOnlyList<ProfileRow>> ReadProfileAllEntriesAsync(string obisCode, DateTime? startTime = null, int? lastEntriesInUse = null, CancellationToken cancellationToken = default)
         {
             EnsureConnected();
             cancellationToken.ThrowIfCancellationRequested();
@@ -362,76 +359,73 @@ namespace PQM.Infrastructure.Services
                 .FirstOrDefault(o => o.LogicalName == obisCode);
 
             if (profile == null)
-                throw new InvalidOperationException($"Profile object ({obisCode}) not found in meter objects. Call ReadAssociationViewAsync() first.");
+                throw new InvalidOperationException(
+                    $"Profile object ({obisCode}) not found in meter objects.");
 
-            await ReadCaptureObjectsAsync(profile, cancellationToken);
+            await ReadCaptureObjectsAsync(profile, null, cancellationToken);
 
-            // --- Attempt 1: Selective access by date range ---
-            try
+            uint currentEntriesInUse =
+                profile.EntriesInUse > 0 ? profile.EntriesInUse : 100;
+
+            uint startEntry = 1;
+
+            if (lastEntriesInUse.HasValue &&
+                lastEntriesInUse.Value > 0 &&
+                currentEntriesInUse > lastEntriesInUse.Value)
             {
-                var start = new GXDateTime(startTime ?? new DateTime(2000, 1, 1));
-                var end = new GXDateTime(DateTime.Now);
+                startEntry = (uint)(lastEntriesInUse.Value + 1);
 
-                start.Skip = DateTimeSkips.Deviation | DateTimeSkips.Status;
-                end.Skip = DateTimeSkips.Deviation | DateTimeSkips.Status;
-
-                var requests = _client.ReadRowsByRange(profile, start, end);
-                GXReplyData? reply = null;
-
-                foreach (var request in requests)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    reply = await SendAndReceiveAsync(request, cancellationToken);
-                    if (reply != null && reply.Error != 0)
-                    {
-                        Console.WriteLine($"[INFO] Range access request for {obisCode} returned DLMS error {reply.Error}. Breaking range read...");
-                        break;
-                    }
-                }
-
-                if (reply != null && reply.Error == 0)
-                {
-                    var rows = ConvertProfileRows(reply.Value);
-                    Console.WriteLine($"[ReadProfileAllEntriesAsync] Range access succeeded for {obisCode}: {rows.Count} rows.");
-                    return rows;
-                }
-                else if (reply != null && reply.Error != 0)
-                {
-                    Console.WriteLine($"[INFO] Range access for {obisCode} returned error {reply.Error}. Falling back to entry access...");
-                }
+                Console.WriteLine(
+                    $"[INFO] Incremental read for {obisCode}: " +
+                    $"entries {startEntry}..{currentEntriesInUse}");
             }
-            catch (OperationCanceledException)
+            else
             {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[INFO] Selective access by range failed for {obisCode}: {ex.Message}. Falling back to entry access...");
+                Console.WriteLine(
+                    $"[INFO] Full read for {obisCode}: " +
+                    $"entries 1..{currentEntriesInUse}");
             }
 
-            // --- Attempt 2: ReadRowsByEntry (full buffer by entry index) ---
-            uint entryCount = profile.EntriesInUse > 0 ? profile.EntriesInUse : 100;
-            Console.WriteLine($"[INFO] Reading {obisCode} by entry index (1 to {entryCount})...");
+            // NEW — timing starts here, right after the log line you're seeing
+            var readSw = System.Diagnostics.Stopwatch.StartNew();
+            int requestCount = 0;
 
             try
             {
-                var entryRequests = _client.ReadRowsByEntry(profile, 1, entryCount);
+                var entryRequests = _client.ReadRowsByEntry(
+                    profile,
+                    startEntry,
+                    currentEntriesInUse - startEntry + 1);
+
                 GXReplyData? entryReply = null;
 
                 foreach (var request in entryRequests)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    entryReply = await SendAndReceiveAsync(request, cancellationToken);
+
+                    requestCount++;
+                    var reqSw = System.Diagnostics.Stopwatch.StartNew();
+
+                    entryReply = await SendAndReceiveAsync(
+                        request,
+                        cancellationToken);
+
+                    reqSw.Stop();
+                    Console.WriteLine($"[TIMING] {obisCode} request #{requestCount} took {reqSw.ElapsedMilliseconds}ms");
                 }
 
                 if (entryReply != null && entryReply.Error == 0)
                 {
                     var rows = ConvertProfileRows(entryReply.Value);
-                    if (rows.Count > 0)
-                    {
-                        Console.WriteLine($"[ReadProfileAllEntriesAsync] Entry access succeeded for {obisCode}: {rows.Count} rows.");
-                        return rows;
-                    }
+
+                    readSw.Stop();
+                    Console.WriteLine($"[TIMING] {obisCode}: TOTAL meter read time {readSw.ElapsedMilliseconds}ms for {rows.Count} rows across {requestCount} request(s)");
+
+                    Console.WriteLine(
+                        $"[ReadProfileAllEntriesAsync] Read succeeded for " +
+                        $"{obisCode}: {rows.Count} rows.");
+
+                    return rows;
                 }
             }
             catch (OperationCanceledException)
@@ -440,13 +434,21 @@ namespace PQM.Infrastructure.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[INFO] ReadRowsByEntry failed for {obisCode}: {ex.Message}. Falling back to raw attribute-2 buffer read...");
+                Console.WriteLine(
+                    $"[INFO] ReadRowsByEntry failed for {obisCode}: " +
+                    $"{ex.Message}. Falling back to raw buffer read...");
             }
 
-            // --- Attempt 3: Raw attribute-2 buffer read (last resort) ---
             cancellationToken.ThrowIfCancellationRequested();
-            Console.WriteLine($"[INFO] Fallback: reading raw attribute-2 buffer for {obisCode}...");
-            var value = await ReadObjectAsync(profile, 2, cancellationToken);
+
+            var value = await ReadObjectAsync(
+                profile,
+                2,
+                cancellationToken);
+
+            readSw.Stop();
+            Console.WriteLine($"[TIMING] {obisCode}: TOTAL meter read time (fallback path) {readSw.ElapsedMilliseconds}ms");
+
             return ConvertProfileRows(value);
         }
         private static IReadOnlyList<ProfileRow> ConvertProfileRows(object? value)
@@ -464,21 +466,60 @@ namespace PQM.Infrastructure.Services
 
                 var values = rowEnumerable.Cast<object?>().ToList();
 
+                // 🔴 NEW: Extract timestamp and remove it from values
+                DateTime? timestamp = ExtractTimestamp(values.ToArray());
+
+                var cleanedValues = new List<object?>(values);
+
+                if (timestamp.HasValue)
+                {
+                    // Find and remove the timestamp value from the list
+                    for (int i = 0; i < cleanedValues.Count; i++)
+                    {
+                        if (cleanedValues[i] is DateTime dt &&
+                            dt.Year > 1 &&
+                            dt == timestamp.Value)
+                        {
+                            cleanedValues.RemoveAt(i);
+                            Console.WriteLine($"[ROW {rowIndex}] Timestamp removed from position {i}. Cleaned values: {cleanedValues.Count}");
+                            break;
+                        }
+                    }
+                }
+
                 var row = new ProfileRow
                 {
-                    Timestamp = ExtractTimestamp(values.ToArray()),
-                    Values = values
+                    Timestamp = timestamp,
+                    Values = cleanedValues  // ← NOW CLEAN, WITHOUT TIMESTAMP!
                 };
 
-                var contentStr = string.Join(", ", values.Select(v => v?.ToString() ?? "null"));
-                Console.WriteLine($"[DEBUG ROW {rowIndex++}] Timestamp: {row.Timestamp:yyyy-MM-dd HH:mm:ss} | Content: {contentStr}");
+                Console.WriteLine(
+                    $"========== DLMS ROW {rowIndex} =========="
+                );
+
+                for (int i = 0; i < cleanedValues.Count; i++)
+                {
+                    var v = cleanedValues[i];
+
+                    Console.WriteLine(
+                        $"DLMS Value[{i}] | " +
+                        $"Type={v?.GetType().FullName ?? "null"} | " +
+                        $"Value={v ?? "null"}"
+                    );
+                }
+
+                Console.WriteLine(
+                    $"Timestamp={row.Timestamp:yyyy-MM-dd HH:mm:ss}"
+                );
+
+                rowIndex++;
 
                 rows.Add(row);
             }
 
             return rows;
         }
-        private async Task<GXReplyData> SendAndReceiveAsync(byte[] request,System.Threading.CancellationToken cancellationToken = default)
+        private async Task<GXReplyData> SendAndReceiveAsync(byte[] request, System.Threading.CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             _lastRequestBytesReceived = 0;
@@ -497,7 +538,7 @@ namespace PQM.Infrastructure.Services
 
             return reply;
         }
-        private async SysTask SendAndReceiveAsync(byte[] request,GXReplyData reply,GXReplyData notify,System.Threading.CancellationToken cancellationToken = default)
+        private async SysTask SendAndReceiveAsync(byte[] request, GXReplyData reply, GXReplyData notify, System.Threading.CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var buffer = new GXByteBuffer();
@@ -545,8 +586,7 @@ namespace PQM.Infrastructure.Services
                 retries--;
                 if (retries > 0)
                 {
-                    if (_verboseLogging)
-                        Console.WriteLine("[RECV RETRY] No reply received. Retrying frame request...");
+                    Console.WriteLine("[RECV RETRY] No reply received. Retrying frame request...");
                     System.Threading.Thread.Sleep(500);
                 }
             }
@@ -697,16 +737,27 @@ namespace PQM.Infrastructure.Services
                     return dateTimeOffset.DateTime;
                 }
 
+                //if (value is GXDateTime gxDateTime)
+                //{
+                //    // Use raw local components as sent by the meter.
+                //    // gxDateTime.Value.DateTime applies an embedded deviation/offset
+                //    // that is wrong on this meter, shifting the time by hours.
+                //    if (DateTime.TryParse(gxDateTime.ToString(), out var localDt))
+                //    {
+                //        if (localDt.Year <= 1 || localDt.Year >= 9999)
+                //            continue;
+                //        return localDt;
+                //    }
+                //}
+
                 if (value is GXDateTime gxDateTime)
                 {
-                    // Use raw local components as sent by the meter.
-                    // gxDateTime.Value.DateTime applies an embedded deviation/offset
-                    // that is wrong on this meter, shifting the time by hours.
-                    if (DateTime.TryParse(gxDateTime.ToString(), out var localDt))
+                    var localDt = ExtractDateTimeDirect(gxDateTime);
+                    if (localDt.HasValue)
                     {
-                        if (localDt.Year <= 1 || localDt.Year >= 9999)
+                        if (localDt.Value.Year <= 1 || localDt.Value.Year >= 9999)
                             continue;
-                        return localDt;
+                        return localDt.Value;
                     }
                 }
 
@@ -799,8 +850,8 @@ namespace PQM.Infrastructure.Services
 
                     Console.WriteLine($"[DISCONNECT TRACE] ReleaseRequest count: {releaseReqs?.Length ?? 0}, DisconnectRequest frame: {(discReq != null ? BitConverter.ToString(discReq) : "null")}");
 
-                    var requests = (releaseReqs != null && releaseReqs.Length > 0) 
-                        ? releaseReqs 
+                    var requests = (releaseReqs != null && releaseReqs.Length > 0)
+                        ? releaseReqs
                         : (discReq != null ? new[] { discReq } : Array.Empty<byte[]>());
 
                     try
@@ -925,6 +976,32 @@ namespace PQM.Infrastructure.Services
                     catch { }
                 }
             }
+        }
+        private static DateTime? ExtractDateTimeDirect(GXDateTime gx)
+        {
+            if (gx == null)
+                return null;
+
+            try
+            {
+                var dt = gx.Value.DateTime; // raw components, no deviation applied by us
+                if (dt.Year <= 1 || dt.Year >= 9999)
+                    return null;
+
+                return new DateTime(
+                    dt.Year, dt.Month, dt.Day,
+                    dt.Hour, dt.Minute, dt.Second,
+                    DateTimeKind.Unspecified);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+        public uint? GetProfileEntriesInUse(string obisCode)
+        {
+            var profile = _client.Objects.OfType<GXDLMSProfileGeneric>().FirstOrDefault(o => o.LogicalName == obisCode);
+            return profile != null && profile.EntriesInUse > 0 ? (uint?)profile.EntriesInUse : null;
         }
         public void Dispose()
         {

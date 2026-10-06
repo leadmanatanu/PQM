@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PQM.Core.Entities;
 using PQM.Core.Interfaces.Repositories;
+using PQM.Core.DTOs;
 
 namespace PQM.Infrastructure.Repositories
 {
@@ -21,6 +22,87 @@ namespace PQM.Infrastructure.Repositories
                 .Where(d => !d.IsDeleted)
                 .OrderBy(d => d.Id)
                 .ToListAsync(cancellationToken);
+        }
+
+        public async Task<DevicePagedResult> GetDevicePagedResultAsync(DeviceSearchRequest request,CancellationToken cancellationToken = default)
+        {
+            var query = _db.Device
+               .AsNoTracking()
+               .Where(d => !d.IsDeleted);
+
+            // Search: Name, Serial Number, Consumer Number, IP
+            if (!string.IsNullOrWhiteSpace(request.Search))
+            {
+                var search = request.Search.Trim();
+
+                query = query.Where(d =>
+                    d.Name.Contains(search) ||
+                    (d.SerialNumber != null &&
+                     d.SerialNumber.Contains(search)) ||
+                    (d.ConsumerNumber != null &&
+                     d.ConsumerNumber.Contains(search)) ||
+                    d.IP.Contains(search));
+            }
+
+            // Meter Type
+            if (request.MeterTypeId.HasValue)
+            {
+                query = query.Where(d =>
+                    d.MeterTypeId == request.MeterTypeId.Value);
+            }
+
+            // Schedule filter
+            if (!string.IsNullOrWhiteSpace(request.Scheduled))
+            {
+                switch (request.Scheduled.Trim().ToLower())
+                {
+                    case "yes":
+                        query = query.Where(d =>
+                            d.DeviceSyncScheduleId != null &&
+                            d.DeviceSyncSchedule != null &&
+                            d.DeviceSyncSchedule.IsEnabled);
+                        break;
+
+                    case "no":
+                        query = query.Where(d =>
+                            d.DeviceSyncScheduleId == null);
+                        break;
+
+                    case "disabled":
+                        query = query.Where(d =>
+                            d.DeviceSyncScheduleId != null &&
+                            d.DeviceSyncSchedule != null &&
+                            !d.DeviceSyncSchedule.IsEnabled);
+                        break;
+                }
+            }
+            // Protect against invalid pagination values
+            var pageNumber = Math.Max(request.PageNumber, 1);
+            var pageSize = Math.Clamp(request.PageSize, 1, 100);
+
+            // Count AFTER applying search and filters
+            var totalCount = await query.CountAsync(cancellationToken);
+
+            // Get ONLY requested page
+            var devices = await query
+                .Include(d => d.MeterType)
+                .Include(d => d.DeviceSyncSchedule)
+                .OrderBy(d => d.Id)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(cancellationToken);
+
+            var totalPages = (int)Math.Ceiling(
+                totalCount / (double)pageSize);
+
+            return new DevicePagedResult
+            {
+                Items = devices,
+                PageNumber = pageNumber,
+                PageSize = pageSize,
+                TotalCount = totalCount,
+                TotalPages = totalPages
+            };
         }
         public async Task<Device?> GetByIdAsync(int id,CancellationToken cancellationToken = default)
         {

@@ -81,10 +81,16 @@ namespace PQM.Server.Controllers
             {
                 return Unauthorized();
             }
+            Console.WriteLine(
+     $"GetMe started. UserId: {userId}, " +
+     $"Cancellation requested: {cancellationToken.IsCancellationRequested}");
 
             var user = await _authRepository.GetByIdAsync(
                 userId,
                 cancellationToken);
+            Console.WriteLine(
+       $"GetMe completed. " +
+       $"Cancellation requested: {cancellationToken.IsCancellationRequested}");
 
             if (user == null)
             {

@@ -16,7 +16,7 @@ namespace PQM.Infrastructure.Repositories
         {
             return await _db.Profiles.ToListAsync(cancellationToken);
         }
-        public async Task<IEnumerable<Parameter>> GetVisibleParametersAsync(int? profileId,int? meterTypeId,CancellationToken cancellationToken = default)
+        public async Task<IEnumerable<Parameter>> GetVisibleParametersAsync(int? profileId, int? meterTypeId, CancellationToken cancellationToken = default)
         {
             var query = _db.Parameter.Where(p => p.IsVisible);
 
@@ -46,7 +46,7 @@ namespace PQM.Infrastructure.Repositories
 
             return await query.ToListAsync(cancellationToken);
         }
-        public async Task<List<LiveScanParameterInfo>> GetParametersForLiveScanAsync(List<int>? profileIds,List<int>? parameterIds,int? meterTypeId,CancellationToken cancellationToken = default)
+        public async Task<List<LiveScanParameterInfo>> GetParametersForLiveScanAsync(List<int>? profileIds, List<int>? parameterIds, int? meterTypeId, CancellationToken cancellationToken = default)
         {
             var query = _db.Parameter.Where(p => p.ObisCode != null);
 
@@ -71,6 +71,7 @@ namespace PQM.Infrastructure.Repositories
                 .Select(p => new LiveScanParameterInfo
                 {
                     Id = p.Id,
+                    ProfileId = p.ProfileId,
                     Name = p.Name,
                     ObisCode = p.ObisCode!,
                     ObjectType = p.ObjectType,
