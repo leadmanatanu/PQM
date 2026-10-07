@@ -179,6 +179,8 @@ namespace PQM.Console
 
                     await syncRunLogRepository
                         .UpdateScheduleRunAsync(runLog);
+
+
                 }
                 catch (Exception ex)
                 {

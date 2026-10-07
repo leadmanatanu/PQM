@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PQM.Infrastructure;
 
@@ -11,9 +12,11 @@ using PQM.Infrastructure;
 namespace PQM.Infrastructure.Migrations
 {
     [DbContext(typeof(DataContext))]
-    partial class DataContextModelSnapshot : ModelSnapshot
+    [Migration("20261007104937_AddRole")]
+    partial class AddRole
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -41,7 +44,7 @@ namespace PQM.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("MeterType", (string)null);
+                    b.ToTable("MeterType");
                 });
 
             modelBuilder.Entity("PQM.Core.Entities.Device", b =>
@@ -374,7 +377,7 @@ namespace PQM.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Roles", (string)null);
+                    b.ToTable("Roles");
                 });
 
             modelBuilder.Entity("PQM.Core.Entities.SyncDeviceRunLogs", b =>
@@ -428,7 +431,7 @@ namespace PQM.Infrastructure.Migrations
 
                     b.HasIndex("RunId");
 
-                    b.ToTable("SyncDeviceRunLogs", (string)null);
+                    b.ToTable("SyncDeviceRunLogs");
                 });
 
             modelBuilder.Entity("PQM.Core.Entities.SyncRunLogs", b =>
@@ -474,7 +477,7 @@ namespace PQM.Infrastructure.Migrations
 
                     b.HasIndex("ScheduleId");
 
-                    b.ToTable("SyncRunLogs", (string)null);
+                    b.ToTable("SyncRunLogs");
                 });
 
             modelBuilder.Entity("PQM.Core.Entities.User", b =>
@@ -515,7 +518,7 @@ namespace PQM.Infrastructure.Migrations
 
                     b.HasIndex("RoleId1");
 
-                    b.ToTable("User", (string)null);
+                    b.ToTable("User");
                 });
 
             modelBuilder.Entity("PQM.Server.Entities.Notification", b =>
@@ -551,7 +554,7 @@ namespace PQM.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Notifications", (string)null);
+                    b.ToTable("Notifications");
                 });
 
             modelBuilder.Entity("PQM.Core.Entities.Device", b =>
