@@ -176,13 +176,11 @@ namespace PQM.Infrastructure
             });
 
             modelBuilder.Entity<User>()
-                .HasOne<Role>()
+                .HasOne(u => u.Role)
                 .WithMany()
                 .HasForeignKey(u => u.RoleId)
                 .OnDelete(DeleteBehavior.Restrict);
-            }
-
-
+        }
 
     }
 }
