@@ -1,7 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using PQM.Core.DTOs;
+using PQM.Core.DTOs.Notifications;
 using PQM.Core.Entities;
-using PQM.Core.Interfaces.Repositories;
 using PQM.Core.Interfaces.Services;
 
 namespace PQM.Infrastructure.Repositories
@@ -10,91 +9,93 @@ namespace PQM.Infrastructure.Repositories
     {
         private readonly DataContext _db;
 
-        public NotificationRepository(DataContext db)
+        public NotificationRepository(DataContext db) => _db = db;
+
+        public async Task<IEnumerable<NotificationDto>> GetAllNotificationsAsync(int userId, CancellationToken cancellationToken = default)
         {
-            _db = db ?? throw new ArgumentNullException(nameof(db));
+            return await (from r in _db.NotificationRecipients
+                          join n in _db.Notifications on r.NotificationId equals n.Id
+                          where r.UserId == userId
+                          orderby n.CreatedAt descending
+                          select new NotificationDto
+                          {
+                              Id = n.Id,
+                              Title = n.Title,
+                              Message = n.Message,
+                              Type = n.Type,
+                              Severity = n.Severity,
+                              IsRead = r.IsRead,
+                              CreatedAt = n.CreatedAt,
+                              ReadAt = r.ReadAt
+                          }).ToListAsync(cancellationToken);
         }
 
-        public async Task<IEnumerable<Notification>> GetAllNotificationsAsync(
-            int userId, CancellationToken cancellationToken = default)
+        public Task<int> GetUnreadCountAsync(int userId, CancellationToken cancellationToken = default) =>
+            _db.NotificationRecipients.CountAsync(x => x.UserId == userId && !x.IsRead, cancellationToken);
+
+        public async Task<NotificationDto?> GetByIdAsync(int notificationId, int userId, CancellationToken cancellationToken = default)
         {
-            return await _db.Notifications
-                .Where(n => n.UserId == userId)
-                .OrderByDescending(n => n.CreatedAt)
-                .ToListAsync(cancellationToken);
+            return await (from r in _db.NotificationRecipients
+                          join n in _db.Notifications on r.NotificationId equals n.Id
+                          where r.NotificationId == notificationId && r.UserId == userId
+                          select new NotificationDto
+                          {
+                              Id = n.Id,
+                              Title = n.Title,
+                              Message = n.Message,
+                              Type = n.Type,
+                              Severity = n.Severity,
+                              IsRead = r.IsRead,
+                              CreatedAt = n.CreatedAt,
+                              ReadAt = r.ReadAt
+                          }).FirstOrDefaultAsync(cancellationToken);
         }
 
-        public async Task<int> GetUnreadCountAsync(
-            int userId, CancellationToken cancellationToken = default)
+        public async Task<Notification> CreateAsync(Notification notification, IEnumerable<int> userIds, CancellationToken cancellationToken = default)
         {
-            return await _db.Notifications
-                .CountAsync(n => n.UserId == userId && !n.IsRead, cancellationToken);
-        }
-
-        public async Task<Notification?> GetByIdAsync(
-            int id, int userId, CancellationToken cancellationToken = default)
-        {
-            return await _db.Notifications
-                .FirstOrDefaultAsync(
-                    n => n.Id == id && n.UserId == userId,
-                    cancellationToken);
-        }
-
-        public async Task<Notification> CreateAsync(
-            Notification notification, CancellationToken cancellationToken = default)
-        {
-            if (notification == null)
-                throw new ArgumentNullException(nameof(notification));
-
             notification.CreatedAt = DateTime.Now;
-            notification.IsRead = false;
-            notification.ReadAt = null;
-
             _db.Notifications.Add(notification);
             await _db.SaveChangesAsync(cancellationToken);
 
+            foreach (var userId in userIds)
+                _db.NotificationRecipients.Add(new NotificationRecipient
+                {
+                    NotificationId = notification.Id,
+                    UserId = userId
+                });
+
+            await _db.SaveChangesAsync(cancellationToken);
             return notification;
         }
 
-        public async Task<bool> MarkAsReadAsync(
-            int id, int userId, CancellationToken cancellationToken = default)
+        public async Task<bool> MarkAsReadAsync(int notificationId, int userId, CancellationToken cancellationToken = default)
         {
-            var notification = await _db.Notifications
-                .FirstOrDefaultAsync(
-                    n => n.Id == id && n.UserId == userId,
-                    cancellationToken);
+            var r = await _db.NotificationRecipients.FirstOrDefaultAsync(
+                x => x.NotificationId == notificationId && x.UserId == userId, cancellationToken);
 
-            if (notification == null)
-                return false;
+            if (r == null) return false;
 
-            notification.IsRead = true;
-            notification.ReadAt = DateTime.Now;
-
+            r.IsRead = true;
+            r.ReadAt = DateTime.Now;
             await _db.SaveChangesAsync(cancellationToken);
-
             return true;
         }
 
-        public async Task<bool> MarkAllAsReadAsync(
-            int userId, CancellationToken cancellationToken = default)
+        public async Task<bool> MarkAllAsReadAsync(int userId, CancellationToken cancellationToken = default)
         {
-            var notifications = await _db.Notifications
-                .Where(n => n.UserId == userId && !n.IsRead)
+            var list = await _db.NotificationRecipients
+                .Where(x => x.UserId == userId && !x.IsRead)
                 .ToListAsync(cancellationToken);
 
-            if (!notifications.Any())
-                return false;
+            if (!list.Any()) return false;
 
-            var readAt = DateTime.Now;
-
-            foreach (var notification in notifications)
+            foreach (var r in list)
             {
-                notification.IsRead = true;
-                notification.ReadAt = readAt;
+                r.IsRead = true;
+                r.ReadAt = DateTime.Now;
             }
 
             await _db.SaveChangesAsync(cancellationToken);
-
             return true;
         }
     }
