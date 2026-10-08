@@ -41,7 +41,7 @@ namespace PQM.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("MeterType", (string)null);
+                    b.ToTable("MeterType");
                 });
 
             modelBuilder.Entity("PQM.Core.Entities.Device", b =>
@@ -374,7 +374,7 @@ namespace PQM.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Roles", (string)null);
+                    b.ToTable("Roles");
                 });
 
             modelBuilder.Entity("PQM.Core.Entities.SyncDeviceRunLogs", b =>
@@ -428,7 +428,7 @@ namespace PQM.Infrastructure.Migrations
 
                     b.HasIndex("RunId");
 
-                    b.ToTable("SyncDeviceRunLogs", (string)null);
+                    b.ToTable("SyncDeviceRunLogs");
                 });
 
             modelBuilder.Entity("PQM.Core.Entities.SyncRunLogs", b =>
@@ -474,7 +474,7 @@ namespace PQM.Infrastructure.Migrations
 
                     b.HasIndex("ScheduleId");
 
-                    b.ToTable("SyncRunLogs", (string)null);
+                    b.ToTable("SyncRunLogs");
                 });
 
             modelBuilder.Entity("PQM.Core.Entities.User", b =>
@@ -492,14 +492,17 @@ namespace PQM.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Password")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("RoleId")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("RoleId1")
                         .HasColumnType("int");
 
                     b.Property<DateTime?>("UpdatedAt")
@@ -513,9 +516,7 @@ namespace PQM.Infrastructure.Migrations
 
                     b.HasIndex("RoleId");
 
-                    b.HasIndex("RoleId1");
-
-                    b.ToTable("User", (string)null);
+                    b.ToTable("User");
                 });
 
             modelBuilder.Entity("PQM.Server.Entities.Notification", b =>
@@ -551,7 +552,7 @@ namespace PQM.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Notifications", (string)null);
+                    b.ToTable("Notifications");
                 });
 
             modelBuilder.Entity("PQM.Core.Entities.Device", b =>
@@ -682,20 +683,13 @@ namespace PQM.Infrastructure.Migrations
 
             modelBuilder.Entity("PQM.Core.Entities.User", b =>
                 {
-                    b.HasOne("PQM.Core.Entities.Role", null)
+                    b.HasOne("PQM.Core.Entities.Role", "Role")
                         .WithMany()
                         .HasForeignKey("RoleId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("PQM.Core.Entities.Role", null)
-                        .WithMany("Users")
-                        .HasForeignKey("RoleId1");
-                });
-
-            modelBuilder.Entity("PQM.Core.Entities.Role", b =>
-                {
-                    b.Navigation("Users");
+                    b.Navigation("Role");
                 });
 
             modelBuilder.Entity("PQM.Core.Entities.SyncRunLogs", b =>
