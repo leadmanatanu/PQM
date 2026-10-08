@@ -67,7 +67,9 @@ namespace PQM.Infrastructure.Repositories
                 return false;
             }
 
-            _db.User.Remove(user);
+            user.IsActive = false;
+            user.IsDeleted = true;
+            user.UpdatedAt = DateTime.UtcNow;
 
             await _db.SaveChangesAsync();
 
