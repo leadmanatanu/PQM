@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PQM.Core.Events;
 using PQM.Core.Interfaces.Repositories;
+using PQM.Core.Interfaces.Services;
 using PQM.Infrastructure;
 using PQM.Infrastructure.Events;
 using PQM.Infrastructure.Repositories;
@@ -25,10 +26,10 @@ try
     var builder = WebApplication.CreateBuilder(args);
 
     // Allow PQM Server to be accessed from office Wi-Fi
-    builder.WebHost.UseUrls("http://0.0.0.0:5135");
+    //builder.WebHost.UseUrls("http://0.0.0.0:5135");
 
     //localhost only
-    //builder.WebHost.UseUrls("http://localhost:5135");
+    builder.WebHost.UseUrls("http://localhost:5135");
 
     builder.Host.UseSerilog();
 
@@ -56,9 +57,8 @@ try
     builder.Services.AddScoped<ILiveRepository, LiveRepository>();
     builder.Services.AddScoped<IReportRepository, ReportRepository>();
     builder.Services.AddSingleton<INetworkReachabilityService, NetworkReachabilityService>();
-    builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
     builder.Services.AddScoped<ISyncRunLogRepository, SyncRunLogRepository>();
-
+    builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
     builder.Services.AddSingleton<IEventPublisher, EventPublisher>();
     builder.Services.AddSingleton<IEventHandler<DeviceSyncCompletedEvent>, DeviceSyncNotificationHandler>();
 

@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using PQM.Core.Entities;
-using PQM.Server.Entities;
 
 namespace PQM.Infrastructure
 {

@@ -1,7 +1,8 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using PQM.Core.DTOs.Notifications;
+using PQM.Core.Entities;
 using PQM.Core.Interfaces.Repositories;
-using PQM.Server.Entities;
+using PQM.Core.Interfaces.Services;
 using PQM.Server.Models;
 
 namespace PQM.Server.Controllers
@@ -43,7 +44,8 @@ namespace PQM.Server.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error while getting notifications for UserId {UserId}", userId);
+                _logger.LogError(ex,
+                    "Error while getting notifications for UserId {UserId}", userId);
 
                 _apiResponse.Status = false;
                 _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
@@ -73,7 +75,9 @@ namespace PQM.Server.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error while getting unread notification count for UserId {UserId}", userId);
+                _logger.LogError(ex,
+                    "Error while getting unread notification count for UserId {UserId}",
+                    userId);
 
                 _apiResponse.Status = false;
                 _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
@@ -117,7 +121,8 @@ namespace PQM.Server.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error while getting NotificationId {NotificationId}", id);
+                _logger.LogError(ex,
+                    "Error while getting NotificationId {NotificationId}", id);
 
                 _apiResponse.Status = false;
                 _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
@@ -141,12 +146,14 @@ namespace PQM.Server.Controllers
                     Title = dto.Title,
                     Message = dto.Message,
                     Type = dto.Type,
+                    Severity = dto.Severity,
                     IsRead = false,
-                    CreatedAt = DateTime.Now
+                    CreatedAt = DateTime.Now,
+                    ReadAt = null
                 };
 
                 var result = await _notificationRepository
-                    .AddAsync(notification, cancellationToken);
+                    .CreateAsync(notification, cancellationToken);
 
                 _apiResponse.Status = true;
                 _apiResponse.StatusCode = System.Net.HttpStatusCode.OK;
@@ -157,7 +164,9 @@ namespace PQM.Server.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error while adding notification for UserId {UserId}", dto.UserId);
+                _logger.LogError(ex,
+                    "Error while adding notification for UserId {UserId}",
+                    dto.UserId);
 
                 _apiResponse.Status = false;
                 _apiResponse.StatusCode = System.Net.HttpStatusCode.BadRequest;
@@ -201,8 +210,7 @@ namespace PQM.Server.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(
-                    ex,
+                _logger.LogError(ex,
                     "Error while marking NotificationId {NotificationId} as read",
                     id);
 
@@ -234,8 +242,7 @@ namespace PQM.Server.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(
-                    ex,
+                _logger.LogError(ex,
                     "Error while marking all notifications as read for UserId {UserId}",
                     userId);
 
