@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -19,28 +20,19 @@ namespace PQM.Console
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<DeviceConsoleRunnerService> _logger;
         private readonly ConsoleOptions _options;
-        public DeviceConsoleRunnerService(IServiceScopeFactory scopeFactory,IOptions<ConsoleOptions> options,ILogger<DeviceConsoleRunnerService> logger)
-        {   
-            _scopeFactory = scopeFactory
-                ?? throw new ArgumentNullException(nameof(scopeFactory));
-
-            _logger = logger
-                ?? throw new ArgumentNullException(nameof(logger));
-
-            _options = options?.Value
-                ?? throw new ArgumentNullException(nameof(options));
-
-
-            if (string.IsNullOrWhiteSpace(_options.DefaultConnection))
-                throw new InvalidOperationException(
-                    "Connection string 'DefaultConnection' not found in options.");
+        private readonly IConfiguration _configuration;
+        public DeviceConsoleRunnerService(IServiceScopeFactory scopeFactory,IOptions<ConsoleOptions> options,ILogger<DeviceConsoleRunnerService> logger, IConfiguration configuration)
+        {
+            _scopeFactory = scopeFactory;
+            _logger = logger;
+            _options = options.Value;
+            _configuration = configuration;
         }
         private async Task CreateScheduleNotificationAsync(SyncRunLogs runLog,CancellationToken cancellationToken)
         {
             var duration = TimeSpan.FromMilliseconds(runLog.DurationMs ?? 0);
 
-            var durationText =
-                $"{(int)duration.TotalHours:00}:{duration.Minutes:00}:{duration.Seconds:00}";
+            var durationText = $"{(int)duration.TotalHours:00}:{duration.Minutes:00}:{duration.Seconds:00}";
 
             var notification = new Notification
             {
@@ -61,9 +53,13 @@ namespace PQM.Console
 
             var result = await notificationRepository.CreateAsync(notification,cancellationToken);
 
+            var baseUrl = _configuration["ServerApi:BaseUrl"] ?? throw new InvalidOperationException("ServerApi:BaseUrl is missing from appsettings.json.");
+
             using var httpClient = new HttpClient();
 
-            var response = await httpClient.PostAsync($"http://localhost:5135/api/notification/Dispatch/{result.Id}",null,cancellationToken);
+            var url = $"{baseUrl.TrimEnd('/')}/api/notification/Dispatch/{result.Id}";
+
+            var response = await httpClient.PostAsync(url,null,cancellationToken);
 
             response.EnsureSuccessStatusCode();
 

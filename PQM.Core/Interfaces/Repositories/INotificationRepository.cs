@@ -11,5 +11,6 @@ namespace PQM.Core.Interfaces.Repositories
         Task<Notification> CreateAsync(Notification notification,CancellationToken cancellationToken = default);
         Task<bool> MarkAsReadAsync(int notificationId, int userId, CancellationToken cancellationToken = default);
         Task<bool> MarkAllAsReadAsync(int userId, CancellationToken cancellationToken = default);
+        Task<(Notification? Notification, List<int> RecipientUserIds)>GetNotificationForDispatchAsync(int notificationId,CancellationToken cancellationToken = default);
     }
 }

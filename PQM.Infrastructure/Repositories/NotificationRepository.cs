@@ -111,5 +111,26 @@ namespace PQM.Infrastructure.Repositories
             await _db.SaveChangesAsync(cancellationToken);
             return true;
         }
+
+        public async Task<(Notification? Notification, List<int> RecipientUserIds)>GetNotificationForDispatchAsync(int notificationId,CancellationToken cancellationToken = default)
+        {
+            var notification = await _db.Notifications
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    x => x.Id == notificationId,
+                    cancellationToken);
+
+            if (notification == null)
+                return (null, new List<int>());
+
+            var recipientUserIds = await _db.NotificationRecipients
+                .AsNoTracking()
+                .Where(x => x.NotificationId == notificationId)
+                .Select(x => x.UserId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+
+            return (notification, recipientUserIds);
+        }
     }
 }

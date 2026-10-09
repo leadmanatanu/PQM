@@ -25,10 +25,10 @@ try
     var builder = WebApplication.CreateBuilder(args);
 
     // Allow PQM Server to be accessed from office Wi-Fi
-    //builder.WebHost.UseUrls("http://0.0.0.0:5135");
+    builder.WebHost.UseUrls("http://0.0.0.0:5135");
 
     //localhost only
-    builder.WebHost.UseUrls("http://localhost:5135");
+   // builder.WebHost.UseUrls("http://localhost:5135");
 
     builder.Host.UseSerilog();
 
@@ -176,7 +176,6 @@ try
         app.MapControllers();
 
         app.MapHub<DeviceHub>("/hubs/device");
-        app.MapHub<NotificationHub>("/hubs/notificationHub");
 
         app.MapFallbackToFile("/index.html");
 
