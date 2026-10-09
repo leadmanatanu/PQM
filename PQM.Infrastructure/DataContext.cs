@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using PQM.Core.Entities;
-using PQM.Server.Entities;
 
 namespace PQM.Infrastructure
 {
@@ -18,9 +17,10 @@ namespace PQM.Infrastructure
         public DbSet<ReadingValue> ReadingValues { get; set; } = null!;
         public DbSet<DeviceProfileSyncState> DeviceProfileSyncStates { get; set; } = null!;
         public DbSet<Notification> Notifications { get; set; } = null!;
+        public DbSet<NotificationRecipient> NotificationRecipients { get; set; } = null!;
         public DbSet<SyncRunLogs> SyncRunLogs { get; set; }
         public DbSet<SyncDeviceRunLogs> SyncDeviceRunLogs { get; set; }
-
+        public DbSet<Role> Roles { get; set; } = null!;
         public DataContext(DbContextOptions<DataContext> options) : base(options)
         {
         }
@@ -173,6 +173,31 @@ namespace PQM.Infrastructure
                     .WithMany()
                     .HasForeignKey(x => x.DeviceId)
                     .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<User>()
+                .HasOne(u => u.Role)
+                .WithMany()
+                .HasForeignKey(u => u.RoleId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<NotificationRecipient>(entity =>
+            {
+                entity.HasKey(x => new
+                {
+                    x.NotificationId,
+                    x.UserId
+                });
+
+                entity.HasOne(x => x.User)
+                    .WithMany()
+                    .HasForeignKey(x => x.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne<Notification>()
+                    .WithMany()
+                    .HasForeignKey(x => x.NotificationId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
         }
 

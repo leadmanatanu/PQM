@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -8,7 +9,9 @@ using PQM.Core.Entities;
 using PQM.Core.Helpers;
 using PQM.Core.Interfaces.Repositories;
 using PQM.Infrastructure;
+using PQM.Infrastructure.Repositories;
 using PQM.Infrastructure.Services;
+using System.Net.Http;
 
 namespace PQM.Console
 {
@@ -17,28 +20,51 @@ namespace PQM.Console
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<DeviceConsoleRunnerService> _logger;
         private readonly ConsoleOptions _options;
-
-        public DeviceConsoleRunnerService(
-            IServiceScopeFactory scopeFactory,
-            IOptions<ConsoleOptions> options,
-            ILogger<DeviceConsoleRunnerService> logger)
-        {   
-            _scopeFactory = scopeFactory
-                ?? throw new ArgumentNullException(nameof(scopeFactory));
-
-            _logger = logger
-                ?? throw new ArgumentNullException(nameof(logger));
-
-            _options = options?.Value
-                ?? throw new ArgumentNullException(nameof(options));
-
-            if (string.IsNullOrWhiteSpace(_options.DefaultConnection))
-                throw new InvalidOperationException(
-                    "Connection string 'DefaultConnection' not found in options.");
+        private readonly IConfiguration _configuration;
+        public DeviceConsoleRunnerService(IServiceScopeFactory scopeFactory,IOptions<ConsoleOptions> options,ILogger<DeviceConsoleRunnerService> logger, IConfiguration configuration)
+        {
+            _scopeFactory = scopeFactory;
+            _logger = logger;
+            _options = options.Value;
+            _configuration = configuration;
         }
+        private async Task CreateScheduleNotificationAsync(SyncRunLogs runLog,CancellationToken cancellationToken)
+        {
+            var duration = TimeSpan.FromMilliseconds(runLog.DurationMs ?? 0);
 
-        protected override async Task ExecuteAsync(
-     CancellationToken stoppingToken)
+            var durationText = $"{(int)duration.TotalHours:00}:{duration.Minutes:00}:{duration.Seconds:00}";
+
+            var notification = new Notification
+            {
+                Title = "Schedule Completed",
+                Message = $"Schedule completed. {runLog.SucceededDevices} of {runLog.TotalDevices} devices succeeded, " +
+                          $"{runLog.FailedDevices} failed. Duration: {durationText}.",
+                Type = "Schedule",
+                Severity = runLog.Status == "Success"
+                    ? "Success"
+                    : runLog.Status == "PartialSuccess"
+                        ? "Warning"
+                        : "Error"
+            };
+
+            using var scope = _scopeFactory.CreateScope();
+
+            var notificationRepository = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
+
+            var result = await notificationRepository.CreateAsync(notification,cancellationToken);
+
+            var baseUrl = _configuration["ServerApi:BaseUrl"] ?? throw new InvalidOperationException("ServerApi:BaseUrl is missing from appsettings.json.");
+
+            using var httpClient = new HttpClient();
+
+            var url = $"{baseUrl.TrimEnd('/')}/api/notification/Dispatch/{result.Id}";
+
+            var response = await httpClient.PostAsync(url,null,cancellationToken);
+
+            response.EnsureSuccessStatusCode();
+
+        }
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             _logger.LogInformation(
                 "[PQM] Service started | Checking schedules every 5 seconds.");
@@ -72,7 +98,6 @@ namespace PQM.Console
             _logger.LogInformation(
                 "[PQM] Service stopped.");
         }
-
         private async Task ProcessDueSchedulesAsync(CancellationToken stoppingToken)
         {
             var dueSchedules = await GetDueSchedulesAsync(stoppingToken);
@@ -177,8 +202,11 @@ namespace PQM.Console
                     runLog.Status = finalStatus;
                     runLog.NextRunAt = nextRunAtIST;
 
-                    await syncRunLogRepository
-                        .UpdateScheduleRunAsync(runLog);
+                    await syncRunLogRepository.UpdateScheduleRunAsync(runLog);
+
+                    await CreateScheduleNotificationAsync(runLog, stoppingToken);
+
+
                 }
                 catch (Exception ex)
                 {
@@ -222,13 +250,7 @@ namespace PQM.Console
                     nextRunAtIST);
             }
         }
-
-        private async Task<(int DeviceId, bool Success, string? ErrorMessage)>
-    ProcessScheduledDeviceAsync(
-        int deviceId,
-        int scheduleId,
-        int runId,
-        CancellationToken stoppingToken)
+        private async Task<(int DeviceId, bool Success, string? ErrorMessage)>ProcessScheduledDeviceAsync(int deviceId,int scheduleId,int runId,CancellationToken stoppingToken)
         {
             if (stoppingToken.IsCancellationRequested)
             {
@@ -432,13 +454,7 @@ namespace PQM.Console
 
             return list;
         }
-
-        private async Task UpdateScheduleCompletionAsync(
-            int scheduleId,
-            DateTime lastRunAtIST,
-            string lastRunStatus,
-            DateTime? nextRunAtIST,
-            CancellationToken cancellationToken)
+        private async Task UpdateScheduleCompletionAsync(int scheduleId,DateTime lastRunAtIST,string lastRunStatus,DateTime? nextRunAtIST,CancellationToken cancellationToken)
         {
             using var scope = _scopeFactory.CreateScope();
 
@@ -454,7 +470,6 @@ namespace PQM.Console
                         .SetProperty(s => s.NextRunAt, nextRunAtIST),
                     cancellationToken);
         }
-
         private static DateTime GetIndiaStandardTime()
         {
             return TimeZoneInfo.ConvertTimeFromUtc(

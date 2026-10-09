@@ -28,7 +28,7 @@ try
     builder.WebHost.UseUrls("http://0.0.0.0:5135");
 
     //localhost only
-    //builder.WebHost.UseUrls("http://localhost:5135");
+   // builder.WebHost.UseUrls("http://localhost:5135");
 
     builder.Host.UseSerilog();
 
@@ -50,16 +50,17 @@ try
         options => options.UseSqlServer(connectionString));
 
     builder.Services.AddScoped<IAuthRepository, AuthRepository>();
+    builder.Services.AddScoped<IUserRepository, UserRepository>();
     builder.Services.AddScoped<IDeviceRepository, DeviceRepository>();
     builder.Services.AddScoped<IScheduleRepository, ScheduleRepository>();
     builder.Services.AddScoped<ILiveRepository, LiveRepository>();
     builder.Services.AddScoped<IReportRepository, ReportRepository>();
     builder.Services.AddSingleton<INetworkReachabilityService, NetworkReachabilityService>();
-    builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
     builder.Services.AddScoped<ISyncRunLogRepository, SyncRunLogRepository>();
-
+    builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
     builder.Services.AddSingleton<IEventPublisher, EventPublisher>();
     builder.Services.AddSingleton<IEventHandler<DeviceSyncCompletedEvent>, DeviceSyncNotificationHandler>();
+    builder.Services.AddSingleton<IEventHandler<NotificationCreatedEvent>,NotificationCreatedEventHandler>();
 
     builder.Services.AddScoped<ProfileSyncService>(sp => new ProfileSyncService(
         connectionString,
@@ -175,7 +176,6 @@ try
         app.MapControllers();
 
         app.MapHub<DeviceHub>("/hubs/device");
-        app.MapHub<NotificationHub>("/hubs/notificationHub");
 
         app.MapFallbackToFile("/index.html");
 

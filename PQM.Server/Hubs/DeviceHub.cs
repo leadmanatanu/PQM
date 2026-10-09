@@ -6,6 +6,7 @@ namespace PQM.Server.Hubs
     public class DeviceHub : Hub
     {
         private static readonly ConcurrentDictionary<string, HashSet<int>> _subscriptions = new();
+        private static readonly ConcurrentDictionary<string, int> _userConnections = new();
 
         public Task SubscribeToDevices(List<int> deviceIds)
         {
@@ -28,17 +29,42 @@ namespace PQM.Server.Hubs
             }
             return Task.CompletedTask;
         }
+        public Task RegisterUser(int userId)
+        {
+            if (userId <= 0)
+                throw new HubException("Invalid user ID.");
+
+            _userConnections[Context.ConnectionId] = userId;
+
+            return Task.CompletedTask;
+        }
+
+        public static IReadOnlyList<string> GetUserConnections(int userId)
+        {
+            return _userConnections
+                .Where(x => x.Value == userId)
+                .Select(x => x.Key)
+                .ToList();
+        }
 
         public override Task OnDisconnectedAsync(Exception? exception)
         {
             _subscriptions.TryRemove(Context.ConnectionId, out _);
+            _userConnections.TryRemove(Context.ConnectionId, out _);
+
             return base.OnDisconnectedAsync(exception);
         }
 
         public static IReadOnlyList<string> GetSubscribedConnections(int deviceId)
         {
             return _subscriptions
-                .Where(kvp => kvp.Value.Contains(deviceId))
+                .Where(kvp =>
+                {
+                    lock (kvp.Value)
+                    {
+                        return kvp.Value.Contains(deviceId);
+                    }
+                })
                 .Select(kvp => kvp.Key)
                 .ToList();
         }

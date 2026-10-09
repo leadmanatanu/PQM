@@ -57,6 +57,8 @@ namespace PQM.Console
                     services.AddScoped<IDeviceRepository, DeviceRepository>();
                     services.AddScoped<INetworkReachabilityService, NetworkReachabilityService>();
                     services.AddScoped<ISyncRunLogRepository, SyncRunLogRepository>();
+                    services.AddScoped<INotificationRepository, NotificationRepository>();
+
 
                     services.AddSingleton<IEventPublisher, EventPublisher>();
 

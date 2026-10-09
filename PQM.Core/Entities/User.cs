@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace PQM.Core.Entities
 {
@@ -10,7 +11,13 @@ namespace PQM.Core.Entities
         public required string Username { get; set; }
         public required string Email { get; set; }
         public required string Password { get; set; }
+        public bool IsActive { get; set; }
+        public bool IsDeleted { get; set; }
         public DateTime? CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
+
+
+        public int RoleId { get; set; }
+        public Role? Role { get; set; }
     }
 }
