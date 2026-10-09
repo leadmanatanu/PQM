@@ -1,7 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using PQM.Core.DTOs.Notifications;
 using PQM.Core.Entities;
-using PQM.Core.Interfaces.Services;
+using PQM.Core.Interfaces.Repositories;
 
 namespace PQM.Infrastructure.Repositories
 {
@@ -50,21 +50,35 @@ namespace PQM.Infrastructure.Repositories
                               ReadAt = r.ReadAt
                           }).FirstOrDefaultAsync(cancellationToken);
         }
-
-        public async Task<Notification> CreateAsync(Notification notification, IEnumerable<int> userIds, CancellationToken cancellationToken = default)
+        public async Task<Notification> CreateAsync(Notification notification,CancellationToken cancellationToken = default)
         {
             notification.CreatedAt = DateTime.Now;
+
             _db.Notifications.Add(notification);
             await _db.SaveChangesAsync(cancellationToken);
 
+            var userIds = notification.Type == "Schedule"
+                ? await _db.User
+                    .Where(x => x.RoleId == 1 || x.RoleId == 2)
+                    .Select(x => x.Id)
+                    .ToListAsync(cancellationToken)
+
+                : await _db.User
+                    .Where(x => x.RoleId == 1)
+                    .Select(x => x.Id)
+                    .ToListAsync(cancellationToken);
+
             foreach (var userId in userIds)
+            {
                 _db.NotificationRecipients.Add(new NotificationRecipient
                 {
                     NotificationId = notification.Id,
                     UserId = userId
                 });
+            }
 
             await _db.SaveChangesAsync(cancellationToken);
+
             return notification;
         }
 

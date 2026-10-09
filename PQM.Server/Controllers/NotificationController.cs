@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using PQM.Core.DTOs.Notifications;
 using PQM.Core.Entities;
-using PQM.Core.Interfaces.Services;
+using PQM.Core.Interfaces.Repositories;
 using PQM.Server.Models;
 
 namespace PQM.Server.Controllers
@@ -98,7 +98,7 @@ namespace PQM.Server.Controllers
                     Severity = dto.Severity
                 };
 
-                var result = await _repo.CreateAsync(notification, [], ct);
+                var result = await _repo.CreateAsync(notification,ct);
 
                 _response.Status = true;
                 _response.StatusCode = System.Net.HttpStatusCode.OK;

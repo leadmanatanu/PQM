@@ -8,6 +8,7 @@ using PQM.Core.Entities;
 using PQM.Core.Helpers;
 using PQM.Core.Interfaces.Repositories;
 using PQM.Infrastructure;
+using PQM.Infrastructure.Repositories;
 using PQM.Infrastructure.Services;
 
 namespace PQM.Console
@@ -18,10 +19,7 @@ namespace PQM.Console
         private readonly ILogger<DeviceConsoleRunnerService> _logger;
         private readonly ConsoleOptions _options;
 
-        public DeviceConsoleRunnerService(
-            IServiceScopeFactory scopeFactory,
-            IOptions<ConsoleOptions> options,
-            ILogger<DeviceConsoleRunnerService> logger)
+        public DeviceConsoleRunnerService(IServiceScopeFactory scopeFactory,IOptions<ConsoleOptions> options,ILogger<DeviceConsoleRunnerService> logger)
         {   
             _scopeFactory = scopeFactory
                 ?? throw new ArgumentNullException(nameof(scopeFactory));
@@ -32,11 +30,42 @@ namespace PQM.Console
             _options = options?.Value
                 ?? throw new ArgumentNullException(nameof(options));
 
+
             if (string.IsNullOrWhiteSpace(_options.DefaultConnection))
                 throw new InvalidOperationException(
                     "Connection string 'DefaultConnection' not found in options.");
         }
 
+        private async Task CreateScheduleNotificationAsync(SyncRunLogs runLog,CancellationToken cancellationToken)
+        {
+            var duration = TimeSpan.FromMilliseconds(runLog.DurationMs ?? 0);
+
+            var durationText =
+                $"{(int)duration.TotalHours:00}:{duration.Minutes:00}:{duration.Seconds:00}";
+
+            var notification = new Notification
+            {
+                Title = "Schedule Completed",
+                Message = $"Schedule completed. {runLog.SucceededDevices} of {runLog.TotalDevices} devices succeeded, " +
+                          $"{runLog.FailedDevices} failed. Duration: {durationText}.",
+                Type = "Schedule",
+                Severity = runLog.Status == "Success"
+                    ? "Success"
+                    : runLog.Status == "PartialSuccess"
+                        ? "Warning"
+                        : "Error"
+            };
+
+            using var scope = _scopeFactory.CreateScope();
+
+            var notificationRepository =
+                scope.ServiceProvider.GetRequiredService<INotificationRepository>();
+
+            await notificationRepository.CreateAsync(
+                notification,
+                cancellationToken);
+
+        }
         protected override async Task ExecuteAsync(
      CancellationToken stoppingToken)
         {
@@ -177,8 +206,9 @@ namespace PQM.Console
                     runLog.Status = finalStatus;
                     runLog.NextRunAt = nextRunAtIST;
 
-                    await syncRunLogRepository
-                        .UpdateScheduleRunAsync(runLog);
+                    await syncRunLogRepository.UpdateScheduleRunAsync(runLog);
+
+                    await CreateScheduleNotificationAsync(runLog, stoppingToken);
 
 
                 }

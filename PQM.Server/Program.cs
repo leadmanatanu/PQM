@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PQM.Core.Events;
 using PQM.Core.Interfaces.Repositories;
-using PQM.Core.Interfaces.Services;
 using PQM.Infrastructure;
 using PQM.Infrastructure.Events;
 using PQM.Infrastructure.Repositories;
