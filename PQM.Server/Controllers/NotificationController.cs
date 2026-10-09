@@ -3,6 +3,9 @@ using PQM.Core.DTOs.Notifications;
 using PQM.Core.Entities;
 using PQM.Core.Interfaces.Repositories;
 using PQM.Server.Models;
+using Microsoft.EntityFrameworkCore;
+using PQM.Core.Events;
+using PQM.Infrastructure;
 
 namespace PQM.Server.Controllers
 {
@@ -13,11 +16,15 @@ namespace PQM.Server.Controllers
         private readonly INotificationRepository _repo;
         private readonly APIResponse _response = new();
         private readonly ILogger<NotificationController> _logger;
+        private readonly DataContext _db;
+        private readonly IEventPublisher _eventPublisher;
 
-        public NotificationController(INotificationRepository repo, ILogger<NotificationController> logger)
+        public NotificationController(INotificationRepository repo,ILogger<NotificationController> logger,DataContext db,IEventPublisher eventPublisher)
         {
             _repo = repo;
             _logger = logger;
+            _db = db;
+            _eventPublisher = eventPublisher;
         }
 
         [HttpGet("GetAll/{userId}")]
@@ -163,6 +170,50 @@ namespace PQM.Server.Controllers
             _response.Data = null;
             _response.Errors = new() { ex.Message };
             return Ok(_response);
+        }
+
+        [HttpPost("Dispatch/{id}")]
+        public async Task<ActionResult> Dispatch(int id, CancellationToken ct)
+        {
+            try
+            {
+                var notification = await _db.Notifications
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(x => x.Id == id, ct);
+
+                if (notification == null)
+                    return NotFound(new { message = "Notification not found." });
+
+                var recipientUserIds = await _db.NotificationRecipients
+                    .AsNoTracking()
+                    .Where(x => x.NotificationId == id)
+                    .Select(x => x.UserId)
+                    .Distinct()
+                    .ToListAsync(ct);
+
+                await _eventPublisher.PublishAsync(new NotificationCreatedEvent
+                {
+                    NotificationId = notification.Id,
+                    Title = notification.Title,
+                    Message = notification.Message,
+                    Type = notification.Type,
+                    Severity = notification.Severity,
+                    CreatedAt = notification.CreatedAt,
+                    RecipientUserIds = recipientUserIds
+                });
+
+                return Ok(new
+                {
+                    success = true,
+                    notificationId = id,
+                    recipientCount = recipientUserIds.Count
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error dispatching notification {NotificationId}", id);
+                return StatusCode(500, new { message = "Failed to dispatch notification." });
+            }
         }
     }
 }

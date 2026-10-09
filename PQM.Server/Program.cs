@@ -60,6 +60,7 @@ try
     builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
     builder.Services.AddSingleton<IEventPublisher, EventPublisher>();
     builder.Services.AddSingleton<IEventHandler<DeviceSyncCompletedEvent>, DeviceSyncNotificationHandler>();
+    builder.Services.AddSingleton<IEventHandler<NotificationCreatedEvent>,NotificationCreatedEventHandler>();
 
     builder.Services.AddScoped<ProfileSyncService>(sp => new ProfileSyncService(
         connectionString,

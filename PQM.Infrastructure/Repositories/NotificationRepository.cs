@@ -2,15 +2,17 @@
 using PQM.Core.DTOs.Notifications;
 using PQM.Core.Entities;
 using PQM.Core.Interfaces.Repositories;
+using PQM.Core.Events;
 
 namespace PQM.Infrastructure.Repositories
 {
     public class NotificationRepository : INotificationRepository
     {
         private readonly DataContext _db;
-
-        public NotificationRepository(DataContext db) => _db = db;
-
+        public NotificationRepository(DataContext db,IEventPublisher eventPublisher)
+        {
+            _db = db;
+        }
         public async Task<IEnumerable<NotificationDto>> GetAllNotificationsAsync(int userId, CancellationToken cancellationToken = default)
         {
             return await (from r in _db.NotificationRecipients
@@ -29,10 +31,7 @@ namespace PQM.Infrastructure.Repositories
                               ReadAt = r.ReadAt
                           }).ToListAsync(cancellationToken);
         }
-
-        public Task<int> GetUnreadCountAsync(int userId, CancellationToken cancellationToken = default) =>
-            _db.NotificationRecipients.CountAsync(x => x.UserId == userId && !x.IsRead, cancellationToken);
-
+        public Task<int> GetUnreadCountAsync(int userId, CancellationToken cancellationToken = default) => _db.NotificationRecipients.CountAsync(x => x.UserId == userId && !x.IsRead, cancellationToken);
         public async Task<NotificationDto?> GetByIdAsync(int notificationId, int userId, CancellationToken cancellationToken = default)
         {
             return await (from r in _db.NotificationRecipients
@@ -77,11 +76,12 @@ namespace PQM.Infrastructure.Repositories
                 });
             }
 
+
             await _db.SaveChangesAsync(cancellationToken);
 
             return notification;
-        }
 
+        }
         public async Task<bool> MarkAsReadAsync(int notificationId, int userId, CancellationToken cancellationToken = default)
         {
             var r = await _db.NotificationRecipients.FirstOrDefaultAsync(
@@ -94,7 +94,6 @@ namespace PQM.Infrastructure.Repositories
             await _db.SaveChangesAsync(cancellationToken);
             return true;
         }
-
         public async Task<bool> MarkAllAsReadAsync(int userId, CancellationToken cancellationToken = default)
         {
             var list = await _db.NotificationRecipients
